@@ -1,5 +1,5 @@
 import SftpClient from 'ssh2-sftp-client'
-import { readFileSync } from 'fs'
+import { readFileSync, existsSync } from 'fs'
 import { resolve } from 'path'
 import { Readable } from 'stream'
 
@@ -22,26 +22,31 @@ export async function uploadToSftp(buffer: Buffer, filename: string): Promise<st
     )
   }
 
-  const privateKey = readFileSync(resolve(privateKeyPath))
+  const resolvedKeyPath = resolve(privateKeyPath)
+  if (!existsSync(resolvedKeyPath)) {
+    throw new Error(`SFTP private key not found at: ${resolvedKeyPath}`)
+  }
 
+  const privateKey = readFileSync(resolvedKeyPath)
   const sftp = new SftpClient()
 
   try {
-    await sftp.connect({
-      host,
-      port,
-      username,
-      privateKey,
-    })
+    await sftp.connect({ host, port, username, privateKey })
 
-    // Ensure the remote directory exists
-    await sftp.mkdir(remoteDir, true)
+    try {
+      await sftp.mkdir(remoteDir, true)
+    } catch (err) {
+      throw new Error(`Failed to create remote directory "${remoteDir}": ${err instanceof Error ? err.message : err}`)
+    }
 
     const remotePath = `${remoteDir}/${filename}`
-
-    // Convert Buffer to Readable stream for sftp.put
     const stream = Readable.from(buffer)
-    await sftp.put(stream, remotePath)
+
+    try {
+      await sftp.put(stream, remotePath)
+    } catch (err) {
+      throw new Error(`Failed to upload "${filename}" to SFTP: ${err instanceof Error ? err.message : err}`)
+    }
 
     const publicUrl = `${publicUrlBase.replace(/\/$/, '')}/${filename}`
     return publicUrl

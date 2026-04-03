@@ -36,7 +36,7 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 WATCH_DIR="${WATCH_DIR:-$HOME/podcast-inbox}"
 PODSHELF_URL="${PODSHELF_URL:-http://localhost:3000}"
-PODSHELF_ADMIN_PASSWORD="${PODSHELF_ADMIN_PASSWORD:-}"
+PODSHELF_API_KEY="${PODSHELF_API_KEY:-}"
 DISCORD_WEBHOOK_URL="${DISCORD_WEBHOOK_URL:-}"
 USE_CLAUDE="${USE_CLAUDE:-true}"
 CLAUDE_PROMPT_PREFIX="${CLAUDE_PROMPT_PREFIX:-Generate engaging podcast show notes in HTML format (use <p>, <ul>, <li>, <a> tags). Include a brief summary, key topics covered, and any notable quotes or timestamps mentioned. Keep it under 600 words. Transcript:}"
@@ -95,14 +95,9 @@ upload_audio() {
 
   log_info "Uploading audio: $filename"
 
-  local auth_header=""
-  if [ -n "$PODSHELF_ADMIN_PASSWORD" ]; then
-    auth_header="-H \"Cookie: admin_token=$PODSHELF_ADMIN_PASSWORD\""
-  fi
-
   local response
   response=$(curl -s -X POST \
-    ${PODSHELF_ADMIN_PASSWORD:+-H "Cookie: admin_token=$PODSHELF_ADMIN_PASSWORD"} \
+    ${PODSHELF_API_KEY:+-H "X-Api-Key: $PODSHELF_API_KEY"} \
     -F "file=@${filepath}" \
     "${PODSHELF_URL}/api/upload" 2>&1) || {
       log_error "Upload curl command failed for: $filename"
@@ -199,7 +194,7 @@ create_episode() {
 
   local response
   response=$(curl -s -X POST \
-    ${PODSHELF_ADMIN_PASSWORD:+-H "Cookie: admin_token=$PODSHELF_ADMIN_PASSWORD"} \
+    ${PODSHELF_API_KEY:+-H "X-Api-Key: $PODSHELF_API_KEY"} \
     -H "Content-Type: application/json" \
     -d "$json_body" \
     "${PODSHELF_URL}/api/episodes" 2>&1) || {
@@ -345,6 +340,9 @@ main() {
   log_info "Podshelf URL: $PODSHELF_URL"
   log_info "Watch directory: $WATCH_DIR"
   log_info "Claude show notes: $USE_CLAUDE"
+  if [ -z "$PODSHELF_API_KEY" ]; then
+    log_warn "PODSHELF_API_KEY is not set — API calls will fail if ADMIN_PASSWORD is configured on the server."
+  fi
 
   # Validate dependencies
   if ! command -v curl &>/dev/null; then

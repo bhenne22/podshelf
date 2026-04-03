@@ -1,6 +1,6 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
-  devtools: { enabled: true },
+  devtools: { enabled: process.env.NODE_ENV !== 'production' },
 
   nitro: {
     experimental: {
@@ -10,6 +10,15 @@ export default defineNuxtConfig({
     externals: {
       inline: [],
     },
+    routeRules: {
+      '/**': {
+        headers: {
+          'X-Content-Type-Options': 'nosniff',
+          'X-Frame-Options': 'DENY',
+          'Referrer-Policy': 'strict-origin-when-cross-origin',
+        },
+      },
+    },
   },
 
   // Runtime config — values can be overridden by .env
@@ -18,6 +27,7 @@ export default defineNuxtConfig({
     databasePath: process.env.DATABASE_PATH || './data/podshelf.db',
     secretKey: process.env.NUXT_SECRET_KEY || '',
     adminPassword: process.env.ADMIN_PASSWORD || '',
+    apiKey: process.env.PODSHELF_API_KEY || '',
 
     // Storage
     storageAdapter: process.env.STORAGE_ADAPTER || 'sftp',

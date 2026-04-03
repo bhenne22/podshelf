@@ -82,7 +82,11 @@ export default defineEventHandler((event) => {
 
   // Fetch published episodes ordered by published_at DESC
   const episodes = db.prepare(`
-    SELECT * FROM episodes
+    SELECT
+      id, title, slug, episode_number, season_number,
+      description, audio_url, audio_filename, audio_size_bytes,
+      audio_duration_seconds, published_at, status, tags, created_at
+    FROM episodes
     WHERE status = 'published' AND published_at IS NOT NULL
     ORDER BY published_at DESC
   `).all() as Episode[]

@@ -1,4 +1,5 @@
 import { defineEventHandler, readBody, createError } from 'h3'
+import { requireAuth } from '../../utils/auth'
 import getDb from '../../db/index'
 
 function slugify(text: string): string {
@@ -12,6 +13,8 @@ function slugify(text: string): string {
 }
 
 export default defineEventHandler(async (event) => {
+  requireAuth(event)
+
   const db = getDb()
   const body = await readBody(event)
 

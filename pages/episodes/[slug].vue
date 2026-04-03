@@ -24,7 +24,7 @@
         <div
           v-if="episode.description"
           class="episode-shownotes"
-          v-html="episode.description"
+          v-html="sanitizeHtml(episode.description)"
         ></div>
 
         <div v-if="episode.tags" class="episode-tags">
@@ -68,12 +68,9 @@ interface Episode {
 const route = useRoute()
 const slug = route.params.slug as string
 
-// Fetch all published episodes and find the one matching the slug
-const { data: allEpisodes, pending } = await useFetch<Episode[]>('/api/episodes', {
-  query: { status: 'published' },
+const { data: episode, pending } = await useFetch<Episode | null>('/api/episodes', {
+  query: { slug },
 })
-
-const episode = computed(() => allEpisodes.value?.find((e) => e.slug === slug) ?? null)
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-US', {
@@ -85,6 +82,22 @@ function formatDate(iso: string): string {
 
 function parseTags(tags: string): string[] {
   return tags.split(',').map((t) => t.trim()).filter(Boolean)
+}
+
+/**
+ * Strip dangerous HTML elements and attributes to prevent XSS.
+ * Allows safe formatting tags (p, a, ul, ol, li, h2, h3, em, strong, br, etc.)
+ */
+function sanitizeHtml(html: string): string {
+  // Remove script/style/iframe/object/embed tags and their contents
+  let clean = html.replace(/<(script|style|iframe|object|embed|form|textarea|input|button)[^>]*>[\s\S]*?<\/\1>/gi, '')
+  // Remove self-closing versions and unclosed dangerous tags
+  clean = clean.replace(/<(script|style|iframe|object|embed|form|textarea|input|button)[^>]*\/?>/gi, '')
+  // Remove event handler attributes (on*)
+  clean = clean.replace(/\s+on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+  // Remove javascript: URLs
+  clean = clean.replace(/href\s*=\s*(?:"javascript:[^"]*"|'javascript:[^']*')/gi, '')
+  return clean
 }
 
 useSeoMeta({

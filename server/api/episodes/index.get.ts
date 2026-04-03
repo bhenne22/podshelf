@@ -5,6 +5,21 @@ export default defineEventHandler((event) => {
   const db = getDb()
   const query = getQuery(event)
 
+  // Single episode lookup by slug
+  if (query.slug) {
+    const episode = db.prepare(`
+      SELECT
+        id, title, slug, episode_number, season_number,
+        description, audio_url, audio_filename, audio_size_bytes,
+        audio_duration_seconds, published_at, status, tags,
+        transcript_path, created_at, updated_at
+      FROM episodes
+      WHERE slug = ?
+    `).get(query.slug as string)
+
+    return episode || null
+  }
+
   let sql = `
     SELECT
       id, title, slug, episode_number, season_number,
@@ -13,11 +28,16 @@ export default defineEventHandler((event) => {
       transcript_path, created_at, updated_at
     FROM episodes
   `
+  const conditions: string[] = []
   const params: string[] = []
 
   if (query.status) {
-    sql += ' WHERE status = ?'
+    conditions.push('status = ?')
     params.push(query.status as string)
+  }
+
+  if (conditions.length) {
+    sql += ' WHERE ' + conditions.join(' AND ')
   }
 
   // Order: published_at DESC (NULLs last), then created_at DESC

@@ -1,7 +1,10 @@
 import { defineEventHandler, getRouterParam, createError, setResponseStatus } from 'h3'
+import { requireAuth } from '../../utils/auth'
 import getDb from '../../db/index'
 
 export default defineEventHandler((event) => {
+  requireAuth(event)
+
   const db = getDb()
   const id = getRouterParam(event, 'id')
 

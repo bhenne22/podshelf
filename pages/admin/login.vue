@@ -27,23 +27,18 @@ definePageMeta({ layout: false })
 const password = ref('')
 const error = ref('')
 const loading = ref(false)
-const adminToken = useCookie('admin_token', { maxAge: 60 * 60 * 24 * 30 })
 
 async function login() {
   loading.value = true
   error.value = ''
 
-  // We can't verify the password server-side without an API call here,
-  // so we store the password as the cookie and the middleware checks it.
-  // In production, swap this for a proper API call.
-  adminToken.value = password.value
-
-  // Do a quick test request to validate
   try {
-    await $fetch('/api/settings')
+    await $fetch('/api/auth/login', {
+      method: 'POST',
+      body: { password: password.value },
+    })
     await navigateTo('/admin')
   } catch {
-    adminToken.value = ''
     error.value = 'Invalid password. Please try again.'
   } finally {
     loading.value = false

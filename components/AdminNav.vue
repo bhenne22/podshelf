@@ -17,9 +17,20 @@
       <li>
         <a href="/feed.xml" target="_blank" rel="noopener">RSS Feed ↗</a>
       </li>
+      <li class="divider"></li>
+      <li>
+        <button class="logout-btn" @click="logout">Sign out</button>
+      </li>
     </ul>
   </nav>
 </template>
+
+<script setup lang="ts">
+async function logout() {
+  await $fetch('/api/auth/logout', { method: 'POST' })
+  await navigateTo('/admin/login')
+}
+</script>
 
 <style scoped>
 .admin-nav {
@@ -78,5 +89,21 @@
   height: 20px;
   background: #e2e8f0;
   margin: 0 0.5rem;
+}
+
+.logout-btn {
+  background: transparent;
+  border: none;
+  padding: 0.375rem 0.75rem;
+  color: #4a5568;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.logout-btn:hover {
+  background: #fff5f5;
+  color: #c53030;
 }
 </style>

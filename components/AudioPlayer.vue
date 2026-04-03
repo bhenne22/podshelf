@@ -62,14 +62,18 @@ const progress = computed(() => {
   return (currentTime.value / duration.value) * 100
 })
 
-function togglePlay() {
+async function togglePlay() {
   if (!audioEl.value) return
   if (playing.value) {
     audioEl.value.pause()
     playing.value = false
   } else {
-    audioEl.value.play()
-    playing.value = true
+    try {
+      await audioEl.value.play()
+      playing.value = true
+    } catch {
+      playing.value = false
+    }
   }
 }
 
