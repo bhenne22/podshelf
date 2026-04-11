@@ -1,3 +1,5 @@
+import { resolve } from 'path'
+
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
   devtools: { enabled: process.env.NODE_ENV !== 'production' },
@@ -24,7 +26,7 @@ export default defineNuxtConfig({
   // Runtime config — values can be overridden by .env
   runtimeConfig: {
     // Server-only secrets
-    databasePath: process.env.DATABASE_PATH || './data/podshelf.db',
+    databasePath: resolve(process.env.DATABASE_PATH || './data/podshelf.db'),
     secretKey: process.env.NUXT_SECRET_KEY || '',
     adminPassword: process.env.ADMIN_PASSWORD || '',
     apiKey: process.env.PODSHELF_API_KEY || '',

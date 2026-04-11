@@ -100,6 +100,13 @@
                 placeholder="© 2025 Jane Doe" />
             </div>
           </div>
+
+          <div class="form-group">
+            <label for="audio_tracking_prefix">Audio Tracking Prefix</label>
+            <input id="audio_tracking_prefix" v-model="form.audio_tracking_prefix" type="text"
+              placeholder="https://media.blubrry.com/1467354/" />
+            <p class="hint">Prepended to episode audio URLs in the RSS feed only (e.g. Blubrry, Chartable, Podtrac). Leave blank to disable.</p>
+          </div>
         </div>
 
         <div class="form-section">
@@ -145,6 +152,7 @@ const form = reactive({
   show_category: 'Society & Culture',
   show_explicit: 'false',
   show_website: '',
+  audio_tracking_prefix: '',
 })
 
 const saving = ref(false)

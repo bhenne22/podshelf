@@ -66,7 +66,37 @@ SQLite via `better-sqlite3` (sync, no async/await). Singleton initialized in `se
 
 Plain scoped CSS in Vue SFCs — no Tailwind, no UI library. Keep it that way.
 
-### OpenClaw Automation
+### Episode Creation via API / AI Assistant
+
+Full API documentation is in `docs/api.md`. The typical AI-assisted workflow is:
+
+1. **Upload audio:** `POST /api/upload` with `file` form field → returns `{ url, filename, size }`
+2. **Create draft:** `POST /api/episodes` with title, description, audio_url, etc. → returns episode object
+
+Both endpoints require `X-Api-Key: <PODSHELF_API_KEY>` header.
+
+A convenience script wraps both steps:
+
+```bash
+./scripts/podshelf-publish.sh \
+  --file /path/to/episode.mp3 \
+  --title "Episode Title" \
+  --description "<p>Show notes</p>" \
+  --tags "running, ultramarathon"
+```
+
+Or with an existing audio URL (skip upload):
+
+```bash
+./scripts/podshelf-publish.sh \
+  --audio-url "https://example.com/episode.mp3" \
+  --title "Episode Title" \
+  --description "<p>Show notes</p>"
+```
+
+Requires `PODSHELF_API_KEY` env var. Episodes are created as drafts by default.
+
+### OpenClaw Automation (Legacy)
 
 `openclaw/podshelf-watch.sh` is a bash script that watches a directory for new episode folders, uploads audio files, optionally generates show notes via `claude -p`, creates draft episodes via the Podshelf API, and sends Discord notifications. Folders are renamed to `.processed` after ingestion.
 

@@ -1,5 +1,6 @@
 import { defineEventHandler, readBody, getRouterParam, createError } from 'h3'
 import { requireAuth } from '../../utils/auth'
+import { validateEpisodeFields } from '../../utils/validate'
 import getDb from '../../db/index'
 
 export default defineEventHandler(async (event) => {
@@ -18,6 +19,8 @@ export default defineEventHandler(async (event) => {
   }
 
   const body = await readBody(event)
+
+  validateEpisodeFields(body)
 
   // Build dynamic SET clause from provided fields
   const allowedFields = [

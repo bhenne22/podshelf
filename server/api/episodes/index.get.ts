@@ -1,4 +1,4 @@
-import { defineEventHandler, getQuery } from 'h3'
+import { defineEventHandler, getQuery, createError } from 'h3'
 import getDb from '../../db/index'
 
 export default defineEventHandler((event) => {
@@ -32,8 +32,12 @@ export default defineEventHandler((event) => {
   const params: string[] = []
 
   if (query.status) {
+    const status = query.status as string
+    if (!['draft', 'published'].includes(status)) {
+      throw createError({ statusCode: 400, statusMessage: 'status must be draft or published' })
+    }
     conditions.push('status = ?')
-    params.push(query.status as string)
+    params.push(status)
   }
 
   if (conditions.length) {

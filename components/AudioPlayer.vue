@@ -1,13 +1,24 @@
 <template>
   <div class="audio-player" v-if="audioUrl">
     <div class="player-title">{{ title }}</div>
-    <div class="player-controls">
+    <div class="player-controls" @keydown="handleKeydown" tabindex="0" role="group" aria-label="Audio player controls">
       <button class="play-btn" @click="togglePlay" :aria-label="playing ? 'Pause' : 'Play'">
         <span v-if="!playing">&#9654;</span>
         <span v-else>&#9646;&#9646;</span>
       </button>
       <div class="time-display">{{ formatTime(currentTime) }}</div>
-      <div class="seekbar-wrapper" @click="seek">
+      <div
+        class="seekbar-wrapper"
+        @click="seek"
+        role="slider"
+        tabindex="0"
+        :aria-label="'Seek: ' + formatTime(currentTime) + ' of ' + formatTime(duration)"
+        :aria-valuenow="Math.round(currentTime)"
+        :aria-valuemin="0"
+        :aria-valuemax="Math.round(duration)"
+        @keydown.left.prevent="seekRelative(-5)"
+        @keydown.right.prevent="seekRelative(5)"
+      >
         <div class="seekbar-track">
           <div class="seekbar-fill" :style="{ width: progress + '%' }"></div>
         </div>
@@ -97,6 +108,33 @@ function seek(event: MouseEvent) {
   audioEl.value.currentTime = ratio * duration.value
 }
 
+function seekRelative(seconds: number) {
+  if (!audioEl.value || !duration.value) return
+  audioEl.value.currentTime = Math.max(0, Math.min(duration.value, audioEl.value.currentTime + seconds))
+}
+
+function adjustVolume(delta: number) {
+  if (!audioEl.value) return
+  volume.value = Math.max(0, Math.min(1, volume.value + delta))
+  audioEl.value.volume = volume.value
+}
+
+function handleKeydown(event: KeyboardEvent) {
+  if (event.key === ' ' || event.key === 'Enter') {
+    // Only handle if the target is the controls wrapper itself (not a child button/input)
+    if ((event.target as HTMLElement).classList.contains('player-controls')) {
+      event.preventDefault()
+      togglePlay()
+    }
+  } else if (event.key === 'ArrowUp') {
+    event.preventDefault()
+    adjustVolume(0.05)
+  } else if (event.key === 'ArrowDown') {
+    event.preventDefault()
+    adjustVolume(-0.05)
+  }
+}
+
 function toggleMute() {
   if (!audioEl.value) return
   muted.value = !muted.value
@@ -143,6 +181,13 @@ function formatTime(seconds: number): string {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  outline: none;
+}
+
+.player-controls:focus-visible {
+  outline: 2px solid #667eea;
+  outline-offset: 4px;
+  border-radius: 8px;
 }
 
 .play-btn {

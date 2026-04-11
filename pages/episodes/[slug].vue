@@ -100,12 +100,28 @@ function sanitizeHtml(html: string): string {
   return clean
 }
 
+const plainDescription = computed(() => {
+  const desc = episode.value?.description?.replace(/<[^>]+>/g, '') || ''
+  return desc.slice(0, 160)
+})
+
 useSeoMeta({
   title: () => episode.value?.title || 'Episode',
-  description: () => {
-    const desc = episode.value?.description?.replace(/<[^>]+>/g, '') || ''
-    return desc.slice(0, 160)
-  },
+  description: plainDescription,
+  ogTitle: () => episode.value?.title || 'Episode',
+  ogDescription: plainDescription,
+  ogType: 'article',
+  ogAudio: () => episode.value?.audio_url || undefined,
+  twitterCard: 'summary',
+  twitterTitle: () => episode.value?.title || 'Episode',
+  twitterDescription: plainDescription,
+})
+
+// Add og:image from podcast show image if available
+useHead({
+  meta: [
+    { property: 'article:published_time', content: () => episode.value?.published_at || '' },
+  ],
 })
 </script>
 

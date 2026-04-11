@@ -39,4 +39,5 @@ INSERT OR IGNORE INTO settings (key, value) VALUES
   ('show_copyright',   ''),
   ('show_category',    'Society & Culture'),
   ('show_explicit',    'false'),
-  ('show_website',     '');
+  ('show_website',     ''),
+  ('audio_tracking_prefix', '');

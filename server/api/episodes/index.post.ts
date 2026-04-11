@@ -1,5 +1,6 @@
 import { defineEventHandler, readBody, createError } from 'h3'
 import { requireAuth } from '../../utils/auth'
+import { validateEpisodeFields } from '../../utils/validate'
 import getDb from '../../db/index'
 
 function slugify(text: string): string {
@@ -21,6 +22,8 @@ export default defineEventHandler(async (event) => {
   if (!body?.title) {
     throw createError({ statusCode: 400, statusMessage: 'title is required' })
   }
+
+  validateEpisodeFields(body)
 
   // Auto-generate slug from title if not provided
   let slug = body.slug ? slugify(body.slug) : slugify(body.title)

@@ -12,6 +12,7 @@ const DEFAULTS: Record<string, string> = {
   show_category: 'Society & Culture',
   show_explicit: 'false',
   show_website: '',
+  audio_tracking_prefix: '',
 }
 
 export default defineEventHandler(() => {

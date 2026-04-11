@@ -12,6 +12,18 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Body must be a key/value object' })
   }
 
+  const ALLOWED_KEYS = new Set([
+    'show_title', 'show_description', 'show_author', 'show_email',
+    'show_image_url', 'show_language', 'show_copyright',
+    'show_category', 'show_explicit', 'show_website',
+    'audio_tracking_prefix',
+  ])
+
+  const invalidKeys = Object.keys(body).filter((k) => !ALLOWED_KEYS.has(k))
+  if (invalidKeys.length) {
+    throw createError({ statusCode: 400, statusMessage: `Unknown setting keys: ${invalidKeys.join(', ')}` })
+  }
+
   const upsert = db.prepare(`
     INSERT INTO settings (key, value, updated_at)
     VALUES (@key, @value, datetime('now'))

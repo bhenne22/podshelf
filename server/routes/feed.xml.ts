@@ -79,6 +79,7 @@ export default defineEventHandler((event) => {
   const showCategory = settings.show_category || 'Society & Culture'
   const showExplicit = settings.show_explicit || 'false'
   const showWebsite = settings.show_website || siteUrl
+  const audioTrackingPrefix = settings.audio_tracking_prefix || ''
 
   // Fetch published episodes ordered by published_at DESC
   const episodes = db.prepare(`
@@ -109,7 +110,12 @@ export default defineEventHandler((event) => {
     }
 
     if (audioUrl) {
-      xml += `      <enclosure url="${escapeXml(audioUrl)}" length="${audioSize}" type="audio/mpeg"/>\n`
+      // When a tracking prefix is set (e.g. https://media.blubrry.com/1467354/),
+      // strip the protocol from the audio URL since the prefix provides the scheme
+      const feedAudioUrl = audioTrackingPrefix
+        ? audioTrackingPrefix + audioUrl.replace(/^https?:\/\//, '')
+        : audioUrl
+      xml += `      <enclosure url="${escapeXml(feedAudioUrl)}" length="${audioSize}" type="audio/mpeg"/>\n`
     }
 
     xml += `      <guid isPermaLink="false">${escapeXml(episodeUrl)}</guid>\n`

@@ -1,5 +1,19 @@
-import { defineEventHandler, readBody, createError, setCookie } from 'h3'
+import { defineEventHandler, readBody, createError, setCookie, getRequestIP } from 'h3'
 import { createHmac, randomBytes } from 'crypto'
+
+const MAX_ATTEMPTS = 5
+const WINDOW_MS = 15 * 60 * 1000 // 15 minutes
+const attempts = new Map<string, number[]>()
+
+function checkRateLimit(ip: string) {
+  const now = Date.now()
+  const timestamps = (attempts.get(ip) || []).filter((t) => now - t < WINDOW_MS)
+  if (timestamps.length >= MAX_ATTEMPTS) {
+    throw createError({ statusCode: 429, statusMessage: 'Too many login attempts. Try again later.' })
+  }
+  timestamps.push(now)
+  attempts.set(ip, timestamps)
+}
 
 /**
  * POST /api/auth/login
@@ -7,6 +21,9 @@ import { createHmac, randomBytes } from 'crypto'
  * Validates the admin password and sets a signed session cookie.
  */
 export default defineEventHandler(async (event) => {
+  const ip = getRequestIP(event, { xForwardedFor: true }) || 'unknown'
+  checkRateLimit(ip)
+
   const body = await readBody(event)
 
   if (!body?.password) {
@@ -23,6 +40,9 @@ export default defineEventHandler(async (event) => {
   if (body.password !== adminPassword) {
     throw createError({ statusCode: 401, statusMessage: 'Invalid password' })
   }
+
+  // Clear rate limit on successful login
+  attempts.delete(ip)
 
   // Create a signed session token: nonce.signature
   const secretKey = config.secretKey || adminPassword

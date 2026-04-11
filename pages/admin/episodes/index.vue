@@ -19,11 +19,11 @@
       <table v-else class="episodes-table">
         <thead>
           <tr>
-            <th>#</th>
-            <th>Title</th>
-            <th>Status</th>
-            <th>Published</th>
-            <th>Actions</th>
+            <th scope="col">#</th>
+            <th scope="col">Title</th>
+            <th scope="col">Status</th>
+            <th scope="col">Published</th>
+            <th scope="col">Actions</th>
           </tr>
         </thead>
         <tbody>
