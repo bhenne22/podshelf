@@ -8,6 +8,9 @@
         <NuxtLink to="/admin/episodes" active-class="active">Episodes</NuxtLink>
       </li>
       <li>
+        <NuxtLink to="/admin/stats" active-class="active">Analytics</NuxtLink>
+      </li>
+      <li>
         <NuxtLink to="/admin/settings" active-class="active">Settings</NuxtLink>
       </li>
       <li class="divider"></li>

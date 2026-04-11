@@ -105,7 +105,22 @@
             <label for="audio_tracking_prefix">Audio Tracking Prefix</label>
             <input id="audio_tracking_prefix" v-model="form.audio_tracking_prefix" type="text"
               placeholder="https://media.blubrry.com/1467354/" />
-            <p class="hint">Prepended to episode audio URLs in the RSS feed only (e.g. Blubrry, Chartable, Podtrac). Leave blank to disable.</p>
+            <p class="hint">Prepended to episode audio URLs in the RSS feed only (e.g. Blubrry, Chartable, Podtrac). To use Podshelf's built-in tracking, set this to <code>{{ siteUrl }}/track/</code>.</p>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <h2>Analytics</h2>
+
+          <div class="form-group">
+            <label for="geoip_db_path">GeoIP Database Path</label>
+            <input id="geoip_db_path" v-model="form.geoip_db_path" type="text"
+              placeholder="/path/to/GeoLite2-City.mmdb" />
+            <p class="hint">
+              Optional. Path to a MaxMind GeoLite2-City <code>.mmdb</code> file on this server.
+              Enables country/region/city breakdown in download analytics.
+              Download free from <a href="https://dev.maxmind.com/geoip/geolite2-free-geolocation-data" target="_blank" rel="noopener">maxmind.com</a> (free account required).
+            </p>
           </div>
         </div>
 
@@ -140,6 +155,7 @@ const { data: initialSettings, pending } = await useFetch<Record<string, string>
 const config = useRuntimeConfig()
 
 const storageAdapter = config.storageAdapter || 'sftp'
+const siteUrl = config.public.siteUrl || 'http://localhost:3000'
 
 const form = reactive({
   show_title: '',
@@ -153,6 +169,7 @@ const form = reactive({
   show_explicit: 'false',
   show_website: '',
   audio_tracking_prefix: '',
+  geoip_db_path: '',
 })
 
 const saving = ref(false)

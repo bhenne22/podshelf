@@ -34,6 +34,10 @@
             class="tag"
           >{{ tag }}</span>
         </div>
+
+        <div v-if="downloadUrl" class="episode-download">
+          <a :href="downloadUrl" download class="download-link">&#8595; Download episode</a>
+        </div>
       </article>
 
       <div class="back-link">
@@ -99,6 +103,12 @@ function sanitizeHtml(html: string): string {
   clean = clean.replace(/href\s*=\s*(?:"javascript:[^"]*"|'javascript:[^']*')/gi, '')
   return clean
 }
+
+const downloadUrl = computed(() => {
+  const url = episode.value?.audio_url
+  if (!url) return null
+  return '/track/' + url.replace(/^https?:\/\//, '')
+})
 
 const plainDescription = computed(() => {
   const desc = episode.value?.description?.replace(/<[^>]+>/g, '') || ''
@@ -240,6 +250,23 @@ useHead({
   font-family: system-ui, sans-serif;
   padding: 0.2rem 0.6rem;
   border-radius: 999px;
+}
+
+.episode-download {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #e8e4dc;
+  font-family: system-ui, sans-serif;
+}
+
+.download-link {
+  font-size: 0.875rem;
+  color: #92400e;
+  text-decoration: none;
+}
+
+.download-link:hover {
+  text-decoration: underline;
 }
 
 .back-link {

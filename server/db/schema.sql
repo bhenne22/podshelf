@@ -40,4 +40,22 @@ INSERT OR IGNORE INTO settings (key, value) VALUES
   ('show_category',    'Society & Culture'),
   ('show_explicit',    'false'),
   ('show_website',     ''),
-  ('audio_tracking_prefix', '');
+  ('audio_tracking_prefix', ''),
+  ('geoip_db_path', '');
+
+-- Downloads tracking table
+CREATE TABLE IF NOT EXISTS downloads (
+  id               INTEGER PRIMARY KEY AUTOINCREMENT,
+  episode_id       INTEGER NOT NULL REFERENCES episodes(id) ON DELETE CASCADE,
+  downloaded_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  ip_hash          TEXT NOT NULL,
+  user_agent       TEXT,
+  bytes_requested  INTEGER,
+  country          TEXT,
+  region           TEXT,
+  city             TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_downloads_episode_id ON downloads(episode_id);
+CREATE INDEX IF NOT EXISTS idx_downloads_downloaded_at ON downloads(downloaded_at);
+CREATE INDEX IF NOT EXISTS idx_downloads_ip_hash_episode ON downloads(ip_hash, episode_id);

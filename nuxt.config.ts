@@ -8,7 +8,6 @@ export default defineNuxtConfig({
     experimental: {
       wasm: true,
     },
-    // Bundle better-sqlite3 for server-side use
     externals: {
       inline: [],
     },

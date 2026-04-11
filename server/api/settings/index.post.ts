@@ -16,7 +16,7 @@ export default defineEventHandler(async (event) => {
     'show_title', 'show_description', 'show_author', 'show_email',
     'show_image_url', 'show_language', 'show_copyright',
     'show_category', 'show_explicit', 'show_website',
-    'audio_tracking_prefix',
+    'audio_tracking_prefix', 'geoip_db_path',
   ])
 
   const invalidKeys = Object.keys(body).filter((k) => !ALLOWED_KEYS.has(k))
