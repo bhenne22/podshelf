@@ -10,7 +10,7 @@
       <div v-if="successMsg" class="success-msg">{{ successMsg }}</div>
       <div v-if="errorMsg" class="error-msg">{{ errorMsg }}</div>
 
-      <form @submit.prevent="saveEpisode" class="episode-form">
+      <form @submit.prevent="onSubmit" class="episode-form">
         <div class="form-section">
           <h2>Basic Info</h2>
           <div class="form-row">
@@ -45,12 +45,11 @@
 
           <div class="form-group">
             <label for="description">Show Notes / Description</label>
-            <textarea
-              id="description"
+            <RichTextEditor
               v-model="form.description"
-              rows="8"
-              placeholder="HTML is supported. Describe your episode, add links, timestamps, etc."
-            ></textarea>
+              :rows="10"
+              placeholder="Describe your episode, add links, timestamps, etc."
+            />
           </div>
 
           <div class="form-group">
@@ -74,19 +73,52 @@
           </div>
 
           <div v-if="uploading" class="upload-progress">
-            Uploading audio… please wait.
+            <div class="progress-text">Uploading audio… {{ uploadProgress }}%</div>
+            <div class="progress-bar-track">
+              <div class="progress-bar-fill" :style="{ width: uploadProgress + '%' }"></div>
+            </div>
           </div>
 
-          <div class="form-row">
-            <div class="form-group flex-2">
-              <label for="audio_url">Audio URL</label>
+          <div class="form-group">
+            <label for="audio_url">Audio URL</label>
+            <div class="input-with-action">
               <input
                 id="audio_url"
                 v-model="form.audio_url"
                 type="url"
                 placeholder="https://example.com/audio/episode.mp3"
               />
-              <p class="hint">Auto-filled after upload, or enter manually.</p>
+              <button
+                type="button"
+                class="btn-probe"
+                :disabled="!form.audio_url || probing"
+                @click="probeAudio"
+              >
+                {{ probing ? 'Checking…' : 'Check File' }}
+              </button>
+            </div>
+            <p class="hint">Auto-filled after upload, or enter manually. Use "Check File" to detect size &amp; duration.</p>
+          </div>
+
+          <div v-if="probeError" class="probe-error">{{ probeError }}</div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="audio_size">
+                File Size (bytes)
+                <button type="button" class="lock-toggle" @click="fieldsUnlocked = !fieldsUnlocked" :title="fieldsUnlocked ? 'Lock fields' : 'Unlock for manual editing'">
+                  {{ fieldsUnlocked ? 'Lock' : 'Unlock' }}
+                </button>
+              </label>
+              <input
+                id="audio_size"
+                v-model.number="form.audio_size_bytes"
+                type="number"
+                min="0"
+                placeholder="Auto-detected"
+                :readonly="!fieldsUnlocked"
+                :class="{ 'field-locked': !fieldsUnlocked }"
+              />
             </div>
             <div class="form-group">
               <label for="audio_duration">Duration (seconds)</label>
@@ -95,8 +127,14 @@
                 v-model.number="form.audio_duration_seconds"
                 type="number"
                 min="0"
-                placeholder="e.g. 3600"
+                placeholder="Auto-detected"
+                :readonly="!fieldsUnlocked"
+                :class="{ 'field-locked': !fieldsUnlocked }"
               />
+            </div>
+            <div v-if="form.audio_duration_seconds" class="form-group">
+              <label>Formatted</label>
+              <div class="duration-display">{{ formatDuration(form.audio_duration_seconds) }}</div>
             </div>
           </div>
         </div>
@@ -177,6 +215,9 @@ definePageMeta({ middleware: 'admin-auth' })
 const router = useRouter()
 const { createEpisode } = useEpisodes()
 
+const formDirty = ref(false)
+const formSaved = ref(false)
+
 const form = reactive({
   title: '',
   slug: '',
@@ -194,7 +235,10 @@ const form = reactive({
 })
 
 const saving = ref(false)
-const uploading = ref(false)
+const probing = ref(false)
+const probeError = ref('')
+const fieldsUnlocked = ref(false)
+const { uploading, uploadProgress, uploadFile } = useUpload()
 const errorMsg = ref('')
 const successMsg = ref('')
 let slugManuallyEdited = false
@@ -222,31 +266,89 @@ watch(() => form.slug, (newVal, oldVal) => {
   }
 })
 
+// Track dirty state for unsaved-changes warning
+watch(form, () => { formDirty.value = true }, { deep: true })
+
+onBeforeRouteLeave(() => {
+  if (formDirty.value && !formSaved.value) {
+    return window.confirm('You have unsaved changes. Leave anyway?')
+  }
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('beforeunload', onBeforeUnload)
+})
+
+function onBeforeUnload(e: BeforeUnloadEvent) {
+  if (formDirty.value && !formSaved.value) {
+    e.preventDefault()
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('beforeunload', onBeforeUnload)
+})
+
 async function handleFileChange(event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
   if (!file) return
 
-  uploading.value = true
   errorMsg.value = ''
 
   try {
-    const formData = new FormData()
-    formData.append('file', file)
-
-    const result = await $fetch<{ url: string; filename: string; size: number }>(
-      '/api/upload',
-      { method: 'POST', body: formData }
-    )
-
+    const result = await uploadFile(file)
     form.audio_url = result.url
     form.audio_filename = result.filename
     form.audio_size_bytes = result.size
   } catch (err: unknown) {
     errorMsg.value = err instanceof Error ? err.message : 'Upload failed'
-  } finally {
-    uploading.value = false
   }
+}
+
+async function probeAudio() {
+  if (!form.audio_url) return
+  probing.value = true
+  probeError.value = ''
+
+  try {
+    // Get file size via server-side HEAD request
+    const probe = await $fetch<{ size: number | null; contentType: string | null }>(
+      '/api/audio-probe',
+      { query: { url: form.audio_url } }
+    )
+    if (probe.size) {
+      form.audio_size_bytes = probe.size
+    }
+
+    // Get duration via browser Audio element
+    const audio = new Audio()
+    audio.preload = 'metadata'
+    const durationPromise = new Promise<number>((resolve, reject) => {
+      audio.onloadedmetadata = () => resolve(audio.duration)
+      audio.onerror = () => reject(new Error('Could not load audio metadata'))
+      setTimeout(() => reject(new Error('Timed out loading audio metadata')), 15000)
+    })
+    audio.src = form.audio_url
+    const duration = await durationPromise
+    if (duration && isFinite(duration)) {
+      form.audio_duration_seconds = Math.round(duration)
+    }
+  } catch (err: unknown) {
+    probeError.value = err instanceof Error ? err.message : 'Failed to probe audio'
+  } finally {
+    probing.value = false
+  }
+}
+
+function formatDuration(seconds: number): string {
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  const s = seconds % 60
+  if (h > 0) {
+    return `${h}h ${String(m).padStart(2, '0')}m ${String(s).padStart(2, '0')}s`
+  }
+  return `${m}m ${String(s).padStart(2, '0')}s`
 }
 
 async function saveEpisode(publish = false) {
@@ -269,12 +371,17 @@ async function saveEpisode(publish = false) {
       audio_duration_seconds: form.audio_duration_seconds || null,
       published_at: form.published_at || null,
     })
+    formSaved.value = true
     await router.push(`/admin/episodes/${episode.id}`)
   } catch (err: unknown) {
     errorMsg.value = err instanceof Error ? err.message : 'Failed to save episode'
   } finally {
     saving.value = false
   }
+}
+
+function onSubmit() {
+  saveEpisode(false)
 }
 
 function saveAndPublish() {
@@ -410,6 +517,87 @@ textarea { resize: vertical; line-height: 1.6; }
   border-radius: 6px;
   font-size: 0.875rem;
   margin-bottom: 1rem;
+}
+
+.progress-text { margin-bottom: 0.5rem; }
+
+.progress-bar-track {
+  height: 6px;
+  background: rgba(43, 108, 176, 0.15);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: #3182ce;
+  border-radius: 3px;
+  transition: width 0.15s linear;
+}
+
+.input-with-action {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.input-with-action input { flex: 1; }
+
+.btn-probe {
+  padding: 0.5rem 0.875rem;
+  background: #edf2f7;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #4a5568;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+
+.btn-probe:hover:not(:disabled) {
+  background: #e2e8f0;
+  border-color: #cbd5e0;
+}
+
+.btn-probe:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.probe-error {
+  padding: 0.5rem 0.75rem;
+  background: #fff5f5;
+  color: #c53030;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  margin-bottom: 0.5rem;
+}
+
+.lock-toggle {
+  background: none;
+  border: none;
+  font-size: 0.72rem;
+  color: #667eea;
+  cursor: pointer;
+  padding: 0;
+  margin-left: 0.375rem;
+  font-weight: 400;
+}
+
+.lock-toggle:hover { text-decoration: underline; }
+
+.field-locked {
+  background: #f7fafc !important;
+  color: #718096 !important;
+  cursor: default;
+}
+
+.duration-display {
+  padding: 0.5rem 0.75rem;
+  background: #f7fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  color: #4a5568;
+  font-variant-numeric: tabular-nums;
 }
 
 .rss-preview {
