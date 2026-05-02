@@ -93,13 +93,29 @@
           <input v-model="sftp.password" type="password" />
         </div>
         <div class="form-group">
-          <label>Remote Directory</label>
+          <label>Audio Remote Directory</label>
           <input v-model="sftp.remoteDir" type="text" placeholder="/home/user/public_html/podcast/audio" required />
         </div>
         <div class="form-group">
-          <label>Public URL Base</label>
+          <label>Audio Public URL Base</label>
           <input v-model="sftp.publicUrlBase" type="url" placeholder="https://example.com/podcast/audio" required />
-          <p class="hint">Public URL that corresponds to the remote directory. Files become reachable at <code>{publicUrlBase}/{filename}</code>.</p>
+          <p class="hint">Public URL that corresponds to the audio directory. Files become reachable at <code>{publicUrlBase}/{filename}</code>.</p>
+        </div>
+        <div class="form-group">
+          <label>Artwork Remote Directory <span class="hint">(optional)</span></label>
+          <input v-model="sftp.artworkRemoteDir" type="text" placeholder="/home/user/public_html/podcast/artwork" />
+        </div>
+        <div class="form-group">
+          <label>Artwork Public URL Base <span class="hint">(required if artwork dir is set)</span></label>
+          <input v-model="sftp.artworkPublicUrlBase" type="url" placeholder="https://example.com/podcast/artwork" />
+          <p class="hint">Where uploaded podcast / episode artwork lives. Same SFTP credentials are used.</p>
+        </div>
+        <div class="form-group">
+          <label>Test Against</label>
+          <div class="radio-row">
+            <label class="radio"><input type="radio" v-model="testKind" value="audio" /> Audio dir</label>
+            <label class="radio"><input type="radio" v-model="testKind" value="artwork" /> Artwork dir</label>
+          </div>
         </div>
         <div class="form-actions">
           <span v-if="saving" class="save-status saving">Saving…</span>
@@ -140,8 +156,24 @@
           <input v-model="s3.bucketName" type="text" required />
         </div>
         <div class="form-group">
-          <label>Public URL Base</label>
+          <label>Audio Public URL Base</label>
           <input v-model="s3.publicUrlBase" type="url" placeholder="https://f004.backblazeb2.com/file/your-bucket-name" required />
+        </div>
+        <div class="form-group">
+          <label>Artwork Key Prefix <span class="hint">(optional, e.g. <code>artwork/</code>)</span></label>
+          <input v-model="s3.artworkPrefix" type="text" placeholder="artwork/" />
+          <p class="hint">Object key prefix used for podcast / episode artwork uploads in the same bucket.</p>
+        </div>
+        <div class="form-group">
+          <label>Artwork Public URL Base <span class="hint">(falls back to audio URL base when blank)</span></label>
+          <input v-model="s3.artworkPublicUrlBase" type="url" placeholder="https://example.com/artwork" />
+        </div>
+        <div class="form-group">
+          <label>Test Against</label>
+          <div class="radio-row">
+            <label class="radio"><input type="radio" v-model="testKind" value="audio" /> Audio prefix</label>
+            <label class="radio"><input type="radio" v-model="testKind" value="artwork" /> Artwork prefix</label>
+          </div>
         </div>
         <div class="form-actions">
           <span v-if="saving" class="save-status saving">Saving…</span>
@@ -185,6 +217,8 @@ const sftp = reactive({
   password: '',
   remoteDir: '',
   publicUrlBase: '',
+  artworkRemoteDir: '',
+  artworkPublicUrlBase: '',
 })
 
 const s3 = reactive({
@@ -194,7 +228,11 @@ const s3 = reactive({
   secretAccessKey: '',
   bucketName: '',
   publicUrlBase: '',
+  artworkPrefix: '',
+  artworkPublicUrlBase: '',
 })
+
+const testKind = ref<'audio' | 'artwork'>('audio')
 
 // Pre-populate non-secret fields from existing config
 watch(current, (c) => {
@@ -205,12 +243,16 @@ watch(current, (c) => {
     sftp.username = String(c.fields.username || '')
     sftp.remoteDir = String(c.fields.remoteDir || '')
     sftp.publicUrlBase = String(c.fields.publicUrlBase || '')
+    sftp.artworkRemoteDir = String(c.fields.artworkRemoteDir || '')
+    sftp.artworkPublicUrlBase = String(c.fields.artworkPublicUrlBase || '')
     sftpAuthMode.value = c.fields.hasPrivateKey ? 'key' : 'password'
   } else {
     s3.endpoint = String(c.fields.endpoint || '')
     s3.region = String(c.fields.region || 'us-east-1')
     s3.bucketName = String(c.fields.bucketName || '')
     s3.publicUrlBase = String(c.fields.publicUrlBase || '')
+    s3.artworkPrefix = String(c.fields.artworkPrefix || '')
+    s3.artworkPublicUrlBase = String(c.fields.artworkPublicUrlBase || '')
   }
 }, { immediate: true })
 
@@ -257,6 +299,8 @@ async function testConnection() {
         username: sftp.username,
         remoteDir: sftp.remoteDir,
         publicUrlBase: sftp.publicUrlBase,
+        artworkRemoteDir: sftp.artworkRemoteDir || undefined,
+        artworkPublicUrlBase: sftp.artworkPublicUrlBase || undefined,
       }
       if (sftpAuthMode.value === 'key' && sftp.privateKey) config.privateKey = sftp.privateKey
       if (sftpAuthMode.value === 'key' && sftp.passphrase) config.passphrase = sftp.passphrase
@@ -264,10 +308,12 @@ async function testConnection() {
     } else {
       config = { ...s3 }
       if (!s3.secretAccessKey) delete (config as { secretAccessKey?: string }).secretAccessKey
+      if (!s3.artworkPrefix) delete (config as { artworkPrefix?: string }).artworkPrefix
+      if (!s3.artworkPublicUrlBase) delete (config as { artworkPublicUrlBase?: string }).artworkPublicUrlBase
     }
     const result = await $fetch<SftpResult | S3Result>(`/api/podcasts/${podcastSlug}/storage/test`, {
       method: 'POST',
-      body: { adapter: adapter.value, config },
+      body: { adapter: adapter.value, config, kind: testKind.value },
     })
     testResult.value = result
   } catch (err: unknown) {
@@ -289,6 +335,8 @@ async function saveSftp() {
       remoteDir: sftp.remoteDir,
       publicUrlBase: sftp.publicUrlBase,
     }
+    if (sftp.artworkRemoteDir) config.artworkRemoteDir = sftp.artworkRemoteDir
+    if (sftp.artworkPublicUrlBase) config.artworkPublicUrlBase = sftp.artworkPublicUrlBase
     if (sftpAuthMode.value === 'key') {
       config.privateKey = sftp.privateKey
       if (sftp.passphrase) config.passphrase = sftp.passphrase
@@ -319,9 +367,12 @@ async function saveS3() {
   successMsg.value = ''
   errorMsg.value = ''
   try {
+    const config: Record<string, unknown> = { ...s3 }
+    if (!s3.artworkPrefix) delete config.artworkPrefix
+    if (!s3.artworkPublicUrlBase) delete config.artworkPublicUrlBase
     await $fetch(`/api/podcasts/${podcastSlug}/storage`, {
       method: 'POST',
-      body: { adapter: 's3', config: { ...s3 } },
+      body: { adapter: 's3', config },
     })
     successMsg.value = 'S3 configuration saved.'
     justSaved.value = true

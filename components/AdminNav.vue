@@ -16,6 +16,7 @@
         <li><NuxtLink :to="`/admin/${podcastSlug}/stats`" active-class="active">Analytics</NuxtLink></li>
         <li><NuxtLink :to="`/admin/${podcastSlug}/settings`" active-class="active">Settings</NuxtLink></li>
         <li><NuxtLink :to="`/admin/${podcastSlug}/storage`" active-class="active">Storage</NuxtLink></li>
+        <li><NuxtLink :to="`/admin/${podcastSlug}/files`" active-class="active">Files</NuxtLink></li>
         <li><NuxtLink :to="`/admin/${podcastSlug}/build`" active-class="active">Build</NuxtLink></li>
         <li><NuxtLink :to="`/admin/${podcastSlug}/members`" active-class="active">Members</NuxtLink></li>
         <li class="divider" />

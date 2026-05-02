@@ -49,11 +49,13 @@ export default defineEventHandler(async (event) => {
     INSERT INTO episodes (
       podcast_id, title, slug, episode_number, season_number,
       description, audio_url, audio_filename, audio_size_bytes,
-      audio_duration_seconds, published_at, status, tags, transcript_path
+      audio_duration_seconds, image_url, image_filename,
+      published_at, status, tags, transcript_path
     ) VALUES (
       @podcast_id, @title, @slug, @episode_number, @season_number,
       @description, @audio_url, @audio_filename, @audio_size_bytes,
-      @audio_duration_seconds, @published_at, @status, @tags, @transcript_path
+      @audio_duration_seconds, @image_url, @image_filename,
+      @published_at, @status, @tags, @transcript_path
     )
   `).run({
     podcast_id: podcastId,
@@ -66,6 +68,8 @@ export default defineEventHandler(async (event) => {
     audio_filename: body.audio_filename ?? null,
     audio_size_bytes: body.audio_size_bytes ?? null,
     audio_duration_seconds: body.audio_duration_seconds ?? null,
+    image_url: body.image_url ?? null,
+    image_filename: body.image_filename ?? null,
     published_at: body.published_at ?? null,
     status: body.status ?? 'draft',
     tags: body.tags ?? null,

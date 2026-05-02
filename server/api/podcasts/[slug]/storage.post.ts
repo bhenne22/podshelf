@@ -32,6 +32,9 @@ export default defineEventHandler(async (event) => {
     if (!c.privateKey && !c.password) {
       throw createError({ statusCode: 400, statusMessage: 'SFTP requires privateKey or password' })
     }
+    if ((c.artworkRemoteDir && !c.artworkPublicUrlBase) || (!c.artworkRemoteDir && c.artworkPublicUrlBase)) {
+      throw createError({ statusCode: 400, statusMessage: 'Artwork requires both artworkRemoteDir and artworkPublicUrlBase, or neither' })
+    }
     savePodcastStorage(podcastId, 'sftp', c)
   } else {
     const c = config as S3Config

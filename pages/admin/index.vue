@@ -15,21 +15,43 @@
       </div>
 
       <ul v-else class="podcast-list">
-        <li v-for="p in podcasts" :key="p.id">
+        <li v-for="p in podcasts" :key="p.id" :class="{ 'inactive-row': p.status === 'inactive' }">
           <NuxtLink :to="`/admin/${p.slug}/episodes`" class="podcast-card">
             <img v-if="p.image_url" :src="p.image_url" :alt="p.title" class="podcast-art" />
             <div v-else class="podcast-art placeholder" />
             <div class="podcast-info">
-              <div class="podcast-title">{{ p.title }}</div>
+              <div class="podcast-title">
+                {{ p.title }}
+                <span v-if="p.status === 'inactive'" class="badge-awaiting">Awaiting Purge</span>
+              </div>
               <div class="podcast-desc">{{ p.description || '—' }}</div>
               <div class="podcast-meta">
                 <span class="slug">/{{ p.slug }}</span>
                 <span v-if="p.website">· {{ p.website }}</span>
+                <span v-if="p.status === 'inactive' && p.deleted_at">
+                  · deleted {{ formatDate(p.deleted_at) }}
+                </span>
               </div>
             </div>
           </NuxtLink>
+          <button
+            v-if="p.status === 'inactive'"
+            type="button"
+            class="restore-btn"
+            :disabled="restoring === p.id"
+            @click="restorePodcast(p)"
+          >
+            {{ restoring === p.id ? 'Restoring…' : 'Restore' }}
+          </button>
         </li>
       </ul>
+
+      <p v-if="me?.is_admin && podcasts && podcasts.some((p) => p.status === 'inactive')" class="admin-purge-link">
+        <NuxtLink to="/admin/inactive-podcasts">→ Manage inactive podcasts (admin)</NuxtLink>
+      </p>
+      <p v-else-if="me?.is_admin" class="admin-purge-link">
+        <NuxtLink to="/admin/inactive-podcasts">→ Inactive podcasts (admin)</NuxtLink>
+      </p>
     </div>
   </div>
 </template>
@@ -44,11 +66,32 @@ interface Podcast {
   description: string | null
   image_url: string | null
   website: string | null
+  status: string
+  deleted_at: string | null
 }
 interface Me { id: number; email: string; is_admin: boolean }
 
 const { data: me } = await useFetch<Me>('/api/me')
-const { data: podcasts, pending } = await useFetch<Podcast[]>('/api/podcasts')
+const { data: podcasts, pending, refresh } = await useFetch<Podcast[]>('/api/podcasts')
+
+const restoring = ref<number | null>(null)
+
+async function restorePodcast(p: Podcast) {
+  if (!confirm(`Restore "${p.title}"?`)) return
+  restoring.value = p.id
+  try {
+    await $fetch(`/api/podcasts/${p.slug}/restore`, { method: 'POST' })
+    await refresh()
+  } catch (err: unknown) {
+    alert((err as { data?: { statusMessage?: string } })?.data?.statusMessage || 'Failed to restore')
+  } finally {
+    restoring.value = null
+  }
+}
+
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+}
 
 useHead({ title: 'Podshelf Admin' })
 </script>
@@ -109,6 +152,12 @@ h1 {
   gap: 0.75rem;
 }
 
+.podcast-list li {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+}
+
 .podcast-card {
   display: flex;
   gap: 1rem;
@@ -119,11 +168,61 @@ h1 {
   text-decoration: none;
   color: inherit;
   transition: border-color 0.15s, transform 0.15s;
+  flex: 1;
 }
 .podcast-card:hover {
   border-color: #667eea;
   transform: translateY(-1px);
 }
+
+.inactive-row .podcast-card {
+  background: #fffaf0;
+  border-color: #fbd38d;
+  opacity: 0.85;
+}
+.inactive-row .podcast-card:hover { opacity: 1; }
+
+.badge-awaiting {
+  display: inline-block;
+  font-size: 0.7rem;
+  padding: 0.15rem 0.5rem;
+  margin-left: 0.5rem;
+  background: #fef5e7;
+  color: #b7791f;
+  border: 1px solid #f6ad55;
+  border-radius: 999px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  vertical-align: 1px;
+}
+
+.restore-btn {
+  align-self: center;
+  margin-left: 0.75rem;
+  padding: 0.45rem 0.875rem;
+  background: #ebf4ff;
+  border: 1px solid #c3dafe;
+  color: #4c51bf;
+  border-radius: 6px;
+  font-size: 0.825rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.restore-btn:hover:not(:disabled) {
+  background: #c3dafe;
+}
+.restore-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.admin-purge-link {
+  margin-top: 1.5rem;
+  font-size: 0.85rem;
+}
+.admin-purge-link a {
+  color: #667eea;
+  text-decoration: none;
+}
+.admin-purge-link a:hover { text-decoration: underline; }
 
 .podcast-art {
   width: 64px;

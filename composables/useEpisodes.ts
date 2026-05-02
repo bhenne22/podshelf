@@ -10,6 +10,8 @@ export interface Episode {
   audio_filename: string | null
   audio_size_bytes: number | null
   audio_duration_seconds: number | null
+  image_url: string | null
+  image_filename: string | null
   published_at: string | null
   status: string
   tags: string | null

@@ -10,6 +10,8 @@ export interface SftpConfig {
   password?: string
   remoteDir: string
   publicUrlBase: string
+  artworkRemoteDir?: string
+  artworkPublicUrlBase?: string
 }
 
 export interface S3Config {
@@ -19,7 +21,11 @@ export interface S3Config {
   secretAccessKey: string
   bucketName: string
   publicUrlBase: string
+  artworkPrefix?: string
+  artworkPublicUrlBase?: string
 }
+
+export type StorageKind = 'audio' | 'artwork'
 
 export type StorageAdapter = 'sftp' | 's3'
 
@@ -83,6 +89,8 @@ export function describePodcastStorage(podcastId: number): {
         username: c.username,
         remoteDir: c.remoteDir,
         publicUrlBase: c.publicUrlBase,
+        artworkRemoteDir: c.artworkRemoteDir || '',
+        artworkPublicUrlBase: c.artworkPublicUrlBase || '',
         hasPrivateKey: !!c.privateKey,
         hasPassphrase: !!c.passphrase,
         hasPassword: !!c.password,
@@ -100,6 +108,8 @@ export function describePodcastStorage(podcastId: number): {
         region: c.region,
         bucketName: c.bucketName,
         publicUrlBase: c.publicUrlBase,
+        artworkPrefix: c.artworkPrefix || '',
+        artworkPublicUrlBase: c.artworkPublicUrlBase || '',
         accessKeyId: c.accessKeyId.slice(0, 6) + '…',
         hasSecret: !!c.secretAccessKey,
       },
@@ -107,4 +117,32 @@ export function describePodcastStorage(podcastId: number): {
   }
 
   return { adapter: storage.adapter, configured: false, fields: {} }
+}
+
+/**
+ * Resolve the SFTP target dir + URL base for a given storage kind.
+ * Falls back to the audio dir when artwork is not configured separately.
+ */
+export function resolveSftpTarget(c: SftpConfig, kind: StorageKind): { remoteDir: string; publicUrlBase: string } {
+  if (kind === 'artwork' && c.artworkRemoteDir && c.artworkPublicUrlBase) {
+    return { remoteDir: c.artworkRemoteDir, publicUrlBase: c.artworkPublicUrlBase }
+  }
+  return { remoteDir: c.remoteDir, publicUrlBase: c.publicUrlBase }
+}
+
+/**
+ * Resolve the S3 key prefix + URL base for a given storage kind.
+ * For 'audio' the prefix is empty (objects sit at the bucket root), for
+ * 'artwork' uses artworkPrefix when set; URL base falls back to the audio
+ * publicUrlBase when artworkPublicUrlBase is unset.
+ */
+export function resolveS3Target(c: S3Config, kind: StorageKind): { prefix: string; publicUrlBase: string } {
+  if (kind === 'artwork') {
+    const prefix = (c.artworkPrefix || '').replace(/^\/+|\/+$/g, '')
+    return {
+      prefix: prefix ? prefix + '/' : '',
+      publicUrlBase: c.artworkPublicUrlBase || c.publicUrlBase,
+    }
+  }
+  return { prefix: '', publicUrlBase: c.publicUrlBase }
 }

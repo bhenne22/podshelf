@@ -38,10 +38,26 @@
           </div>
 
           <div class="form-group">
-            <label for="image_url">Podcast Artwork URL</label>
-            <input id="image_url" v-model="form.image_url" type="url"
-              placeholder="https://example.com/podcast-art.jpg" />
-            <p class="hint">Must be at least 1400×1400px per Apple Podcasts requirements.</p>
+            <label for="image_url">Podcast Artwork</label>
+            <div v-if="form.image_url" class="artwork-preview">
+              <img :src="form.image_url" :alt="form.title || 'Podcast artwork'" class="artwork-thumb" />
+              <div class="artwork-meta">
+                <a :href="form.image_url" target="_blank" rel="noopener">{{ form.image_url }}</a>
+              </div>
+              <button type="button" class="btn-secondary btn-clear-artwork" @click="form.image_url = ''">Clear</button>
+            </div>
+            <div class="input-with-action">
+              <input id="image_url" v-model="form.image_url" type="url"
+                placeholder="https://example.com/podcast-art.jpg" />
+              <label class="btn-upload">
+                {{ artworkUploading ? `Uploading… ${uploadProgress}%` : 'Upload…' }}
+                <input type="file" accept="image/jpeg,image/png,image/webp"
+                  :disabled="artworkUploading" @change="handleArtworkChange" hidden />
+              </label>
+              <button type="button" class="btn-upload" @click="pickerOpen = true">Pick…</button>
+            </div>
+            <p v-if="artworkError" class="probe-error">{{ artworkError }}</p>
+            <p class="hint">Paste a URL, upload, or pick from the artwork gallery. Must be at least 1400×1400px per Apple Podcasts.</p>
           </div>
 
           <div class="form-group">
@@ -119,6 +135,52 @@
           </button>
         </div>
       </form>
+
+      <div v-if="!pending" class="form-section danger-zone">
+        <h2>Danger Zone</h2>
+        <div v-if="initial?.status === 'inactive'" class="dz-row">
+          <div>
+            <strong>This podcast is awaiting purge.</strong>
+            <p class="hint">The public RSS feed returns 404 while inactive. Restore it below to bring it back, or ask an admin to permanently delete it.</p>
+          </div>
+          <button type="button" class="btn-restore" :disabled="restoring" @click="restorePodcast">
+            {{ restoring ? 'Restoring…' : 'Restore' }}
+          </button>
+        </div>
+        <div v-else class="dz-row">
+          <div>
+            <strong>Delete podcast</strong>
+            <p class="hint">Soft-deletes this podcast. The RSS feed becomes unavailable; episodes are preserved. Any podcast member can restore from the dashboard, or an admin can permanently purge it.</p>
+          </div>
+          <button type="button" class="btn-danger" :disabled="deleting" @click="confirmDelete">
+            {{ deleting ? 'Deleting…' : 'Delete podcast' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <ArtworkPicker
+      :open="pickerOpen"
+      :podcast-slug="podcastSlug"
+      @close="pickerOpen = false"
+      @select="onArtworkPicked"
+    />
+
+    <div v-if="showDeleteConfirm" class="modal-overlay" @click.self="showDeleteConfirm = false">
+      <div class="modal">
+        <h3>Delete this podcast?</h3>
+        <p>
+          <strong>{{ form.title }}</strong> will be marked inactive. The public RSS
+          feed will return 404 immediately. Episodes are preserved and you can
+          restore the podcast from the dashboard until an admin purges it.
+        </p>
+        <div class="modal-actions">
+          <button class="btn-secondary" @click="showDeleteConfirm = false">Cancel</button>
+          <button class="btn-danger" :disabled="deleting" @click="doDelete">
+            {{ deleting ? 'Deleting…' : 'Soft-delete' }}
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -143,6 +205,8 @@ interface PodcastRow {
   explicit: string | null
   website: string | null
   audio_tracking_prefix: string | null
+  status: string
+  deleted_at: string | null
 }
 
 const { data: initial, pending } = await useFetch<PodcastRow>(`/api/podcasts/${podcastSlug}`)
@@ -165,6 +229,63 @@ const saving = ref(false)
 const justSaved = ref(false)
 const successMsg = ref('')
 const errorMsg = ref('')
+
+const { uploading: artworkUploading, uploadProgress, uploadFile } = useUpload(podcastSlug)
+const artworkError = ref('')
+
+async function handleArtworkChange(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  artworkError.value = ''
+  try {
+    const result = await uploadFile(file, 'artwork')
+    form.image_url = result.url
+  } catch (err: unknown) {
+    artworkError.value = err instanceof Error ? err.message : 'Artwork upload failed'
+  } finally {
+    input.value = ''
+  }
+}
+
+const showDeleteConfirm = ref(false)
+const deleting = ref(false)
+const restoring = ref(false)
+
+function confirmDelete() {
+  showDeleteConfirm.value = true
+}
+
+async function doDelete() {
+  deleting.value = true
+  try {
+    await $fetch(`/api/podcasts/${podcastSlug}`, { method: 'DELETE' })
+    showDeleteConfirm.value = false
+    await navigateTo('/admin')
+  } catch (err: unknown) {
+    errorMsg.value = (err as { data?: { statusMessage?: string } })?.data?.statusMessage || 'Failed to delete'
+  } finally {
+    deleting.value = false
+  }
+}
+
+async function restorePodcast() {
+  restoring.value = true
+  try {
+    await $fetch(`/api/podcasts/${podcastSlug}/restore`, { method: 'POST' })
+    successMsg.value = 'Podcast restored.'
+    if (initial.value) initial.value.status = 'active'
+  } catch (err: unknown) {
+    errorMsg.value = (err as { data?: { statusMessage?: string } })?.data?.statusMessage || 'Failed to restore'
+  } finally {
+    restoring.value = false
+  }
+}
+
+const pickerOpen = ref(false)
+function onArtworkPicked(payload: { url: string; name: string }) {
+  form.image_url = payload.url
+}
 
 watch(initial, (p) => {
   if (!p) return
@@ -291,6 +412,71 @@ input:focus, select:focus, textarea:focus {
 }
 textarea { resize: vertical; line-height: 1.6; }
 
+.input-with-action {
+  display: flex;
+  gap: 0.5rem;
+}
+.input-with-action input { flex: 1; }
+.btn-upload {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.5rem 0.875rem;
+  background: #edf2f7;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #4a5568;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+.btn-upload:hover { background: #e2e8f0; border-color: #cbd5e0; }
+
+.artwork-preview {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  padding: 0.75rem;
+  background: #f7fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  margin-bottom: 0.5rem;
+}
+.artwork-thumb {
+  width: 72px;
+  height: 72px;
+  object-fit: cover;
+  border-radius: 6px;
+  background: #edf2f7;
+  flex-shrink: 0;
+}
+.artwork-meta {
+  flex: 1;
+  font-size: 0.85rem;
+  word-break: break-all;
+}
+.artwork-meta a { color: #667eea; }
+.btn-secondary.btn-clear-artwork {
+  flex-shrink: 0;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.8rem;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #4a5568;
+}
+.btn-secondary.btn-clear-artwork:hover { background: #f7fafc; }
+.probe-error {
+  padding: 0.5rem 0.75rem;
+  background: #fff5f5;
+  color: #c53030;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  margin-top: 0.5rem;
+}
+
 .form-actions {
   display: flex;
   justify-content: flex-end;
@@ -320,6 +506,78 @@ textarea { resize: vertical; line-height: 1.6; }
 }
 .btn-primary:hover:not(:disabled) { background: #5a67d8; }
 button:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.danger-zone {
+  border-color: #fed7d7;
+  background: #fffaf0;
+}
+.danger-zone h2 { color: #c53030; }
+.dz-row {
+  display: flex;
+  gap: 1.25rem;
+  align-items: center;
+  justify-content: space-between;
+}
+.dz-row > div { flex: 1; }
+.dz-row strong { color: #2d3748; font-size: 0.95rem; }
+.btn-danger {
+  flex-shrink: 0;
+  padding: 0.55rem 1.1rem;
+  background: #e53e3e;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.btn-danger:hover:not(:disabled) { background: #c53030; }
+
+.btn-restore {
+  flex-shrink: 0;
+  padding: 0.55rem 1.1rem;
+  background: #ebf4ff;
+  border: 1px solid #c3dafe;
+  color: #4c51bf;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+.btn-restore:hover:not(:disabled) { background: #c3dafe; }
+
+.btn-secondary {
+  padding: 0.5rem 1rem;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  cursor: pointer;
+  color: #4a5568;
+  transition: all 0.15s;
+}
+.btn-secondary:hover { background: #f7fafc; }
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.modal {
+  background: white;
+  border-radius: 10px;
+  padding: 1.75rem;
+  max-width: 480px;
+  width: 90%;
+}
+.modal h3 { margin: 0 0 0.75rem; font-size: 1.1rem; }
+.modal p { color: #4a5568; font-size: 0.9rem; margin: 0 0 1.5rem; }
+.modal-actions { display: flex; gap: 0.75rem; justify-content: flex-end; }
 
 .success-msg {
   background: #f0fff4;

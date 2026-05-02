@@ -64,16 +64,24 @@ In the admin: pick the podcast → **Storage** → switch to SFTP:
 | Auth method | Private key (recommended) |
 | Private key | paste the entire contents of `~/.ssh/podshelf` (including BEGIN/END lines) |
 | Passphrase | only if your key is encrypted (otherwise leave blank) |
-| Remote directory | absolute path on the server, e.g. `/home/user/yoursite.com/podcast/audio` — must be web-accessible |
-| Public URL Base | the URL that maps to that directory, e.g. `https://yoursite.com/podcast/audio` |
+| Audio Remote Directory | absolute path on the server, e.g. `/home/user/yoursite.com/podcast/audio` — must be web-accessible |
+| Audio Public URL Base | the URL that maps to that directory, e.g. `https://yoursite.com/podcast/audio` |
+| Artwork Remote Directory *(optional)* | e.g. `/home/user/yoursite.com/podcast/artwork`. Required for episode/podcast image uploads. |
+| Artwork Public URL Base *(optional)* | URL that maps to the artwork directory, e.g. `https://yoursite.com/podcast/artwork`. Required if Artwork Remote Directory is set. |
 
 Click **Test Connection** before Save. The test connects, lists the remote
 directory, and shows the first 10 entries — confirms credentials work and
-that you pointed at the right folder. Then Save.
+that you pointed at the right folder. Use the **Test Against** radio to
+choose Audio dir or Artwork dir. Then Save.
 
 The Save action overwrites the encrypted blob with the credentials in the
 form. You can leave the private key field blank on subsequent edits to keep
 the existing one in place.
+
+The artwork fields are optional — until they're set, episode artwork
+uploads return a 400 with a hint pointing back to Storage settings. You can
+also point both directories at the same path if you don't care to separate
+audio and images, though the file browser will show both there.
 
 ---
 
@@ -97,7 +105,9 @@ Fill out the Storage form with **S3** selected:
 | Access Key ID | from B2 Application Key |
 | Secret Access Key | from B2 Application Key |
 | Bucket Name | your bucket |
-| Public URL Base | `https://f004.backblazeb2.com/file/<bucket-name>` |
+| Audio Public URL Base | `https://f004.backblazeb2.com/file/<bucket-name>` |
+| Artwork Key Prefix *(optional)* | e.g. `artwork/` — keeps images under a separate object-key prefix in the same bucket |
+| Artwork Public URL Base *(optional)* | URL that resolves to that prefix; falls back to the audio URL base when blank |
 
 ### AWS S3
 
@@ -108,10 +118,13 @@ Fill out the Storage form with **S3** selected:
 | Access Key ID | from IAM |
 | Secret Access Key | from IAM |
 | Bucket Name | your bucket |
-| Public URL Base | `https://<bucket>.s3.<region>.amazonaws.com` |
+| Audio Public URL Base | `https://<bucket>.s3.<region>.amazonaws.com` |
+| Artwork Key Prefix / URL Base *(optional)* | as above — same bucket, separate prefix |
 
-The IAM user needs `s3:PutObject`, `s3:GetObject`, `s3:PutObjectAcl` on the
-bucket. The bucket itself must allow public reads.
+The IAM user needs `s3:PutObject`, `s3:GetObject`, `s3:DeleteObject`,
+`s3:PutObjectAcl` on the bucket (delete is needed by the file browser, and
+S3 renames are implemented as Copy + Delete). The bucket itself must allow
+public reads.
 
 ### Cloudflare R2
 
@@ -122,10 +135,12 @@ bucket. The bucket itself must allow public reads.
 | Access Key ID | from R2 API token |
 | Secret Access Key | from R2 API token |
 | Bucket Name | your bucket |
-| Public URL Base | the public URL of the bucket (typically a custom domain you connect to R2) |
+| Audio Public URL Base | the public URL of the bucket (typically a custom domain you connect to R2) |
+| Artwork Key Prefix / URL Base *(optional)* | as above |
 
-Same Test Connection step. The S3 test lists the first 10 objects in the
-bucket so you can confirm credentials and bucket name are correct.
+Same Test Connection step. The S3 test lists the first 10 objects under the
+selected prefix (audio or artwork) so you can confirm credentials, bucket
+name, and prefix are all correct.
 
 ---
 

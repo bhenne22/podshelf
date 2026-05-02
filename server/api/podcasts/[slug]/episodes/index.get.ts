@@ -20,7 +20,8 @@ export default defineEventHandler((event) => {
       SELECT
         id, podcast_id, title, slug, episode_number, season_number,
         description, audio_url, audio_filename, audio_size_bytes,
-        audio_duration_seconds, published_at, status, tags,
+        audio_duration_seconds, image_url, image_filename,
+        published_at, status, tags,
         transcript_path, created_at, updated_at
       FROM episodes
       WHERE podcast_id = ? AND slug = ?
@@ -31,7 +32,8 @@ export default defineEventHandler((event) => {
     SELECT
       id, podcast_id, title, slug, episode_number, season_number,
       description, audio_url, audio_filename, audio_size_bytes,
-      audio_duration_seconds, published_at, status, tags,
+      audio_duration_seconds, image_url, image_filename,
+      published_at, status, tags,
       transcript_path, created_at, updated_at
     FROM episodes
     WHERE podcast_id = ?

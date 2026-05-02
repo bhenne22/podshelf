@@ -159,6 +159,44 @@
           </div>
 
           <div class="form-section">
+            <h2>Episode Artwork</h2>
+            <p class="hint">Optional. Falls back to the podcast's main artwork in the RSS feed when unset.</p>
+
+            <div v-if="form.image_url" class="artwork-preview">
+              <img :src="form.image_url" :alt="form.title || 'Episode artwork'" class="artwork-thumb" />
+              <div class="artwork-meta">
+                <strong>Current:</strong>
+                <a :href="form.image_url" target="_blank" rel="noopener">{{ form.image_filename || form.image_url }}</a>
+              </div>
+              <button type="button" class="btn-secondary btn-clear-artwork" @click="form.image_url = ''; form.image_filename = ''">Clear</button>
+            </div>
+
+            <div class="form-group">
+              <label for="image_file">Replace Artwork</label>
+              <div class="upload-and-pick">
+                <input id="image_file" type="file" accept="image/jpeg,image/png,image/webp" @change="handleArtworkChange" class="file-input" />
+                <button type="button" class="btn-secondary" @click="pickerOpen = true">Pick from gallery</button>
+              </div>
+              <p class="hint">JPEG, PNG, or WebP. Square image, ideally 1400×1400+.</p>
+            </div>
+
+            <div v-if="artworkUploading" class="upload-progress">Uploading artwork… {{ uploadProgress }}%</div>
+            <div v-if="artworkError" class="probe-error">{{ artworkError }}</div>
+
+            <div class="form-group">
+              <label for="image_url">Artwork URL</label>
+              <input id="image_url" v-model="form.image_url" type="url" placeholder="https://example.com/artwork/episode-42.jpg" />
+            </div>
+          </div>
+
+          <ArtworkPicker
+            :open="pickerOpen"
+            :podcast-slug="podcastSlug"
+            @close="pickerOpen = false"
+            @select="onArtworkPicked"
+          />
+
+          <div class="form-section">
             <h2>Publishing</h2>
             <div class="form-row">
               <div class="form-group">
@@ -223,6 +261,8 @@ interface EpisodeForm {
   audio_filename: string
   audio_size_bytes: number | null
   audio_duration_seconds: number | null
+  image_url: string
+  image_filename: string
   published_at: string
   status: string
   tags: string
@@ -239,11 +279,16 @@ const form = reactive<EpisodeForm>({
   audio_filename: '',
   audio_size_bytes: null,
   audio_duration_seconds: null,
+  image_url: '',
+  image_filename: '',
   published_at: '',
   status: 'draft',
   tags: '',
   transcript_path: '',
 })
+
+const artworkUploading = ref(false)
+const artworkError = ref('')
 
 // Load episode
 onMounted(async () => {
@@ -264,6 +309,8 @@ onMounted(async () => {
       audio_filename: ep.audio_filename || '',
       audio_size_bytes: ep.audio_size_bytes,
       audio_duration_seconds: ep.audio_duration_seconds,
+      image_url: ep.image_url || '',
+      image_filename: ep.image_filename || '',
       published_at: ep.published_at ? ep.published_at.slice(0, 16) : '',
       status: ep.status,
       tags: ep.tags || '',
@@ -352,6 +399,30 @@ async function handleFileChange(event: Event) {
   } catch (err: unknown) {
     errorMsg.value = err instanceof Error ? err.message : 'Upload failed'
   }
+}
+
+async function handleArtworkChange(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+
+  artworkError.value = ''
+  artworkUploading.value = true
+  try {
+    const result = await uploadFile(file, 'artwork')
+    form.image_url = result.url
+    form.image_filename = result.filename
+  } catch (err: unknown) {
+    artworkError.value = err instanceof Error ? err.message : 'Artwork upload failed'
+  } finally {
+    artworkUploading.value = false
+  }
+}
+
+const pickerOpen = ref(false)
+function onArtworkPicked(payload: { url: string; name: string }) {
+  form.image_url = payload.url
+  form.image_filename = payload.name
 }
 
 async function probeAudio() {
@@ -648,6 +719,55 @@ textarea { resize: vertical; line-height: 1.6; }
   border-radius: 5px;
 }
 .current-audio a { color: #667eea; word-break: break-all; }
+
+.artwork-preview {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  padding: 0.75rem;
+  background: #f7fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+}
+.artwork-thumb {
+  width: 72px;
+  height: 72px;
+  object-fit: cover;
+  border-radius: 6px;
+  background: #edf2f7;
+  flex-shrink: 0;
+}
+.artwork-meta {
+  flex: 1;
+  font-size: 0.85rem;
+  color: #4a5568;
+  word-break: break-all;
+}
+.artwork-meta a { color: #667eea; }
+.btn-clear-artwork {
+  flex-shrink: 0;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.8rem;
+}
+.upload-and-pick {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.upload-and-pick .file-input { flex: 1; min-width: 200px; }
+.upload-and-pick .btn-secondary {
+  padding: 0.45rem 0.875rem;
+  background: #ebf4ff;
+  border: 1px solid #c3dafe;
+  color: #4c51bf;
+  border-radius: 6px;
+  font-size: 0.825rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.upload-and-pick .btn-secondary:hover { background: #c3dafe; }
 
 .form-actions {
   display: flex;

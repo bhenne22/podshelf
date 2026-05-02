@@ -2,19 +2,20 @@ interface UploadResult {
   url: string
   filename: string
   size: number
+  kind?: 'audio' | 'artwork'
 }
 
 export function useUpload(podcastSlug: string) {
   const uploading = ref(false)
   const uploadProgress = ref(0)
 
-  function uploadFile(file: File): Promise<UploadResult> {
+  function uploadFile(file: File, kind: 'audio' | 'artwork' = 'audio'): Promise<UploadResult> {
     return new Promise((resolve, reject) => {
       const formData = new FormData()
       formData.append('file', file)
 
       const xhr = new XMLHttpRequest()
-      xhr.open('POST', `/api/podcasts/${podcastSlug}/upload`)
+      xhr.open('POST', `/api/podcasts/${podcastSlug}/upload?kind=${kind}`)
 
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) {

@@ -27,6 +27,7 @@ interface Episode {
   audio_url: string | null
   audio_size_bytes: number | null
   audio_duration_seconds: number | null
+  image_url: string | null
   published_at: string | null
 }
 
@@ -71,7 +72,7 @@ export default defineEventHandler((event) => {
   const podcast = db.prepare(`
     SELECT id, slug, title, description, author, email, image_url, language,
            copyright, category, explicit, website, audio_tracking_prefix
-    FROM podcasts WHERE slug = ?
+    FROM podcasts WHERE slug = ? AND status = 'active'
   `).get(slug) as Podcast | undefined
 
   if (!podcast) {
@@ -81,7 +82,7 @@ export default defineEventHandler((event) => {
   const episodes = db.prepare(`
     SELECT id, title, slug, episode_number, season_number,
            description, audio_url, audio_size_bytes,
-           audio_duration_seconds, published_at
+           audio_duration_seconds, image_url, published_at
     FROM episodes
     WHERE podcast_id = ? AND status = 'published' AND published_at IS NOT NULL
     ORDER BY published_at DESC
@@ -134,6 +135,10 @@ export default defineEventHandler((event) => {
 
     if (ep.season_number !== null && ep.season_number !== undefined) {
       xml += `      <itunes:season>${ep.season_number}</itunes:season>\n`
+    }
+
+    if (ep.image_url) {
+      xml += `      <itunes:image href="${escapeXml(ep.image_url)}"/>\n`
     }
 
     xml += `    </item>`

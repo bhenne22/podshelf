@@ -35,6 +35,8 @@ CREATE TABLE IF NOT EXISTS podcasts (
   github_event_type        TEXT,
   github_token_encrypted   TEXT,
   github_auto_trigger      INTEGER NOT NULL DEFAULT 0,
+  status                   TEXT NOT NULL DEFAULT 'active',
+  deleted_at               TEXT,
   created_at               TEXT DEFAULT (datetime('now')),
   updated_at               TEXT DEFAULT (datetime('now'))
 );
@@ -76,6 +78,8 @@ CREATE TABLE IF NOT EXISTS episodes (
   audio_filename          TEXT,
   audio_size_bytes        INTEGER,
   audio_duration_seconds  INTEGER,
+  image_url               TEXT,
+  image_filename          TEXT,
   published_at            TEXT,
   status                  TEXT DEFAULT 'draft',
   tags                    TEXT,
@@ -148,6 +152,20 @@ function applyMigrations(db: Database.Database) {
   const podcastCols = cols('podcasts')
   if (!podcastCols.includes('github_auto_trigger')) {
     db.exec('ALTER TABLE podcasts ADD COLUMN github_auto_trigger INTEGER NOT NULL DEFAULT 0')
+  }
+  if (!podcastCols.includes('status')) {
+    db.exec("ALTER TABLE podcasts ADD COLUMN status TEXT NOT NULL DEFAULT 'active'")
+  }
+  if (!podcastCols.includes('deleted_at')) {
+    db.exec('ALTER TABLE podcasts ADD COLUMN deleted_at TEXT')
+  }
+
+  const episodeCols = cols('episodes')
+  if (!episodeCols.includes('image_url')) {
+    db.exec('ALTER TABLE episodes ADD COLUMN image_url TEXT')
+  }
+  if (!episodeCols.includes('image_filename')) {
+    db.exec('ALTER TABLE episodes ADD COLUMN image_filename TEXT')
   }
 }
 

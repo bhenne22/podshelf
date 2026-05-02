@@ -33,6 +33,8 @@ CREATE TABLE IF NOT EXISTS podcasts (
   github_event_type        TEXT,
   github_token_encrypted   TEXT,
   github_auto_trigger      INTEGER NOT NULL DEFAULT 0,
+  status                   TEXT NOT NULL DEFAULT 'active',
+  deleted_at               TEXT,
   created_at               TEXT DEFAULT (datetime('now')),
   updated_at               TEXT DEFAULT (datetime('now'))
 );
@@ -77,6 +79,8 @@ CREATE TABLE IF NOT EXISTS episodes (
   audio_filename          TEXT,
   audio_size_bytes        INTEGER,
   audio_duration_seconds  INTEGER,
+  image_url               TEXT,
+  image_filename          TEXT,
   published_at            TEXT,
   status                  TEXT DEFAULT 'draft',
   tags                    TEXT,

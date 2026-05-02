@@ -70,7 +70,8 @@ Who am I?
 ### `GET /api/podcasts`
 
 Lists podcasts the authenticated user can access. Admins see all; non-admins see
-only podcasts they're a member of.
+only podcasts they're a member of. Soft-deleted (inactive) podcasts are
+included so owners can restore them — check `status`.
 
 ```json
 [
@@ -81,6 +82,8 @@ only podcasts they're a member of.
     "description": "...",
     "image_url": "https://...",
     "website": "https://yousaid100miles.com",
+    "status": "active",
+    "deleted_at": null,
     "created_at": "2026-05-01T12:00:00.000Z",
     "updated_at": "2026-05-01T12:00:00.000Z"
   }
@@ -89,8 +92,8 @@ only podcasts they're a member of.
 
 ### `GET /api/podcasts/[slug]`
 
-Returns the full podcast metadata (everything except encrypted secrets).
-Membership required.
+Returns the full podcast metadata (everything except encrypted secrets),
+including `status` and `deleted_at`. Membership required.
 
 ### `POST /api/podcasts` *(admin only)*
 
@@ -114,9 +117,33 @@ fields: `title`, `description`, `author`, `email`, `image_url`, `language`,
 `copyright`, `category`, `explicit`, `website`, `audio_tracking_prefix`,
 `storage_adapter`, `github_owner`, `github_repo`, `github_event_type`.
 
-### `DELETE /api/podcasts/[slug]` *(admin only)*
+### `DELETE /api/podcasts/[slug]`
 
-Removes the podcast and cascades to episodes, downloads, and memberships.
+**Soft-delete** — marks the podcast `status = 'inactive'` and stamps
+`deleted_at`. The public RSS feed at `/feeds/<slug>.xml` returns 404 while
+inactive, but the podcast stays visible to its members in the admin UI and
+all other admin endpoints continue to work so you can restore it. Cascading
+purge requires the separate purge endpoint below.
+
+Allowed for any podcast member (owner or admin). Returns 204.
+
+### `POST /api/podcasts/[slug]/restore`
+
+Reverses a soft-delete: sets `status = 'active'` and clears `deleted_at`.
+Allowed for any podcast member. Returns `{ ok: true }` (or
+`{ ok: true, alreadyActive: true }` for a no-op).
+
+### `DELETE /api/podcasts/[slug]/purge` *(admin only)*
+
+**Permanent delete** — removes the podcast row and cascades to episodes,
+downloads, memberships, and api-key scopes. Refuses with 409 unless the
+podcast is already soft-deleted (`status = 'inactive'`), so the standard
+flow is `DELETE` → review → `DELETE …/purge`. Returns 204.
+
+### `GET /api/admin/inactive-podcasts` *(admin only)*
+
+Lists every soft-deleted podcast across the platform, ordered by `deleted_at`
+DESC. Used by the admin "Inactive Podcasts" page.
 
 ---
 
@@ -157,6 +184,8 @@ defaults.
   "audio_url": "https://media.example.com/ep42.mp3",
   "audio_size_bytes": 67188837,
   "audio_duration_seconds": 3600,
+  "image_url": "https://media.example.com/artwork/ep42.jpg",
+  "image_filename": "ep42.jpg",
   "episode_number": 42,
   "season_number": 2,
   "tags": "running, ultramarathon",
@@ -167,6 +196,11 @@ defaults.
 
 `status` defaults to `"draft"`. Setting `status: "published"` requires
 `published_at` (or it'll be null and the episode won't appear in the RSS feed).
+
+`image_url` is optional per-episode artwork — when set, it's emitted as
+`<itunes:image>` at the item level in the RSS feed. Episodes without one
+inherit the channel-level podcast artwork. `image_filename` is the basename
+on disk (used by the file browser to detect references).
 
 If `slug` is omitted it's auto-derived from `title` with collision handling.
 
@@ -194,16 +228,32 @@ Permanently deletes the episode and its download history. Returns 204.
 
 ## Uploads
 
-### `POST /api/podcasts/[slug]/upload`
+### `POST /api/podcasts/[slug]/upload?kind=audio|artwork`
 
-Multipart upload. Field: `file`. Must be an audio MIME type. Max 500 MB.
-Routed through whichever storage adapter is configured for the podcast (set up
-in the admin UI under the **Storage** tab, with credentials encrypted at rest).
+Multipart upload. Field: `file`. Routed through whichever storage adapter is
+configured for the podcast (set up in the admin UI under the **Storage** tab,
+with credentials encrypted at rest).
+
+| `kind`    | Allowed MIME types                                                       | Max size | Target dir |
+|-----------|--------------------------------------------------------------------------|----------|------------|
+| `audio` (default) | mpeg/mp3/mp4/m4a/aac/ogg/wav/flac                                | 500 MB   | audio dir / bucket root |
+| `artwork` | `image/jpeg`, `image/png`, `image/webp`                                  | 25 MB    | artwork dir or `artworkPrefix` |
+
+For `kind=artwork`, the podcast's storage must have artwork settings
+configured (SFTP `artworkRemoteDir` + `artworkPublicUrlBase`, or S3
+`artworkPrefix` and/or `artworkPublicUrlBase`) — otherwise the request 400s
+with a hint.
 
 ```bash
+# Audio (default)
 curl -X POST -H "X-Api-Key: $KEY" \
   -F "file=@/path/to/episode.mp3" \
   "$SITE/api/podcasts/yousaid100miles/upload"
+
+# Artwork
+curl -X POST -H "X-Api-Key: $KEY" \
+  -F "file=@/path/to/cover.jpg" \
+  "$SITE/api/podcasts/yousaid100miles/upload?kind=artwork"
 ```
 
 Response:
@@ -213,12 +263,14 @@ Response:
   "url": "https://yourhost.example.com/podcast/audio/episode.mp3",
   "filename": "episode.mp3",
   "size": 67188837,
-  "content_type": "audio/mpeg"
+  "content_type": "audio/mpeg",
+  "kind": "audio"
 }
 ```
 
-You take this `url` and `size` and pass them to the episode-create endpoint as
-`audio_url` and `audio_size_bytes`.
+For `audio` uploads, take `url` and `size` and pass them to the episode-create
+endpoint as `audio_url` and `audio_size_bytes`. For `artwork` uploads, pass
+`url` and `filename` as `image_url` and `image_filename`.
 
 ### `GET /api/audio-probe?url=<encoded-url>`
 
@@ -226,6 +278,56 @@ Server-side HEAD request against an external audio URL. Returns the
 Content-Length and Content-Type so you can fill in size without downloading the
 file. Useful when you've already uploaded somewhere else and just need the
 metadata.
+
+---
+
+## Files (file browser)
+
+These endpoints list and manage files in the podcast's audio or artwork
+directory. Used by the admin **Files** page.
+
+### `GET /api/podcasts/[slug]/files?kind=audio|artwork`
+
+Lists every file in the chosen directory along with its public URL, size,
+modification time, and an `inUse` flag indicating whether it's referenced by
+an episode (audio: `audio_filename` / `audio_url`; artwork: `image_filename`
+/ `image_url`) or, for artwork, by the podcast's main `image_url`.
+
+```json
+{
+  "kind": "audio",
+  "publicUrlBase": "https://example.com/podcast/audio",
+  "files": [
+    {
+      "name": "ep42.mp3",
+      "size": 67188837,
+      "modifiedAt": "2026-05-01T12:00:00.000Z",
+      "url": "https://example.com/podcast/audio/ep42.mp3",
+      "inUse": true,
+      "usedBy": ["Episode #127: Ep 42: Trail running on the Continental Divide"]
+    }
+  ]
+}
+```
+
+### `POST /api/podcasts/[slug]/files/delete`
+
+Body: `{ kind, name, force? }`. Deletes the file from the directory. Without
+`force: true`, the request 409s when the file is referenced — the response
+`data.usedBy` lists the references so you can warn before retrying with
+`force: true`.
+
+### `POST /api/podcasts/[slug]/files/rename`
+
+Body: `{ kind, fromName, toName, updateReferences? }`. Renames a file in
+place. When `updateReferences: true`, also rewrites every episode row that
+references the old filename (and the podcast `image_url` for artwork) to
+point at the new URL/filename. Returns `{ ok, url, name, updatedEpisodes,
+updatedPodcast }`.
+
+`toName` must use only `[A-Za-z0-9._-]`; otherwise the request 400s (the
+upload endpoint applies the same sanitisation, so reusing the rule keeps
+file names round-trippable).
 
 ---
 
@@ -324,8 +426,15 @@ PODSHELF_API_KEY=pk_… ./scripts/podshelf-publish.sh \
 
 These exist but are mostly used by the admin UI:
 
-- `POST /api/podcasts/[slug]/storage` — save encrypted SFTP/S3 credentials
-- `POST /api/podcasts/[slug]/storage/test` — connection test, lists remote dir
+- `POST /api/podcasts/[slug]/storage` — save encrypted SFTP/S3 credentials.
+  Body shape: `{ adapter: 'sftp'|'s3', config: <SftpConfig|S3Config> }`. The
+  config object can include optional artwork fields:
+  - SFTP: `artworkRemoteDir`, `artworkPublicUrlBase` (required together).
+  - S3: `artworkPrefix` (e.g. `"artwork/"`), `artworkPublicUrlBase` (falls
+    back to `publicUrlBase` if blank).
+- `POST /api/podcasts/[slug]/storage/test` — connection test. Body
+  `{ adapter, config, kind?: 'audio'|'artwork' }`; `kind` controls which
+  directory/prefix is listed (defaults to `audio`).
 - `GET /api/podcasts/[slug]/stats` — download counts (when GeoIP DB is configured)
 - `GET/POST/DELETE /api/podcasts/[slug]/members/...` — admin grants user access
 
@@ -434,6 +543,13 @@ GET /feeds/[slug].xml
 This is what you point Apple Podcasts, Spotify, etc. at. Listeners never hit
 Podshelf for audio — the feed contains the original `audio_url` (or the
 configured tracking-prefix-wrapped version), which points directly at SFTP/S3.
+
+Episodes with `image_url` set emit `<itunes:image href="…">` at the item
+level; episodes without inherit the channel-level podcast artwork.
+
+The feed returns **404 when the podcast is soft-deleted**
+(`status = 'inactive'`). Restore the podcast (`POST .../restore`) to bring
+the feed back online.
 
 If `audio_tracking_prefix` is set to `<SITE_URL>/track/`, episode downloads
 hit Podshelf's `/track/<audio-url>` redirect endpoint, which logs the

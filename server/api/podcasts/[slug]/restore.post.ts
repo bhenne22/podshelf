@@ -1,14 +1,11 @@
-import { defineEventHandler, getRouterParam, createError, setResponseStatus } from 'h3'
+import { defineEventHandler, getRouterParam, createError } from 'h3'
 import { requirePodcastAccess } from '../../../utils/auth'
 import getDb from '../../../db/index'
 
 /**
- * DELETE /api/podcasts/[slug]
+ * POST /api/podcasts/[slug]/restore
  *
- * Soft-delete: marks the podcast as inactive. The public RSS feed returns
- * 404 while inactive, but owners still see the podcast in their dashboard
- * marked "awaiting purge" and can restore it (POST /restore).
- * Permanent removal requires DELETE /api/podcasts/[slug]/purge (admin-only).
+ * Reverses a soft-delete. Allowed for any podcast member (owners + admin).
  */
 export default defineEventHandler((event) => {
   const slug = getRouterParam(event, 'slug') as string
@@ -19,13 +16,15 @@ export default defineEventHandler((event) => {
   if (!existing) {
     throw createError({ statusCode: 404, statusMessage: 'Podcast not found' })
   }
+  if (existing.status === 'active') {
+    return { ok: true, alreadyActive: true }
+  }
 
   db.prepare(`
     UPDATE podcasts
-    SET status = 'inactive', deleted_at = datetime('now'), updated_at = datetime('now')
+    SET status = 'active', deleted_at = NULL, updated_at = datetime('now')
     WHERE id = ?
   `).run(podcastId)
 
-  setResponseStatus(event, 204)
-  return null
+  return { ok: true }
 })

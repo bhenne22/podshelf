@@ -21,6 +21,7 @@ export default defineEventHandler(async (event) => {
   const body = await readBody(event)
   const adapter = body?.adapter as string
   const incoming = (body?.config || {}) as Record<string, unknown>
+  const kind = body?.kind === 'artwork' ? 'artwork' : 'audio'
 
   if (adapter !== 'sftp' && adapter !== 's3') {
     throw createError({ statusCode: 400, statusMessage: 'adapter must be "sftp" or "s3"' })
@@ -39,13 +40,15 @@ export default defineEventHandler(async (event) => {
         password: incoming.password ? String(incoming.password) : undefined,
         remoteDir: String(incoming.remoteDir || ''),
         publicUrlBase: String(incoming.publicUrlBase || ''),
+        artworkRemoteDir: incoming.artworkRemoteDir ? String(incoming.artworkRemoteDir) : undefined,
+        artworkPublicUrlBase: incoming.artworkPublicUrlBase ? String(incoming.artworkPublicUrlBase) : undefined,
       }
       if (!config.privateKey && !config.password && saved?.adapter === 'sftp' && saved.sftp) {
         config.privateKey = saved.sftp.privateKey
         config.password = saved.sftp.password
         if (!config.passphrase) config.passphrase = saved.sftp.passphrase
       }
-      const result = await testSftpConnection(config)
+      const result = await testSftpConnection(config, 10, kind)
       return result
     }
 
@@ -56,11 +59,13 @@ export default defineEventHandler(async (event) => {
       secretAccessKey: incoming.secretAccessKey ? String(incoming.secretAccessKey) : '',
       bucketName: String(incoming.bucketName || ''),
       publicUrlBase: String(incoming.publicUrlBase || ''),
+      artworkPrefix: incoming.artworkPrefix ? String(incoming.artworkPrefix) : undefined,
+      artworkPublicUrlBase: incoming.artworkPublicUrlBase ? String(incoming.artworkPublicUrlBase) : undefined,
     }
     if (!config.secretAccessKey && saved?.adapter === 's3' && saved.s3) {
       config.secretAccessKey = saved.s3.secretAccessKey
     }
-    const result = await testS3Connection(config)
+    const result = await testS3Connection(config, 10, kind)
     return result
   } catch (err: unknown) {
     throw createError({

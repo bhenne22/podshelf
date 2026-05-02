@@ -11,7 +11,47 @@
 
       <div v-else-if="error" class="error-msg">{{ error }}</div>
 
-      <div v-else-if="!episodes.length" class="empty">
+      <template v-else-if="episodes.length">
+        <div class="filter-bar">
+          <div class="filter-group">
+            <label>Season</label>
+            <select v-model="seasonFilter">
+              <option value="">All seasons</option>
+              <option v-for="s in availableSeasons" :key="s" :value="String(s)">Season {{ s }}</option>
+              <option value="none">No season</option>
+            </select>
+          </div>
+
+          <div class="filter-group">
+            <label>Date range</label>
+            <select v-model="rangePreset">
+              <option value="all">All time</option>
+              <option value="30">Last 30 days</option>
+              <option value="90">Last 90 days</option>
+              <option value="year">This year</option>
+              <option value="custom">Custom…</option>
+            </select>
+          </div>
+
+          <template v-if="rangePreset === 'custom'">
+            <div class="filter-group">
+              <label>From</label>
+              <input type="date" v-model="customFrom" />
+            </div>
+            <div class="filter-group">
+              <label>To</label>
+              <input type="date" v-model="customTo" />
+            </div>
+          </template>
+
+          <div class="filter-summary">
+            Showing <strong>{{ filteredEpisodes.length }}</strong> of {{ episodes.length }}
+            <button v-if="hasActiveFilters" type="button" class="filter-clear" @click="clearFilters">Clear filters</button>
+          </div>
+        </div>
+      </template>
+
+      <div v-if="!loading && !error && !episodes.length" class="empty">
         <p>No episodes yet.</p>
         <div class="empty-actions">
           <NuxtLink :to="`/admin/${podcastSlug}/episodes/new`" class="btn-primary">Create your first episode</NuxtLink>
@@ -20,10 +60,17 @@
         <p class="empty-hint">Migrating from another host? Import pulls every episode in the feed at once. Available only while this podcast is empty.</p>
       </div>
 
-      <table v-else class="episodes-table">
+      <div v-else-if="!loading && !error && !filteredEpisodes.length" class="empty no-match">
+        <p>No episodes match the current filters.</p>
+        <button type="button" class="btn-secondary" @click="clearFilters">Clear filters</button>
+      </div>
+
+      <table v-else-if="!loading && !error" class="episodes-table">
         <thead>
           <tr>
-            <th scope="col">#</th>
+            <th scope="col" title="Overall episode # — chronological index across all published episodes">Overall</th>
+            <th scope="col" title="Season number">Season</th>
+            <th scope="col" title="Episode number within the season">Ep</th>
             <th scope="col">Title</th>
             <th scope="col">Status</th>
             <th scope="col">Published</th>
@@ -31,7 +78,15 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="ep in episodes" :key="ep.id">
+          <tr v-for="ep in filteredEpisodes" :key="ep.id">
+            <td class="col-num">
+              <span v-if="overallNumber.get(ep.id)" class="ep-num overall">{{ overallNumber.get(ep.id) }}</span>
+              <span v-else class="ep-num draft">—</span>
+            </td>
+            <td class="col-num">
+              <span v-if="ep.season_number" class="ep-num season">S{{ ep.season_number }}</span>
+              <span v-else class="ep-num draft">—</span>
+            </td>
             <td class="col-num">
               <span v-if="ep.episode_number" class="ep-num">{{ ep.episode_number }}</span>
               <span v-else class="ep-num draft">—</span>
@@ -82,6 +137,80 @@ const podcastSlug = route.params.podcast as string
 
 const { episodes, loading, error, refresh, deleteEpisode } = useEpisodes(podcastSlug)
 await refresh()
+
+// Map episode.id -> overall episode # (chronological index over published episodes)
+const overallNumber = computed(() => {
+  const m = new Map<number, number>()
+  const published = episodes.value
+    .filter((e) => e.status === 'published' && e.published_at)
+    .slice()
+    .sort((a, b) => (a.published_at || '').localeCompare(b.published_at || ''))
+  published.forEach((ep, i) => m.set(ep.id, i + 1))
+  return m
+})
+
+const seasonFilter = ref<string>('')
+const rangePreset = ref<'all' | '30' | '90' | 'year' | 'custom'>('all')
+const customFrom = ref<string>('')
+const customTo = ref<string>('')
+
+const availableSeasons = computed(() => {
+  const set = new Set<number>()
+  for (const ep of episodes.value) {
+    if (ep.season_number != null) set.add(ep.season_number)
+  }
+  return Array.from(set).sort((a, b) => a - b)
+})
+
+function dateForFilter(ep: Episode): Date | null {
+  const iso = ep.published_at || ep.created_at
+  if (!iso) return null
+  const d = new Date(iso)
+  return isNaN(d.getTime()) ? null : d
+}
+
+const filteredEpisodes = computed(() => {
+  let now = new Date()
+  let from: Date | null = null
+  let to: Date | null = null
+
+  if (rangePreset.value === '30') {
+    from = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+  } else if (rangePreset.value === '90') {
+    from = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000)
+  } else if (rangePreset.value === 'year') {
+    from = new Date(now.getFullYear(), 0, 1)
+  } else if (rangePreset.value === 'custom') {
+    if (customFrom.value) from = new Date(customFrom.value + 'T00:00:00')
+    if (customTo.value) to = new Date(customTo.value + 'T23:59:59')
+  }
+
+  return episodes.value.filter((ep) => {
+    if (seasonFilter.value === 'none') {
+      if (ep.season_number != null) return false
+    } else if (seasonFilter.value !== '') {
+      if (String(ep.season_number) !== seasonFilter.value) return false
+    }
+    if (from || to) {
+      const d = dateForFilter(ep)
+      if (!d) return false
+      if (from && d < from) return false
+      if (to && d > to) return false
+    }
+    return true
+  })
+})
+
+const hasActiveFilters = computed(() =>
+  seasonFilter.value !== '' || rangePreset.value !== 'all',
+)
+
+function clearFilters() {
+  seasonFilter.value = ''
+  rangePreset.value = 'all'
+  customFrom.value = ''
+  customTo.value = ''
+}
 
 const deleteTarget = ref<Episode | null>(null)
 const deleting = ref(false)
@@ -206,6 +335,62 @@ h1 {
   border-radius: 8px;
 }
 
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.875rem 1rem;
+  align-items: end;
+  padding: 0.875rem 1rem;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  margin-bottom: 1rem;
+}
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.filter-group label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #718096;
+  font-weight: 600;
+}
+.filter-group select,
+.filter-group input[type="date"] {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 5px;
+  font-size: 0.85rem;
+  background: white;
+  color: #2d3748;
+  outline: none;
+}
+.filter-group select:focus,
+.filter-group input[type="date"]:focus {
+  border-color: #667eea;
+}
+.filter-summary {
+  margin-left: auto;
+  font-size: 0.85rem;
+  color: #4a5568;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.filter-clear {
+  background: none;
+  border: none;
+  color: #667eea;
+  cursor: pointer;
+  font-size: 0.8rem;
+  padding: 0;
+}
+.filter-clear:hover { text-decoration: underline; }
+.empty.no-match { padding: 1.5rem; }
+
 .episodes-table {
   width: 100%;
   background: white;
@@ -241,7 +426,7 @@ h1 {
   background: #f7fafc;
 }
 
-.col-num { width: 60px; }
+.col-num { width: 56px; }
 .col-status { width: 110px; }
 .col-date { width: 140px; font-size: 0.85rem; color: #718096; }
 .col-actions { width: 140px; }
@@ -258,7 +443,16 @@ h1 {
   color: #4a5568;
 }
 
-.ep-num.draft { color: #a0aec0; }
+.ep-num.overall {
+  background: #e6fffa;
+  color: #2c7a7b;
+}
+.ep-num.season {
+  background: #ebf4ff;
+  color: #4c51bf;
+}
+
+.ep-num.draft { color: #a0aec0; background: transparent; }
 
 .ep-title {
   color: #2d3748;
