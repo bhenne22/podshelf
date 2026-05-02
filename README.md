@@ -1,70 +1,30 @@
 # Podshelf
 
-**Your podcast. Your server. No middleman.**
+**Multi-tenant, headless podcast publishing.**
 
-Podshelf is an open-source, self-hosted podcast publishing platform for hobbyists. Upload your audio to your own SFTP server or S3 bucket, manage episodes through a clean admin interface, and serve a valid RSS feed that works with every podcast app. No monthly subscription. No algorithm. No one else's rules.
-
----
-
-## Origin Story
-
-Podshelf was born from the frustration of automating the publishing workflow for *[You Said 100 Miles?](https://example.com)*, an ultrarunning podcast. Every episode required the same tedious steps: upload MP3 to hosting, log into a platform, fill in metadata, wait for publishing. After building a bash script to automate parts of it, then another script, and then another — it became clear the right answer was a small, purpose-built tool that a hobbyist could self-host and actually understand.
-
-Podshelf is what that tool became.
+Podshelf is a small self-hosted tool that owns your show metadata and your RSS
+feed. It's designed to live behind your real podcast website, not replace it —
+you publish episodes here, Podshelf serves the feed and (optionally) kicks
+your static site to redeploy on every change.
 
 ---
 
-## What It Is
+## What it is
 
-- A **Nuxt 3** web app that runs on any Node.js server
-- A **SQLite database** (via better-sqlite3) — no external database required
-- A **clean admin UI** for managing episodes and show settings
-- A **valid RSS 2.0 feed** with full iTunes namespace support
-- A **storage layer** that uploads audio to SFTP or S3-compatible storage
-- An **OpenClaw integration** — a bash watcher that auto-ingests episode folders, generates show notes with Claude AI, and creates draft episodes
+- A **Nuxt 3 / Nitro** server with a SQLite database (no external services)
+- A **multi-user admin UI** — multiple users, multiple podcasts, with per-user
+  API keys for automation
+- A **valid RSS 2.0 + iTunes feed** at `/feeds/<podcast-slug>.xml`
+- A **per-podcast storage layer** — each podcast configures its own SFTP or
+  S3-compatible target, with credentials encrypted at rest in the database
+- A **GitHub `repository_dispatch` trigger** so publishing an episode can
+  automatically rebuild your static podcast site
+- An **RSS importer** for migrating an existing show onto Podshelf
+- Built-in **download tracking** with optional GeoIP lookup
 
----
-
-## Features
-
-- **Episode management** — Create, edit, publish, unpublish episodes. Draft workflow.
-- **RSS 2.0 feed** — Full iTunes/Apple Podcasts namespace. Compatible with every major podcast app.
-- **SFTP upload** — Upload audio directly to your shared hosting via SSH key auth.
-- **S3 upload** — Works with AWS S3, Backblaze B2, Cloudflare R2, and any S3-compatible provider.
-- **Admin password protection** — Simple cookie-based auth. No accounts needed.
-- **Public podcast site** — Clean, mobile-friendly public-facing site with audio player.
-- **OpenClaw automation** — Drop an episode folder, get a draft episode. AI show notes via Claude CLI.
-- **No framework lock-in** — Plain HTML/CSS in Vue components. No Tailwind, no Bootstrap, no dependencies beyond Nuxt.
-- **SQLite embedded** — Single binary database. Backs up with `cp`. No running database process.
-
----
-
-## Quick Start
-
-```bash
-# 1. Clone
-git clone https://github.com/your-repo/podshelf.git
-cd podshelf
-
-# 2. Install dependencies
-npm install
-
-# 3. Configure
-cp .env.example .env
-# Edit .env: set SITE_URL, STORAGE_ADAPTER, storage credentials, ADMIN_PASSWORD
-
-# 4. Develop
-npm run dev
-
-# 5. Open admin
-open http://localhost:3000/admin
-```
-
-For production:
-```bash
-npm run build
-node .output/server/index.mjs
-```
+There is no public-facing listener site here — Podshelf serves the admin and
+the feed only. Listener pages live wherever you serve your static podcast
+site (or whatever your audience hits).
 
 ---
 
@@ -73,70 +33,91 @@ node .output/server/index.mjs
 ```
 podshelf/
 ├── server/
-│   ├── db/           SQLite database (better-sqlite3, sync)
-│   ├── api/          REST API endpoints (Nitro/h3)
-│   ├── routes/       feed.xml — RSS feed generator
-│   └── storage/      SFTP and S3 upload adapters
-├── pages/
-│   ├── index.vue     Public podcast homepage
-│   ├── episodes/     Public episode pages
-│   └── admin/        Admin interface (episodes, settings)
-├── components/       AudioPlayer, EpisodeCard, AdminNav
-├── composables/      useEpisodes — API wrapper
-├── middleware/       admin-auth — cookie-based admin protection
-└── openclaw/         Folder watcher + Claude AI integration
+│   ├── db/        SQLite (better-sqlite3, sync) + lightweight migration runner
+│   ├── api/       Nitro API: /api/podcasts/[slug]/..., /api/me/api-keys, /api/users
+│   ├── routes/    /feeds/[slug].xml, /track/[...path] (download redirect)
+│   ├── storage/   SFTP and S3 adapters (take config args, no env-coupling)
+│   └── utils/     auth, password, crypto (AES-256-GCM), github, rss-parser
+├── pages/admin/   Admin UI: podcast list, per-podcast tabs, API keys, users
+├── components/    AdminNav, RichTextEditor (TipTap)
+├── composables/   useEpisodes(slug), useUpload(slug)
+├── middleware/    admin-auth (verifies session via /api/me)
+├── scripts/       create-admin.ts, podshelf-publish.sh
+└── openclaw/      Bash watcher that auto-ingests episode folders via the API
 ```
 
-**Server:** Nuxt 3 with Nitro server engine. All API routes are in `server/api/` using `defineEventHandler` from h3. The RSS feed is a Nitro route in `server/routes/`.
+**Auth:** email + password login → HMAC-signed session cookie. API keys (per
+user) accept `X-Api-Key` or `Authorization: Bearer`. Keys can be scoped to
+specific podcasts and limited to read / write / full permission levels.
 
-**Database:** SQLite via `better-sqlite3` (synchronous API — no async/await needed for DB calls). Auto-migrated on startup from `server/db/schema.sql`.
+**Storage:** each podcast row carries its own AES-256-GCM-encrypted blob with
+SFTP or S3 credentials. The `PODSHELF_ENCRYPTION_KEY` env var is the only
+secret outside the DB.
 
-**Storage:** At upload time, Podshelf reads `STORAGE_ADAPTER` from env and delegates to either `server/storage/sftp.ts` or `server/storage/s3.ts`. The returned public URL is stored in the episode record.
+**RSS feed:** rendered live from the DB on each request. Optional
+`audio_tracking_prefix` per podcast lets you front audio URLs with Podshelf's
+`/track/` redirect (IAB-deduped, GeoIP-stamped) or a third-party tracker like
+Blubrry/Chartable.
 
-**Frontend:** Vue 3 components with scoped CSS. No UI framework — just clean, hand-written styles.
+**Build trigger:** when an episode publishes (or a feed-visible podcast
+setting changes), Podshelf can fire a `repository_dispatch` event at a
+configured GitHub repo. Your static-site workflow listens for it and
+redeploys.
+
+---
+
+## Quick start (development)
+
+```bash
+git clone https://github.com/bhenne22/podshelf.git
+cd podshelf
+npm install
+
+# Generate keys for .env
+cat > .env <<EOF
+DATABASE_PATH=./data/podshelf.db
+NUXT_SECRET_KEY=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
+PODSHELF_ENCRYPTION_KEY=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
+SITE_URL=http://localhost:3000
+EOF
+
+# Create the first admin user
+npm run create-admin
+
+# Run dev server
+npm run dev
+```
+
+Then open http://localhost:3000 and sign in.
+
+For full production setup see [docs/deployment.md](./docs/deployment.md).
 
 ---
 
 ## Documentation
 
-- [Getting Started](./docs/getting-started.md) — Setup guide, Dreamhost tips, first episode walkthrough
-- [Storage Configuration](./docs/storage.md) — SFTP vs S3, provider-specific setup instructions
-- [OpenClaw Integration](./docs/openclaw.md) — Automated episode ingestion with Claude AI
+- **[Getting Started](./docs/getting-started.md)** — local dev setup, first podcast, first episode
+- **[Storage](./docs/storage.md)** — configuring per-podcast SFTP or S3 in the admin UI
+- **[Deployment](./docs/deployment.md)** — production install on a Linux box (Ubuntu/Debian) behind nginx
+- **[API](./docs/api.md)** — full API surface, with an "AI handoff" section for automation
+- **[OpenClaw](./docs/openclaw.md)** — bash watcher that drops episode folders into Podshelf via the API
 
 ---
 
-## Environment Variables
+## Environment variables
 
-See [`.env.example`](./.env.example) for the full list. Key variables:
+Only four matter at the env layer (everything else moved into the admin UI):
 
-| Variable | Description |
+| Variable | Purpose |
 |---|---|
-| `DATABASE_PATH` | SQLite database file path |
-| `SITE_URL` | Public URL of your podcast site |
-| `ADMIN_PASSWORD` | Password for `/admin` area |
-| `STORAGE_ADAPTER` | `sftp` or `s3` |
-| `SFTP_*` | SFTP connection settings |
-| `S3_*` | S3/Backblaze B2 settings |
-
----
-
-## Contributing
-
-Podshelf is intentionally small. Contributions that keep it simple and hobbyist-friendly are welcome:
-
-1. Fork the repo
-2. Create a branch: `git checkout -b my-feature`
-3. Commit your changes
-4. Open a pull request
-
-Please keep the spirit: no bloat, no SaaS features, no "growth" nonsense.
+| `DATABASE_PATH` | SQLite file path (default: `./data/podshelf.db`) |
+| `NUXT_SECRET_KEY` | Used to sign session tokens. Required. 32-byte hex. |
+| `PODSHELF_ENCRYPTION_KEY` | Used to encrypt SFTP/S3/PAT credentials in the DB. Required when configuring storage. 32-byte hex. |
+| `SITE_URL` | Public URL of this Podshelf instance, used by the track-redirect prefix and feed metadata. |
+| `GEOIP_DB_PATH` | Optional. Path to a MaxMind GeoLite2-City `.mmdb` for download geolocation. |
 
 ---
 
 ## License
 
-MIT — do whatever you want with it. If you build something cool, tell me about it.
-
----
-
-*Built for people who just want to publish a podcast without giving away their audience, their content, or their money.*
+MIT — do whatever you want with it.

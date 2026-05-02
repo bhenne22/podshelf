@@ -1,167 +1,161 @@
 # Storage Configuration
 
-Podshelf stores podcast audio files on external storage — either via SFTP (great for shared hosting) or S3-compatible object storage (great for cloud setups). Episode metadata is always stored in the local SQLite database.
+Each podcast has its own storage adapter — SFTP or S3-compatible. Credentials
+are encrypted at rest in the SQLite database with AES-256-GCM, using your
+`PODSHELF_ENCRYPTION_KEY`. There are **no SFTP/S3 environment variables** —
+everything is configured per-podcast in the admin UI under the **Storage**
+tab.
 
 ---
 
-## Which Storage Adapter Should I Use?
+## SFTP vs S3
 
-| | SFTP | S3 / Backblaze B2 |
+| | SFTP | S3 / B2 / R2 |
 |---|---|---|
-| **Best for** | Shared hosting users | Cloud/VPS users |
-| **Cost** | Included with hosting | Free tier or ~$0.006/GB/mo |
-| **Setup complexity** | Low | Low-Medium |
-| **Performance** | Good | Excellent (CDN-ready) |
-| **Reliability** | Good | Excellent |
-| **Example providers** | Dreamhost, Hostinger, cPanel hosts | Backblaze B2, AWS S3, Cloudflare R2 |
+| **Best for** | Existing shared hosting (Dreamhost, etc.) | New cloud-only setups |
+| **Cost** | Often included with hosting | Pennies per GB/mo |
+| **Setup** | Generate a key, paste it in | Bucket + access key |
+| **CDN-friendly** | No (your hosting bandwidth) | Yes |
 
-**Our recommendation:** If you're already paying for shared hosting that includes web-accessible file storage, use SFTP. It's the simplest option. If you want better performance, scalability, or already use a cloud provider, use S3.
+If your podcast already lives on a shared host with public web directories,
+SFTP is the path of least resistance — Podshelf uploads files to the same
+folder your existing site serves audio from.
 
 ---
 
-## SFTP Setup
+## SFTP setup
 
-SFTP uploads files directly to your server's filesystem via SSH. The files must be in a web-accessible directory so listeners can stream them.
+### Generate a dedicated key
 
-### Requirements
-
-- SSH access to your hosting account
-- An SSH key pair (password auth works too but isn't recommended)
-- A web-accessible directory to store audio files
-
-### Generating an SSH Key (if you don't have one)
+Don't reuse your main personal key. Generate a fresh keypair just for
+Podshelf:
 
 ```bash
-ssh-keygen -t ed25519 -C "podshelf-upload" -f ~/.ssh/podshelf_key
-# Copy the public key to your server:
-ssh-copy-id -i ~/.ssh/podshelf_key.pub youruser@yourhost.example.com
+ssh-keygen -t ed25519 -f ~/.ssh/podshelf -C "podshelf"
+# Press Enter twice for an empty passphrase. Podshelf will store the key
+# encrypted with your PODSHELF_ENCRYPTION_KEY in any case.
 ```
 
-### .env Configuration
+That gives you `~/.ssh/podshelf` (private) and `~/.ssh/podshelf.pub` (public).
 
-```env
-STORAGE_ADAPTER=sftp
+### Install the public key on your host
 
-SFTP_HOST=yourhost.example.com
-SFTP_PORT=22
-SFTP_USER=yourusername
-SFTP_PRIVATE_KEY_PATH=/home/podshelf/.ssh/podshelf_key
-
-# The directory on the server where audio files will be uploaded
-# This must be web-accessible (inside your public_html or www)
-SFTP_REMOTE_DIR=/home/yourusername/public_html/podcast/audio
-
-# The corresponding public URL
-SFTP_PUBLIC_URL_BASE=https://yourhost.example.com/podcast/audio
+```bash
+ssh-copy-id -i ~/.ssh/podshelf.pub <user>@<host>
+# Verify:
+ssh -i ~/.ssh/podshelf <user>@<host>
 ```
 
-### Dreamhost-Specific Setup
+When that logs you in without a password, you're good.
 
-1. Log into your Dreamhost panel
-2. Go to **Manage Users** → click Edit on your user
-3. Enable **SFTP** access
-4. Add your SSH public key under **Manage SSH Keys**
-5. Set `SFTP_REMOTE_DIR` to a path inside your domain's `public_html` directory
+**DreamHost note:** their shared hosting doesn't have a "Public SSH Key" field
+in the panel for shell users. SSH in with password and create
+`~/.ssh/authorized_keys` manually — `ssh-copy-id` does this for you.
 
-Example:
-```env
-SFTP_REMOTE_DIR=/home/yourdreamhostuser/yoursite.com/podcast/audio
-SFTP_PUBLIC_URL_BASE=https://yoursite.com/podcast/audio
-```
+### Fill out the Storage form
+
+In the admin: pick the podcast → **Storage** → switch to SFTP:
+
+| Field | Value |
+|---|---|
+| Host | e.g. `iad1-shared-e1-33.dreamhost.com` |
+| Port | `22` |
+| Username | your SFTP/SSH username |
+| Auth method | Private key (recommended) |
+| Private key | paste the entire contents of `~/.ssh/podshelf` (including BEGIN/END lines) |
+| Passphrase | only if your key is encrypted (otherwise leave blank) |
+| Remote directory | absolute path on the server, e.g. `/home/user/yoursite.com/podcast/audio` — must be web-accessible |
+| Public URL Base | the URL that maps to that directory, e.g. `https://yoursite.com/podcast/audio` |
+
+Click **Test Connection** before Save. The test connects, lists the remote
+directory, and shows the first 10 entries — confirms credentials work and
+that you pointed at the right folder. Then Save.
+
+The Save action overwrites the encrypted blob with the credentials in the
+form. You can leave the private key field blank on subsequent edits to keep
+the existing one in place.
 
 ---
 
-## S3 / Backblaze B2 Setup
+## S3 / B2 / R2 setup
 
-Podshelf supports any S3-compatible storage. All uploaded files are set to `public-read` ACL for direct streaming.
+Podshelf supports any S3-compatible storage. Files are uploaded with
+`public-read` ACL.
+
+### Backblaze B2
+
+1. Create a **public** B2 bucket
+2. Create an Application Key with `readFiles` and `writeFiles` on that bucket
+3. Note your bucket's S3 endpoint from the bucket details page
+
+Fill out the Storage form with **S3** selected:
+
+| Field | Value |
+|---|---|
+| Endpoint | e.g. `https://s3.us-west-004.backblazeb2.com` |
+| Region | matches your endpoint, e.g. `us-west-004` |
+| Access Key ID | from B2 Application Key |
+| Secret Access Key | from B2 Application Key |
+| Bucket Name | your bucket |
+| Public URL Base | `https://f004.backblazeb2.com/file/<bucket-name>` |
 
 ### AWS S3
 
-1. Create an S3 bucket (set public access settings to allow public reads)
-2. Create an IAM user with `s3:PutObject`, `s3:GetObject`, `s3:PutObjectAcl` permissions on your bucket
-3. Generate Access Key credentials
+| Field | Value |
+|---|---|
+| Endpoint | (leave blank) |
+| Region | e.g. `us-east-1` |
+| Access Key ID | from IAM |
+| Secret Access Key | from IAM |
+| Bucket Name | your bucket |
+| Public URL Base | `https://<bucket>.s3.<region>.amazonaws.com` |
 
-```env
-STORAGE_ADAPTER=s3
-
-# Leave S3_ENDPOINT blank for AWS
-S3_ENDPOINT=
-S3_REGION=us-east-1
-S3_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE
-S3_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
-S3_BUCKET_NAME=my-podcast-audio
-S3_PUBLIC_URL_BASE=https://my-podcast-audio.s3.us-east-1.amazonaws.com
-```
-
-### Backblaze B2 (Recommended for Cost)
-
-Backblaze B2 is significantly cheaper than AWS S3 and is S3-compatible.
-
-1. Create a B2 account at [backblaze.com](https://www.backblaze.com)
-2. Create a **Public** bucket (Bucket Settings → Files in Bucket are: Public)
-3. Create an **Application Key** with `readFiles` and `writeFiles` permissions on your bucket
-4. Note your bucket's **S3 Endpoint** from the bucket details page
-
-```env
-STORAGE_ADAPTER=s3
-
-S3_ENDPOINT=https://s3.us-west-004.backblazeb2.com
-S3_REGION=us-west-004
-S3_ACCESS_KEY_ID=your-b2-key-id
-S3_SECRET_ACCESS_KEY=your-b2-application-key
-S3_BUCKET_NAME=my-podcast-audio
-S3_PUBLIC_URL_BASE=https://f004.backblazeb2.com/file/my-podcast-audio
-```
-
-The `S3_PUBLIC_URL_BASE` for B2 follows the pattern:
-`https://f{accountNumber}.backblazeb2.com/file/{bucketName}`
-
-You can find the exact URL in your B2 bucket settings under "Bucket Endpoint".
+The IAM user needs `s3:PutObject`, `s3:GetObject`, `s3:PutObjectAcl` on the
+bucket. The bucket itself must allow public reads.
 
 ### Cloudflare R2
 
-Cloudflare R2 has zero egress fees, making it excellent for high-traffic podcasts.
+| Field | Value |
+|---|---|
+| Endpoint | `https://<ACCOUNT_ID>.r2.cloudflarestorage.com` |
+| Region | `auto` |
+| Access Key ID | from R2 API token |
+| Secret Access Key | from R2 API token |
+| Bucket Name | your bucket |
+| Public URL Base | the public URL of the bucket (typically a custom domain you connect to R2) |
 
-1. Create an R2 bucket in the Cloudflare dashboard
-2. Connect a custom domain to the bucket (for public access)
-3. Create an API token with R2 Object Read & Write permissions
-4. Note your account ID for the endpoint URL
-
-```env
-STORAGE_ADAPTER=s3
-
-S3_ENDPOINT=https://<ACCOUNT_ID>.r2.cloudflarestorage.com
-S3_REGION=auto
-S3_ACCESS_KEY_ID=your-r2-access-key-id
-S3_SECRET_ACCESS_KEY=your-r2-secret-access-key
-S3_BUCKET_NAME=my-podcast-audio
-S3_PUBLIC_URL_BASE=https://audio.yourpodcast.com
-```
+Same Test Connection step. The S3 test lists the first 10 objects in the
+bucket so you can confirm credentials and bucket name are correct.
 
 ---
 
-## Switching Storage Adapters
+## Switching adapters
 
-You can switch adapters at any time. Existing episode `audio_url` values in the database will not be affected — they point to wherever they were originally uploaded. Only new uploads will use the new adapter.
-
-If you want to migrate existing files, you'll need to:
-1. Copy files to the new storage location manually
-2. Update `audio_url` values in the database (or re-upload from the admin)
+You can flip between SFTP and S3 freely. Existing episodes' `audio_url`
+fields continue to point at wherever they were originally uploaded — only
+new uploads go through the new adapter. To migrate existing audio, copy the
+files manually and edit the `audio_url` on each episode.
 
 ---
 
 ## Troubleshooting
 
-### SFTP "Authentication failed"
-- Verify the private key path in `SFTP_PRIVATE_KEY_PATH` is correct and readable
-- Ensure the public key is in `~/.ssh/authorized_keys` on the remote server
-- Test manually: `ssh -i /path/to/key user@host`
+**SFTP test fails with "All configured authentication methods failed"** —
+the server rejected your key. Almost always:
+1. Public key not actually installed on the server (check `~/.ssh/authorized_keys`)
+2. `~/.ssh` permissions wrong (must be `700`; `authorized_keys` must be `600`)
+3. Wrong username
 
-### S3 "AccessDenied"
-- Verify your IAM/API credentials are correct
-- Check bucket permissions — the bucket must allow public reads for streaming to work
-- For Backblaze B2: make sure the bucket is set to **Public**
+Run `ssh -v -i ~/.ssh/podshelf <user>@<host>` from your laptop to confirm
+the key works *outside* of Podshelf before debugging anything in Podshelf.
 
-### Upload returns 500 / No file
-- Check that `STORAGE_ADAPTER` is set to either `sftp` or `s3` (not `SFTP` or `S3`)
-- Check server logs: `npm run dev` shows detailed error output
+**SFTP test fails with "Cannot parse privateKey"** — the textarea contents
+got mangled (extra whitespace, smart quotes). Re-copy directly from the file
+with `cat ~/.ssh/podshelf | pbcopy`.
+
+**S3 test fails with `AccessDenied`** — IAM/API key doesn't have the right
+permissions on the bucket, OR the bucket isn't public (B2: set Files in Bucket
+to Public; AWS: bucket policy must allow `s3:GetObject` to `*`).
+
+**Upload returns 500 with no useful message** — check `journalctl -u podshelf`
+(or `npm run dev` output in dev) for the actual error.

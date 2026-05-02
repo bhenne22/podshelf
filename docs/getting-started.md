@@ -1,206 +1,129 @@
-# Getting Started with Podshelf
+# Getting Started
 
-Welcome to Podshelf — a self-hosted podcast publishing platform designed for hobbyists who want to own their feed, own their files, and skip the middleman.
-
-This guide walks you through everything you need to go from zero to publishing your first episode.
+This walkthrough takes you from a fresh clone to publishing your first episode.
 
 ---
 
-## What You Need
+## Prerequisites
 
-Podshelf is designed to run on modest infrastructure. You'll need:
-
-1. **A server or VPS** to run Podshelf (even a $5/mo VPS works, or a Raspberry Pi on your local network)
-   - Node.js 18+ is required
-   - 512MB RAM is plenty for small shows
-2. **Audio file hosting** — one of:
-   - **SFTP access** to a web-accessible directory (shared hosting like Dreamhost, Hostinger, etc.)
-   - **S3-compatible storage** (AWS S3, Backblaze B2, Cloudflare R2)
-3. A domain or subdomain where your podcast site will live
+- Node.js 20 LTS (or 18+, but 20 is what production targets)
+- A C toolchain for `better-sqlite3` to compile against
+  - macOS: Xcode Command Line Tools (`xcode-select --install`)
+  - Ubuntu/Debian: `sudo apt install build-essential python3`
+- For uploads (optional during local dev): SFTP access to a host with a
+  web-accessible directory, OR S3-compatible storage credentials. You can
+  develop without these — just paste pre-existing audio URLs into episodes.
 
 ---
 
-## Quick Start (5 Commands)
+## Install
 
 ```bash
-# 1. Clone the repo
-git clone https://github.com/your-repo/podshelf.git
+git clone https://github.com/bhenne22/podshelf.git
 cd podshelf
-
-# 2. Install dependencies
 npm install
-
-# 3. Copy and configure your environment
-cp .env.example .env
-# Edit .env with your favorite editor
-
-# 4. Start in development mode
-npm run dev
-
-# 5. Open the admin
-open http://localhost:3000/admin
 ```
-
-That's it. Your podcast site is at `http://localhost:3000` and the RSS feed is at `http://localhost:3000/feed.xml`.
 
 ---
 
-## Configuring Your Environment
+## Configure
 
-Open `.env` and fill in at minimum:
+Create `.env` at the repo root with two random keys and your local site URL:
 
-```env
-# Where your database lives (auto-created)
+```bash
+cat > .env <<EOF
 DATABASE_PATH=./data/podshelf.db
-
-# The public URL of your site (used in RSS feed links)
-SITE_URL=https://yourpodcast.example.com
-
-# Choose how audio files are stored: sftp or s3
-STORAGE_ADAPTER=sftp
-
-# Protect the /admin area
-ADMIN_PASSWORD=pickasecurepassword
+NUXT_SECRET_KEY=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
+PODSHELF_ENCRYPTION_KEY=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
+SITE_URL=http://localhost:3000
+EOF
 ```
 
-Then fill in your storage settings. See [storage.md](./storage.md) for details.
+Each key should be 32 bytes (64 hex chars). The `NUXT_SECRET_KEY` signs your
+session cookie; the `PODSHELF_ENCRYPTION_KEY` encrypts SFTP/S3/PAT credentials
+that live in the database. Lose either and you'll need to reset what depends
+on it (sessions invalidate / saved storage configs become unreadable).
 
 ---
 
-## Running on Dreamhost (Shared Hosting)
+## Bootstrap the first admin user
 
-Dreamhost and similar shared hosts are a great fit — you get SFTP access out of the box for audio file storage. For running Podshelf itself, you have options:
-
-### Option A: Dreamhost VPS or Cloud (Recommended)
-
-Dreamhost VPS plans support Node.js. Set up Node 18 and run Podshelf as a background process using PM2:
+Podshelf has no built-in admin password — every login is a real user account.
+Run the bootstrap script:
 
 ```bash
-npm install -g pm2
-npm run build
-pm2 start .output/server/index.mjs --name podshelf
-pm2 save
-pm2 startup
+npm run create-admin
 ```
 
-Set up an Nginx or Apache reverse proxy to forward requests to port 3000.
-
-### Option B: Separate $5/mo VPS + Dreamhost for File Storage
-
-Run Podshelf on any cheap VPS (DigitalOcean, Hetzner, Linode). Use your Dreamhost account just for audio file hosting via SFTP.
-
-Configure `.env`:
-```env
-STORAGE_ADAPTER=sftp
-SFTP_HOST=yoursite.dreamhost.com
-SFTP_USER=yourusername
-SFTP_PRIVATE_KEY_PATH=/home/deploy/.ssh/id_rsa
-SFTP_REMOTE_DIR=/home/yourusername/yoursite.com/podcast/audio
-SFTP_PUBLIC_URL_BASE=https://yoursite.dreamhost.com/podcast/audio
-```
-
-Make sure the `SFTP_REMOTE_DIR` corresponds to a publicly web-accessible path.
+Enter an email and a password (≥ 8 chars). The user is created with
+`is_admin = 1`. You can re-run this script later to reset the password.
 
 ---
 
-## First Episode Workflow
+## Run
 
-### Step 1: Configure Your Show
+```bash
+npm run dev
+```
 
-1. Go to `/admin/settings`
-2. Fill in: Show Title, Description, Author, Email, Cover Art URL, Category
-3. Save
-
-### Step 2: Upload an Episode
-
-1. Go to `/admin/episodes/new`
-2. Enter the episode title
-3. Upload your MP3 file — Podshelf will handle the upload to your storage
-4. Write (or paste) your show notes in the Description field
-5. Set Episode Number and Season (optional)
-6. Click **Save & Publish** (or Save Draft first, then publish when ready)
-
-### Step 3: Submit to Podcast Directories
-
-Once you have at least one published episode, submit your RSS feed to:
-
-- **Apple Podcasts**: [podcastsconnect.apple.com](https://podcastsconnect.apple.com)
-- **Spotify**: [podcasters.spotify.com](https://podcasters.spotify.com)
-- **Google Podcasts** (via Spotify): submit there too
-- **Overcast, Pocket Casts**: they'll pick it up automatically from Apple
-
-Your RSS feed URL is: `https://yourpodcast.example.com/feed.xml`
+Open `http://localhost:3000`. You'll be redirected to `/admin/login`. Sign in
+with the user you just created.
 
 ---
 
-## Production Deployment
+## First podcast → first episode
 
-For production, build the app first:
-
-```bash
-npm run build
-```
-
-This creates a `.output/` directory. Run the server:
-
-```bash
-node .output/server/index.mjs
-```
-
-Or with PM2 for process management:
-
-```bash
-pm2 start .output/server/index.mjs --name podshelf
-```
-
-### Nginx Reverse Proxy
-
-```nginx
-server {
-    listen 80;
-    server_name yourpodcast.example.com;
-
-    location / {
-        proxy_pass http://localhost:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_cache_bypass $http_upgrade;
-    }
-}
-```
-
-Then set up SSL with Let's Encrypt:
-```bash
-sudo certbot --nginx -d yourpodcast.example.com
-```
+1. From the empty Podcasts list, click **+ New Podcast**. Title auto-fills the
+   slug; everything else can stay blank for now.
+2. You'll land on the podcast's **Settings** tab. Fill in author, email,
+   image URL, website. Save.
+3. Click **Storage** in the per-podcast nav. Pick SFTP or S3, fill in the
+   form (paste the SFTP private key contents directly into the textarea — see
+   [storage.md](./storage.md) for details). Hit **Test Connection** to verify
+   credentials and that you pointed at the right remote dir. Save.
+4. Click **Episodes** → **+ New Episode**. Either upload a file or paste a
+   pre-existing audio URL. Click **Check File** to detect size/duration.
+   **Save & Publish**.
+5. Visit `http://localhost:3000/feeds/<your-podcast-slug>.xml` to see the
+   resulting RSS feed.
 
 ---
 
-## Backing Up Your Data
+## Migrating an existing show
 
-Everything important is in two places:
-1. `./data/podshelf.db` — your SQLite database (episode metadata, settings)
-2. Your audio files on SFTP/S3
-
-Back up the database daily:
-
-```bash
-# Add to crontab (crontab -e)
-0 2 * * * cp /path/to/podshelf/data/podshelf.db /path/to/backups/podshelf-$(date +\%Y\%m\%d).db
-```
+If you're moving from another podcast host onto Podshelf, the **+ New Episode**
+flow has a sibling button on the empty episodes list: **Import from existing
+RSS feed**. Paste your old feed URL and Podshelf imports every episode at
+once with their original audio URLs intact. Available only while the podcast
+is empty (no destructive overwrite).
 
 ---
 
-## Updating Podshelf
+## API and automation
+
+Mint an API key at `/admin/api-keys`:
+- Label it (e.g. "Claude", "OpenClaw", "dev-laptop")
+- Optionally set an expiration
+- Pick a permission level (read / write / full)
+- Optionally restrict to specific podcasts
+
+The plaintext key is shown exactly once — copy it immediately.
+
+Use it in either header:
 
 ```bash
-git pull
-npm install
-npm run build
-pm2 restart podshelf
+curl -H "X-Api-Key: pk_…" http://localhost:3000/api/podcasts
+# or
+curl -H "Authorization: Bearer pk_…" http://localhost:3000/api/podcasts
 ```
 
-The SQLite schema uses `CREATE TABLE IF NOT EXISTS`, so existing data is safe on update.
+The full API surface and an end-to-end "AI handoff" example are in
+[api.md](./api.md). For a bash wrapper that uploads + creates an episode in
+one command, see `scripts/podshelf-publish.sh` at the repo root.
+
+---
+
+## Going to production
+
+See [deployment.md](./deployment.md) for the full Linux/nginx runbook used to
+stand up `podshelf.hennemo.com`.

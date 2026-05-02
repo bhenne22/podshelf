@@ -37,7 +37,17 @@ set -euo pipefail
 WATCH_DIR="${WATCH_DIR:-$HOME/podcast-inbox}"
 PODSHELF_URL="${PODSHELF_URL:-http://localhost:3000}"
 PODSHELF_API_KEY="${PODSHELF_API_KEY:-}"
+PODSHELF_PODCAST="${PODSHELF_PODCAST:-}"
 DISCORD_WEBHOOK_URL="${DISCORD_WEBHOOK_URL:-}"
+
+if [ -z "$PODSHELF_PODCAST" ]; then
+  echo "[podshelf-watch] ERROR PODSHELF_PODCAST is required (the podcast slug to publish to)" >&2
+  exit 1
+fi
+if [ -z "$PODSHELF_API_KEY" ]; then
+  echo "[podshelf-watch] ERROR PODSHELF_API_KEY is required" >&2
+  exit 1
+fi
 USE_CLAUDE="${USE_CLAUDE:-true}"
 CLAUDE_PROMPT_PREFIX="${CLAUDE_PROMPT_PREFIX:-Generate engaging podcast show notes in HTML format (use <p>, <ul>, <li>, <a> tags). Include a brief summary, key topics covered, and any notable quotes or timestamps mentioned. Keep it under 600 words. Transcript:}"
 LOG_PREFIX="[podshelf-watch]"
@@ -97,9 +107,9 @@ upload_audio() {
 
   local response
   response=$(curl -s -X POST \
-    ${PODSHELF_API_KEY:+-H "X-Api-Key: $PODSHELF_API_KEY"} \
+    -H "X-Api-Key: $PODSHELF_API_KEY" \
     -F "file=@${filepath}" \
-    "${PODSHELF_URL}/api/upload" 2>&1) || {
+    "${PODSHELF_URL}/api/podcasts/${PODSHELF_PODCAST}/upload" 2>&1) || {
       log_error "Upload curl command failed for: $filename"
       echo ""
       return 1
@@ -194,10 +204,10 @@ create_episode() {
 
   local response
   response=$(curl -s -X POST \
-    ${PODSHELF_API_KEY:+-H "X-Api-Key: $PODSHELF_API_KEY"} \
+    -H "X-Api-Key: $PODSHELF_API_KEY" \
     -H "Content-Type: application/json" \
     -d "$json_body" \
-    "${PODSHELF_URL}/api/episodes" 2>&1) || {
+    "${PODSHELF_URL}/api/podcasts/${PODSHELF_PODCAST}/episodes" 2>&1) || {
       log_error "Failed to create episode via API"
       return 1
     }
@@ -210,7 +220,7 @@ create_episode() {
     return 1
   fi
 
-  log_info "Episode created! ID: $episode_id — Edit at: ${PODSHELF_URL}/admin/episodes/${episode_id}"
+  log_info "Episode created! ID: $episode_id — Edit at: ${PODSHELF_URL}/admin/${PODSHELF_PODCAST}/episodes/${episode_id}"
   echo "$episode_id"
 }
 
@@ -294,7 +304,7 @@ process_episode_dir() {
   mv "$dir" "${dir}.processed" || true
 
   # 6. Discord notification
-  notify_discord "Podshelf: New episode draft created — \"$title\" (ID: $episode_id). Edit at: ${PODSHELF_URL}/admin/episodes/${episode_id}"
+  notify_discord "Podshelf: New episode draft created — \"$title\" (ID: $episode_id). Edit at: ${PODSHELF_URL}/admin/${PODSHELF_PODCAST}/episodes/${episode_id}"
 
   log_info "Done processing: $title (episode ID: $episode_id)"
 }

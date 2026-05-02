@@ -1,68 +1,57 @@
 # OpenClaw Integration
 
-OpenClaw is Podshelf's automated episode ingestion system. Name inspired by the combination of open-source tooling and AI-powered content generation — clawing episodes out of raw files and into a polished podcast feed.
+OpenClaw is the bash-based watcher that auto-ingests episode folders into
+Podshelf. Drop a folder containing audio (and optionally a transcript) into a
+watched directory, and it uploads the audio, optionally generates show notes
+via Claude, creates a draft episode, and pings Discord.
+
+The watcher uses Podshelf's standard API key authentication and is scoped to
+a single podcast — run one watcher per podcast.
 
 ---
 
-## Overview
-
-The OpenClaw workflow looks like this:
+## Workflow
 
 ```
-Recording Session
-      ↓
-Export MP3 + rough transcript
-      ↓
-Drop folder into ~/podcast-inbox/
-      ↓
-  podshelf-watch.sh detects it
-      ↓
-  ┌───────────────────────────┐
-  │  1. Upload MP3 to storage │
-  │  2. Claude writes notes   │
-  │  3. Create draft episode  │
-  │  4. Notify Discord        │
-  └───────────────────────────┘
-      ↓
-Review & publish from /admin
+recording.mp3 + episode.txt
+       │
+       ▼
+~/podcast-inbox/<episode-folder>/
+       │
+       ▼   (inotifywait / fswatch sees the folder)
+       │
+podshelf-watch.sh
+   1. Upload MP3 to /api/podcasts/<slug>/upload
+   2. (Optional) generate show notes from episode.txt via Claude CLI
+   3. Create draft episode at /api/podcasts/<slug>/episodes
+   4. Notify Discord (if webhook configured)
+       │
+       ▼
+Review and publish in /admin/<slug>/episodes/<id>
 ```
 
 ---
 
-## Installation
+## Install dependencies
 
-### 1. Install System Dependencies
+System tools:
 
-**Linux (Ubuntu/Debian):**
 ```bash
-sudo apt update && sudo apt install -y inotify-tools curl jq
-```
+# Linux (Ubuntu/Debian)
+sudo apt install -y inotify-tools curl jq
 
-**macOS:**
-```bash
+# macOS
 brew install fswatch curl jq
 ```
 
-### 2. Install Claude CLI (Optional but Recommended)
-
-The Claude CLI is used to generate show notes from transcripts automatically.
+Optional Claude CLI (for AI-generated show notes):
 
 ```bash
 npm install -g @anthropic-ai/claude-code
+claude   # follow the OAuth flow once
 ```
 
-Authenticate:
-```bash
-claude
-# Follow the OAuth flow
-```
-
-Test it works:
-```bash
-echo "test" | claude -p "Say hello"
-```
-
-### 3. Make the Watch Script Executable
+Then make the watcher executable:
 
 ```bash
 chmod +x /path/to/podshelf/openclaw/podshelf-watch.sh
@@ -70,276 +59,165 @@ chmod +x /path/to/podshelf/openclaw/podshelf-watch.sh
 
 ---
 
-## Configuration
+## Mint a Podshelf API key
 
-All configuration is done via environment variables. You can set them in your shell, a `.env` file sourced by your shell profile, or in a systemd service file.
+In the Podshelf admin → **API Keys** → **+ New Key**:
 
-| Variable | Description | Default |
-|---|---|---|
-| `WATCH_DIR` | Directory to watch for episode folders | `~/podcast-inbox` |
-| `PODSHELF_URL` | Base URL of your Podshelf instance | `http://localhost:3000` |
-| `PODSHELF_ADMIN_PASSWORD` | Matches `ADMIN_PASSWORD` in Podshelf `.env` | (empty) |
-| `DISCORD_WEBHOOK_URL` | Discord webhook URL for notifications | (empty, disabled) |
-| `USE_CLAUDE` | `true`/`false` — enable Claude show notes generation | `true` |
-| `CLAUDE_PROMPT_PREFIX` | The prompt sent to Claude before the transcript | (see below) |
+- **Label:** `OpenClaw <podcast-slug>` (one per podcast keeps audit clean)
+- **Permissions:** `write` is enough — the watcher creates episodes but
+  doesn't delete anything
+- **Scope:** restrict to the podcast it should publish to
 
-### Default Claude Prompt
-
-```
-Generate engaging podcast show notes in HTML format (use <p>, <ul>, <li>, <a> tags).
-Include a brief summary, key topics covered, and any notable quotes or timestamps
-mentioned. Keep it under 600 words. Transcript:
-```
-
-Override it completely or extend it:
-```bash
-export CLAUDE_PROMPT_PREFIX="You are a show notes writer for an ultrarunning podcast.
-Write HTML show notes with these sections:
-- <h3>Episode Summary</h3>
-- <h3>Key Moments</h3> (with timestamps from the transcript if available)
-- <h3>Gear & Products Mentioned</h3>
-- <h3>People & Races Mentioned</h3>
-Keep it under 800 words. Transcript:"
-```
+Copy the plaintext key immediately; it's only shown once.
 
 ---
 
-## Episode Folder Format
+## Configuration
 
-Each episode is a folder inside `$WATCH_DIR`. The folder name becomes the episode title.
+Configured via environment variables:
+
+| Variable | Required | Description |
+|---|---|---|
+| `WATCH_DIR` | | Directory to watch (default `~/podcast-inbox`) |
+| `PODSHELF_URL` | | Base URL of your Podshelf instance (default `http://localhost:3000`) |
+| `PODSHELF_API_KEY` | yes | The API key minted above |
+| `PODSHELF_PODCAST` | yes | Slug of the podcast to publish to |
+| `DISCORD_WEBHOOK_URL` | | Discord webhook for notifications (default disabled) |
+| `USE_CLAUDE` | | `true`/`false` — toggle Claude show-notes generation (default `true` if `claude` is on PATH) |
+| `CLAUDE_PROMPT_PREFIX` | | Override the prompt template sent to Claude before the transcript |
+
+---
+
+## Episode folder layout
+
+Each folder inside `$WATCH_DIR` becomes one episode. The folder name is
+slugified for the URL slug and title-cased for the title.
 
 ```
 ~/podcast-inbox/
-├── episode-001-introduction/
-│   ├── intro.mp3
-│   └── episode.txt
-├── ep-042-western-states-recap/
-│   ├── ws-recap-final.mp3
-│   └── episode.txt
-└── gear-review-altra-lone-peak/
-    └── gear-review.mp3
+└── ep-042-western-states-recap/
+    ├── ws-recap.mp3       # required (any .mp3 or .m4a)
+    └── episode.txt        # optional transcript / notes for Claude
 ```
 
-### Folder Naming Tips
+`episode.txt` can be:
 
-The folder name is slugified for the episode URL and title-cased for the episode title:
+- A Whisper auto-transcription (`whisper audio.mp3 --output_format txt`)
+- A Descript / Otter export
+- Your own bullet-point notes
+- A mix
 
-| Folder name | Slug | Title |
-|---|---|---|
-| `ep-042-western-states-recap` | `ep-042-western-states-recap` | "Ep 042 Western States Recap" |
-| `2025_01_15_long_run` | `2025-01-15-long-run` | "2025 01 15 Long Run" |
-| `GearReview_AltraLonePeak` | `gearreview-altralонepeak` | varies |
-
-**Recommendation:** Use lowercase with hyphens: `ep-042-western-states-recap`
-
-### Audio File
-
-- Any `.mp3` or `.m4a` file in the root of the episode folder
-- If multiple audio files exist, the first one found is used
-- File can be named anything — the name matters less than the folder name
-
-### episode.txt
-
-Optional transcript file. If present, its contents are sent to Claude to generate show notes.
-
-**Sources for episode.txt:**
-- **Whisper** (local AI transcription): `whisper audio.mp3 --output_format txt`
-- **Descript** (export as plain text)
-- **Otter.ai** (export as plain text)
-- **Your own notes** (bullet points, timestamps, etc.)
-- **A mix**: Start with auto-transcription, then add corrections and notes
-
-The quality of your `episode.txt` directly influences the quality of the generated show notes. More detail = better output.
+The richer the transcript, the better the generated show notes.
 
 ---
 
-## Running the Watcher
+## Run
 
-### Foreground (Development/Testing)
+### Foreground (test run)
 
 ```bash
+PODSHELF_URL=https://podshelf.hennemo.com \
+PODSHELF_API_KEY=pk_… \
+PODSHELF_PODCAST=yousaid100miles \
 WATCH_DIR=~/podcast-inbox \
-PODSHELF_URL=http://localhost:3000 \
-PODSHELF_ADMIN_PASSWORD=yourpassword \
 ./openclaw/podshelf-watch.sh
 ```
 
-### Background with nohup
+### Background
 
 ```bash
-WATCH_DIR=~/podcast-inbox \
-PODSHELF_URL=https://mypodcast.example.com \
-PODSHELF_ADMIN_PASSWORD=yourpassword \
-DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/... \
+PODSHELF_URL=https://podshelf.hennemo.com \
+PODSHELF_API_KEY=pk_… \
+PODSHELF_PODCAST=yousaid100miles \
 nohup ./openclaw/podshelf-watch.sh >> ~/podshelf-watch.log 2>&1 &
-
 echo $! > ~/podshelf-watch.pid
 ```
 
-Stop it:
-```bash
-kill $(cat ~/podshelf-watch.pid)
-```
+Stop with `kill $(cat ~/podshelf-watch.pid)`.
 
-### As a systemd Service (Linux, Recommended for Production)
-
-Create `/etc/systemd/system/podshelf-watch.service`:
+### systemd (Linux production)
 
 ```ini
+# /etc/systemd/system/podshelf-watch@.service
+# Templated — instance name is the podcast slug.
+
 [Unit]
-Description=Podshelf OpenClaw Episode Watcher
-After=network.target podshelf.service
+Description=Podshelf OpenClaw watcher (%i)
+After=network.target
 
 [Service]
 Type=simple
 User=podshelf
-WorkingDirectory=/home/podshelf/podshelf
-Environment="WATCH_DIR=/home/podshelf/podcast-inbox"
-Environment="PODSHELF_URL=http://localhost:3000"
-Environment="PODSHELF_ADMIN_PASSWORD=yourpassword"
-Environment="DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/..."
-Environment="USE_CLAUDE=true"
+WorkingDirectory=/home/podshelf
+EnvironmentFile=/home/podshelf/openclaw-%i.env
 ExecStart=/home/podshelf/podshelf/openclaw/podshelf-watch.sh
 Restart=on-failure
 RestartSec=10
-StandardOutput=journal
-StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
 ```
 
-Enable and start:
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable podshelf-watch
-sudo systemctl start podshelf-watch
+Per-podcast env file `/home/podshelf/openclaw-yousaid100miles.env`:
 
-# View logs
-sudo journalctl -u podshelf-watch -f
+```env
+WATCH_DIR=/home/podshelf/inbox/yousaid100miles
+PODSHELF_URL=https://podshelf.hennemo.com
+PODSHELF_API_KEY=pk_…
+PODSHELF_PODCAST=yousaid100miles
+DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/…
 ```
 
-### macOS launchd (Recommended for macOS)
-
-Create `~/Library/LaunchAgents/com.podshelf.watch.plist`:
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key>
-  <string>com.podshelf.watch</string>
-  <key>ProgramArguments</key>
-  <array>
-    <string>/Users/youruser/podshelf/openclaw/podshelf-watch.sh</string>
-  </array>
-  <key>EnvironmentVariables</key>
-  <dict>
-    <key>WATCH_DIR</key>
-    <string>/Users/youruser/podcast-inbox</string>
-    <key>PODSHELF_URL</key>
-    <string>http://localhost:3000</string>
-    <key>PODSHELF_ADMIN_PASSWORD</key>
-    <string>yourpassword</string>
-  </dict>
-  <key>RunAtLoad</key>
-  <true/>
-  <key>StandardOutPath</key>
-  <string>/tmp/podshelf-watch.log</string>
-  <key>StandardErrorPath</key>
-  <string>/tmp/podshelf-watch.log</string>
-  <key>KeepAlive</key>
-  <true/>
-</dict>
-</plist>
-```
-
-Load it:
-```bash
-launchctl load ~/Library/LaunchAgents/com.podshelf.watch.plist
-```
-
----
-
-## Full Workflow Example
-
-Here's the complete workflow for a *You Said 100 Miles?* episode:
-
-### 1. Record and Export
-
-Record your episode in your DAW of choice. Export as MP3 (128-192 kbps is fine for podcasts).
-
-### 2. Transcribe with Whisper
+Enable and start (one instance per podcast):
 
 ```bash
-# Install whisper
-pip install openai-whisper
-
-# Transcribe your audio
-whisper "western-states-recap.mp3" \
-  --model medium \
-  --output_format txt \
-  --output_dir "/tmp/ws-recap/"
+systemctl daemon-reload
+systemctl enable --now podshelf-watch@yousaid100miles
+journalctl -u podshelf-watch@yousaid100miles -f
 ```
 
-### 3. Prepare Episode Folder
+### macOS launchd
 
-```bash
-mkdir -p ~/podcast-inbox/ep-042-western-states-recap
-
-# Copy audio
-cp western-states-recap.mp3 ~/podcast-inbox/ep-042-western-states-recap/
-
-# Copy transcript
-cp /tmp/ws-recap/western-states-recap.txt \
-   ~/podcast-inbox/ep-042-western-states-recap/episode.txt
-
-# Optionally add your own notes to episode.txt before dropping it
-```
-
-### 4. Drop the Folder (watcher does the rest)
-
-The moment you copy/move the folder into `$WATCH_DIR`, the watcher picks it up:
-
-```
-[podshelf-watch] INFO  Processing episode folder: ep-042-western-states-recap
-[podshelf-watch] INFO  Uploading audio: western-states-recap.mp3
-[podshelf-watch] INFO  Upload complete: https://f004.backblazeb2.com/file/mypodcast/western-states-recap.mp3
-[podshelf-watch] INFO  Generating show notes via Claude CLI from: episode.txt
-[podshelf-watch] INFO  Show notes generated successfully (1842 chars)
-[podshelf-watch] INFO  Creating episode: Ep 042 Western States Recap
-[podshelf-watch] INFO  Episode created! ID: 42 — Edit at: https://mypodcast.example.com/admin/episodes/42
-[podshelf-watch] INFO  Done processing: Ep 042 Western States Recap (episode ID: 42)
-```
-
-### 5. Review and Publish
-
-1. Open the link from the log (or your Discord notification)
-2. Review/edit the AI-generated show notes
-3. Set the episode number
-4. Hit **Publish** — the episode is live and in the RSS feed immediately
+Use a `~/Library/LaunchAgents/com.podshelf.watch.<slug>.plist` plist with
+`ProgramArguments` pointing at the watcher and `EnvironmentVariables`
+containing the four required vars (`PODSHELF_URL`, `PODSHELF_API_KEY`,
+`PODSHELF_PODCAST`, `WATCH_DIR`).
 
 ---
 
 ## Troubleshooting
 
-### "No audio file found"
-Make sure your audio file has a `.mp3` or `.m4a` extension (lowercase or uppercase).
+**`PODSHELF_PODCAST is required` / `PODSHELF_API_KEY is required`** — set
+both in the environment.
 
-### "claude: command not found"
-Install Claude CLI: `npm install -g @anthropic-ai/claude-code`
-Or disable Claude: `USE_CLAUDE=false`
+**`Upload failed`** — almost always:
+- 401: API key wrong, expired, or disabled
+- 403: API key is scoped to a different podcast, or doesn't have `write`
+  permission
+- Other 4xx: storage isn't configured for the podcast yet (visit the
+  podcast's Storage tab in the admin)
 
-### "Upload failed"
-- Check that Podshelf is running and accessible at `$PODSHELF_URL`
-- Verify `PODSHELF_ADMIN_PASSWORD` matches `ADMIN_PASSWORD` in your Podshelf `.env`
-- Check Podshelf server logs for detailed error messages
+**`claude: command not found`** — install with
+`npm install -g @anthropic-ai/claude-code`, or set `USE_CLAUDE=false` to skip
+show-notes generation entirely.
 
-### "jq: command not found"
-Install jq: `sudo apt install jq` (Linux) or `brew install jq` (macOS)
+**Folder not detected on macOS** — `brew install fswatch` and verify with
+`fswatch ~/podcast-inbox` directly.
 
-### Folder not being detected on macOS
-Make sure fswatch is installed: `brew install fswatch`
-Test fswatch directly: `fswatch ~/podcast-inbox`
+---
+
+## Single-shot alternative: `scripts/podshelf-publish.sh`
+
+If you don't need a long-running watcher and just want to push one episode,
+the repo also ships `scripts/podshelf-publish.sh`:
+
+```bash
+PODSHELF_API_KEY=pk_… \
+./scripts/podshelf-publish.sh \
+  --podcast yousaid100miles \
+  --file /path/to/episode.mp3 \
+  --title "Ep 50: Title" \
+  --description "<p>Show notes</p>"
+```
+
+Same API path, just no folder-watching loop.
