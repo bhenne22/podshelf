@@ -2,13 +2,73 @@ import Database from 'better-sqlite3'
 import { mkdirSync, existsSync } from 'fs'
 import { dirname } from 'path'
 
-// Inlined schema — avoids file-read issues in Nitro production builds
+// Inlined schema — avoids file-read issues in Nitro production builds.
+// Mirror of server/db/schema.sql; update both when changing.
 const SCHEMA_SQL = `
--- Episodes table
+CREATE TABLE IF NOT EXISTS users (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  email          TEXT UNIQUE NOT NULL,
+  password_hash  TEXT NOT NULL,
+  is_admin       INTEGER NOT NULL DEFAULT 0,
+  created_at     TEXT DEFAULT (datetime('now')),
+  updated_at     TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS podcasts (
+  id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+  slug                     TEXT UNIQUE NOT NULL,
+  title                    TEXT NOT NULL,
+  description              TEXT,
+  author                   TEXT,
+  email                    TEXT,
+  image_url                TEXT,
+  language                 TEXT DEFAULT 'en',
+  copyright                TEXT,
+  category                 TEXT DEFAULT 'Society & Culture',
+  explicit                 TEXT DEFAULT 'false',
+  website                  TEXT,
+  audio_tracking_prefix    TEXT,
+  storage_adapter          TEXT DEFAULT 'sftp',
+  storage_config_encrypted TEXT,
+  github_owner             TEXT,
+  github_repo              TEXT,
+  github_event_type        TEXT,
+  github_token_encrypted   TEXT,
+  github_auto_trigger      INTEGER NOT NULL DEFAULT 0,
+  created_at               TEXT DEFAULT (datetime('now')),
+  updated_at               TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS podcast_users (
+  podcast_id  INTEGER NOT NULL REFERENCES podcasts(id) ON DELETE CASCADE,
+  user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at  TEXT DEFAULT (datetime('now')),
+  PRIMARY KEY (podcast_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS api_keys (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  key_hash      TEXT UNIQUE NOT NULL,
+  label         TEXT,
+  expires_at    TEXT,
+  disabled      INTEGER NOT NULL DEFAULT 0,
+  permissions   TEXT NOT NULL DEFAULT 'full',
+  created_at    TEXT DEFAULT (datetime('now')),
+  last_used_at  TEXT
+);
+
+CREATE TABLE IF NOT EXISTS api_key_podcasts (
+  api_key_id  INTEGER NOT NULL REFERENCES api_keys(id) ON DELETE CASCADE,
+  podcast_id  INTEGER NOT NULL REFERENCES podcasts(id) ON DELETE CASCADE,
+  PRIMARY KEY (api_key_id, podcast_id)
+);
+
 CREATE TABLE IF NOT EXISTS episodes (
   id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+  podcast_id              INTEGER NOT NULL REFERENCES podcasts(id) ON DELETE CASCADE,
   title                   TEXT NOT NULL,
-  slug                    TEXT UNIQUE NOT NULL,
+  slug                    TEXT NOT NULL,
   episode_number          INTEGER,
   season_number           INTEGER,
   description             TEXT,
@@ -21,32 +81,12 @@ CREATE TABLE IF NOT EXISTS episodes (
   tags                    TEXT,
   transcript_path         TEXT,
   created_at              TEXT DEFAULT (datetime('now')),
-  updated_at              TEXT DEFAULT (datetime('now'))
+  updated_at              TEXT DEFAULT (datetime('now')),
+  UNIQUE (podcast_id, slug)
 );
 
--- Settings key/value store
-CREATE TABLE IF NOT EXISTS settings (
-  key         TEXT PRIMARY KEY,
-  value       TEXT,
-  updated_at  TEXT DEFAULT (datetime('now'))
-);
+CREATE INDEX IF NOT EXISTS idx_episodes_podcast_id ON episodes(podcast_id);
 
--- Seed default settings if they don't exist
-INSERT OR IGNORE INTO settings (key, value) VALUES
-  ('show_title',       'My Podcast'),
-  ('show_description', 'A podcast about things I care about.'),
-  ('show_author',      ''),
-  ('show_email',       ''),
-  ('show_image_url',   ''),
-  ('show_language',    'en'),
-  ('show_copyright',   ''),
-  ('show_category',    'Society & Culture'),
-  ('show_explicit',    'false'),
-  ('show_website',     ''),
-  ('audio_tracking_prefix', ''),
-  ('geoip_db_path', '');
-
--- Downloads tracking table
 CREATE TABLE IF NOT EXISTS downloads (
   id               INTEGER PRIMARY KEY AUTOINCREMENT,
   episode_id       INTEGER NOT NULL REFERENCES episodes(id) ON DELETE CASCADE,
@@ -68,25 +108,47 @@ let _db: Database.Database | null = null
 
 function initDb(): Database.Database {
   const config = useRuntimeConfig()
-  // databasePath is resolved to absolute at build time in nuxt.config.ts
   const resolvedPath = config.databasePath
   const dir = dirname(resolvedPath)
 
-  // Ensure the data directory exists
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true })
   }
 
   const db = new Database(resolvedPath)
 
-  // Performance settings
   db.pragma('journal_mode = WAL')
   db.pragma('foreign_keys = ON')
 
-  // Run schema migration
   db.exec(SCHEMA_SQL)
+  applyMigrations(db)
 
   return db
+}
+
+/**
+ * Add columns / indexes that may be missing from older databases.
+ * Each step is a no-op if the change already exists.
+ */
+function applyMigrations(db: Database.Database) {
+  const cols = (table: string) =>
+    (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map((c) => c.name)
+
+  const apiKeyCols = cols('api_keys')
+  if (!apiKeyCols.includes('expires_at')) {
+    db.exec('ALTER TABLE api_keys ADD COLUMN expires_at TEXT')
+  }
+  if (!apiKeyCols.includes('disabled')) {
+    db.exec('ALTER TABLE api_keys ADD COLUMN disabled INTEGER NOT NULL DEFAULT 0')
+  }
+  if (!apiKeyCols.includes('permissions')) {
+    db.exec("ALTER TABLE api_keys ADD COLUMN permissions TEXT NOT NULL DEFAULT 'full'")
+  }
+
+  const podcastCols = cols('podcasts')
+  if (!podcastCols.includes('github_auto_trigger')) {
+    db.exec('ALTER TABLE podcasts ADD COLUMN github_auto_trigger INTEGER NOT NULL DEFAULT 0')
+  }
 }
 
 /**
@@ -99,7 +161,6 @@ export function getDb(): Database.Database {
   return _db
 }
 
-// Default export for convenience
 export const db = {
   get instance(): Database.Database {
     return getDb()

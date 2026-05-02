@@ -1,6 +1,5 @@
 import { existsSync } from 'fs'
 import { createRequire } from 'module'
-import getDb from '../db/index'
 
 const _require = createRequire(import.meta.url)
 
@@ -9,9 +8,7 @@ let _reader: any = null
 let _readerPath: string | null = null
 
 async function getReader(): Promise<any> {
-  const db = getDb()
-  const row = db.prepare("SELECT value FROM settings WHERE key = 'geoip_db_path'").get() as { value: string } | undefined
-  const dbPath = row?.value?.trim() || ''
+  const dbPath = (useRuntimeConfig().geoipDbPath || '').trim()
 
   if (!dbPath || !existsSync(dbPath)) return null
   if (_reader && _readerPath === dbPath) return _reader

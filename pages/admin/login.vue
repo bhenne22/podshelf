@@ -4,13 +4,23 @@
       <h1>Podshelf Admin</h1>
       <p v-if="error" class="error">{{ error }}</p>
       <form @submit.prevent="login">
+        <label for="email">Email</label>
+        <input
+          id="email"
+          v-model="email"
+          type="email"
+          placeholder="you@example.com"
+          autocomplete="username"
+          autofocus
+          required
+        />
         <label for="password">Password</label>
         <input
           id="password"
           v-model="password"
           type="password"
-          placeholder="Admin password"
-          autofocus
+          placeholder="Password"
+          autocomplete="current-password"
           required
         />
         <button type="submit" :disabled="loading">
@@ -24,6 +34,7 @@
 <script setup lang="ts">
 definePageMeta({ layout: false })
 
+const email = ref('')
 const password = ref('')
 const error = ref('')
 const loading = ref(false)
@@ -35,11 +46,11 @@ async function login() {
   try {
     await $fetch('/api/auth/login', {
       method: 'POST',
-      body: { password: password.value },
+      body: { email: email.value, password: password.value },
     })
     await navigateTo('/admin')
   } catch {
-    error.value = 'Invalid password. Please try again.'
+    error.value = 'Invalid email or password.'
   } finally {
     loading.value = false
   }

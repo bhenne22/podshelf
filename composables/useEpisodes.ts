@@ -1,5 +1,6 @@
 export interface Episode {
   id: number
+  podcast_id: number
   title: string
   slug: string
   episode_number: number | null
@@ -17,20 +18,22 @@ export interface Episode {
   updated_at: string
 }
 
-export type EpisodeCreateInput = Omit<Episode, 'id' | 'created_at' | 'updated_at'>
+export type EpisodeCreateInput = Omit<Episode, 'id' | 'podcast_id' | 'created_at' | 'updated_at'>
 export type EpisodeUpdateInput = Partial<EpisodeCreateInput>
 
-export function useEpisodes() {
+export function useEpisodes(podcastSlug: string) {
   const episodes = ref<Episode[]>([])
   const loading = ref(false)
   const error = ref<string | null>(null)
+
+  const base = `/api/podcasts/${podcastSlug}/episodes`
 
   async function refresh(status?: string) {
     loading.value = true
     error.value = null
     try {
       const params = status ? { status } : {}
-      const data = await $fetch<Episode[]>('/api/episodes', { params })
+      const data = await $fetch<Episode[]>(base, { params })
       episodes.value = data
     } catch (err: unknown) {
       error.value = err instanceof Error ? err.message : 'Failed to load episodes'
@@ -40,7 +43,7 @@ export function useEpisodes() {
   }
 
   async function createEpisode(input: Partial<EpisodeCreateInput>): Promise<Episode> {
-    const episode = await $fetch<Episode>('/api/episodes', {
+    const episode = await $fetch<Episode>(base, {
       method: 'POST',
       body: input,
     })
@@ -49,7 +52,7 @@ export function useEpisodes() {
   }
 
   async function updateEpisode(id: number, input: EpisodeUpdateInput): Promise<Episode> {
-    const updated = await $fetch<Episode>(`/api/episodes/${id}`, {
+    const updated = await $fetch<Episode>(`${base}/${id}`, {
       method: 'PATCH',
       body: input,
     })
@@ -61,7 +64,7 @@ export function useEpisodes() {
   }
 
   async function deleteEpisode(id: number): Promise<void> {
-    await $fetch(`/api/episodes/${id}`, { method: 'DELETE' })
+    await $fetch(`${base}/${id}`, { method: 'DELETE' })
     episodes.value = episodes.value.filter((e) => e.id !== id)
   }
 

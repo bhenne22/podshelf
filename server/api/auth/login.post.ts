@@ -1,8 +1,10 @@
 import { defineEventHandler, readBody, createError, setCookie, getRequestIP } from 'h3'
-import { createHmac, randomBytes } from 'crypto'
+import getDb from '../../db/index'
+import { verifyPassword } from '../../utils/password'
+import { issueSessionToken, SESSION_COOKIE_NAME } from '../../utils/auth'
 
 const MAX_ATTEMPTS = 5
-const WINDOW_MS = 15 * 60 * 1000 // 15 minutes
+const WINDOW_MS = 15 * 60 * 1000
 const attempts = new Map<string, number[]>()
 
 function checkRateLimit(ip: string) {
@@ -18,44 +20,39 @@ function checkRateLimit(ip: string) {
 /**
  * POST /api/auth/login
  *
- * Validates the admin password and sets a signed session cookie.
+ * Body: { email, password }
+ * Sets the admin_session cookie on success.
  */
 export default defineEventHandler(async (event) => {
   const ip = getRequestIP(event, { xForwardedFor: true }) || 'unknown'
   checkRateLimit(ip)
 
   const body = await readBody(event)
+  const email = String(body?.email || '').trim().toLowerCase()
+  const password = String(body?.password || '')
 
-  if (!body?.password) {
-    throw createError({ statusCode: 400, statusMessage: 'password is required' })
+  if (!email || !password) {
+    throw createError({ statusCode: 400, statusMessage: 'email and password are required' })
   }
 
-  const config = useRuntimeConfig()
-  const adminPassword = config.adminPassword
+  const db = getDb()
+  const row = db.prepare('SELECT id, password_hash FROM users WHERE email = ?').get(email) as
+    | { id: number; password_hash: string }
+    | undefined
 
-  if (!adminPassword) {
-    throw createError({ statusCode: 500, statusMessage: 'ADMIN_PASSWORD not configured' })
+  if (!row || !verifyPassword(password, row.password_hash)) {
+    throw createError({ statusCode: 401, statusMessage: 'Invalid email or password' })
   }
 
-  if (body.password !== adminPassword) {
-    throw createError({ statusCode: 401, statusMessage: 'Invalid password' })
-  }
-
-  // Clear rate limit on successful login
   attempts.delete(ip)
 
-  // Create a signed session token: nonce.signature
-  const secretKey = config.secretKey || adminPassword
-  const nonce = randomBytes(32).toString('hex')
-  const signature = createHmac('sha256', secretKey).update(nonce).digest('hex')
-  const token = `${nonce}.${signature}`
-
-  setCookie(event, 'admin_session', token, {
+  const token = issueSessionToken(row.id)
+  setCookie(event, SESSION_COOKIE_NAME, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
     path: '/',
-    maxAge: 60 * 60 * 24 * 7, // 7 days
+    maxAge: 60 * 60 * 24 * 7,
   })
 
   return { ok: true }

@@ -4,7 +4,7 @@ interface UploadResult {
   size: number
 }
 
-export function useUpload() {
+export function useUpload(podcastSlug: string) {
   const uploading = ref(false)
   const uploadProgress = ref(0)
 
@@ -14,7 +14,7 @@ export function useUpload() {
       formData.append('file', file)
 
       const xhr = new XMLHttpRequest()
-      xhr.open('POST', '/api/upload')
+      xhr.open('POST', `/api/podcasts/${podcastSlug}/upload`)
 
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) {

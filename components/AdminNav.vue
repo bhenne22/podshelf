@@ -2,33 +2,56 @@
   <nav class="admin-nav">
     <div class="nav-brand">
       <NuxtLink to="/admin">Podshelf</NuxtLink>
+      <NuxtLink
+        v-if="podcastSlug"
+        :to="`/admin/${podcastSlug}`"
+        class="nav-podcast-name"
+      >
+        / {{ podcast?.title || podcastSlug }}
+      </NuxtLink>
     </div>
     <ul class="nav-links">
-      <li>
-        <NuxtLink to="/admin/episodes" active-class="active">Episodes</NuxtLink>
-      </li>
-      <li>
-        <NuxtLink to="/admin/stats" active-class="active">Analytics</NuxtLink>
-      </li>
-      <li>
-        <NuxtLink to="/admin/settings" active-class="active">Settings</NuxtLink>
-      </li>
-      <li class="divider"></li>
-      <li>
-        <NuxtLink to="/" target="_blank" rel="noopener">View Site ↗</NuxtLink>
-      </li>
-      <li>
-        <a href="/feed.xml" target="_blank" rel="noopener">RSS Feed ↗</a>
-      </li>
-      <li class="divider"></li>
-      <li>
-        <button class="logout-btn" @click="logout">Sign out</button>
-      </li>
+      <template v-if="podcastSlug">
+        <li><NuxtLink :to="`/admin/${podcastSlug}/episodes`" active-class="active">Episodes</NuxtLink></li>
+        <li><NuxtLink :to="`/admin/${podcastSlug}/stats`" active-class="active">Analytics</NuxtLink></li>
+        <li><NuxtLink :to="`/admin/${podcastSlug}/settings`" active-class="active">Settings</NuxtLink></li>
+        <li><NuxtLink :to="`/admin/${podcastSlug}/storage`" active-class="active">Storage</NuxtLink></li>
+        <li><NuxtLink :to="`/admin/${podcastSlug}/build`" active-class="active">Build</NuxtLink></li>
+        <li><NuxtLink :to="`/admin/${podcastSlug}/members`" active-class="active">Members</NuxtLink></li>
+        <li class="divider" />
+        <li><NuxtLink to="/admin">All podcasts</NuxtLink></li>
+        <li><a :href="`/feeds/${podcastSlug}.xml`" target="_blank" rel="noopener">RSS Feed ↗</a></li>
+      </template>
+      <template v-else>
+        <li><NuxtLink to="/admin" exact-active-class="active">Podcasts</NuxtLink></li>
+        <li><NuxtLink to="/admin/api-keys" active-class="active">API Keys</NuxtLink></li>
+        <li v-if="me?.is_admin"><NuxtLink to="/admin/users" active-class="active">Users</NuxtLink></li>
+      </template>
+      <li class="divider" />
+      <li><button class="logout-btn" @click="logout">Sign out</button></li>
     </ul>
   </nav>
 </template>
 
 <script setup lang="ts">
+const props = defineProps<{
+  podcastSlug?: string
+}>()
+
+interface Me { id: number; email: string; is_admin: boolean }
+interface Podcast { id: number; slug: string; title: string }
+
+const { data: me } = await useFetch<Me>('/api/me', { default: () => null })
+
+const podcast = ref<Podcast | null>(null)
+if (props.podcastSlug) {
+  try {
+    podcast.value = await $fetch<Podcast>(`/api/podcasts/${props.podcastSlug}`)
+  } catch {
+    podcast.value = null
+  }
+}
+
 async function logout() {
   await $fetch('/api/auth/logout', { method: 'POST' })
   await navigateTo('/admin/login')
@@ -49,6 +72,12 @@ async function logout() {
   z-index: 100;
 }
 
+.nav-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .nav-brand a {
   font-weight: 700;
   font-size: 1.1rem;
@@ -56,6 +85,13 @@ async function logout() {
   text-decoration: none;
   letter-spacing: -0.02em;
 }
+
+.nav-podcast-name {
+  font-size: 0.95rem;
+  color: #4a5568;
+  text-decoration: none;
+}
+.nav-podcast-name:hover { color: #667eea; }
 
 .nav-links {
   display: flex;

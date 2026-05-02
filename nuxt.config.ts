@@ -27,27 +27,8 @@ export default defineNuxtConfig({
     // Server-only secrets
     databasePath: resolve(process.env.DATABASE_PATH || './data/podshelf.db'),
     secretKey: process.env.NUXT_SECRET_KEY || '',
-    adminPassword: process.env.ADMIN_PASSWORD || '',
-    apiKey: process.env.PODSHELF_API_KEY || '',
-
-    // Storage
-    storageAdapter: process.env.STORAGE_ADAPTER || 'sftp',
-
-    // SFTP
-    sftpHost: process.env.SFTP_HOST || '',
-    sftpPort: process.env.SFTP_PORT || '22',
-    sftpUser: process.env.SFTP_USER || '',
-    sftpPrivateKeyPath: process.env.SFTP_PRIVATE_KEY_PATH || '',
-    sftpRemoteDir: process.env.SFTP_REMOTE_DIR || '',
-    sftpPublicUrlBase: process.env.SFTP_PUBLIC_URL_BASE || '',
-
-    // S3 / Backblaze B2
-    s3Endpoint: process.env.S3_ENDPOINT || '',
-    s3Region: process.env.S3_REGION || 'us-east-1',
-    s3AccessKeyId: process.env.S3_ACCESS_KEY_ID || '',
-    s3SecretAccessKey: process.env.S3_SECRET_ACCESS_KEY || '',
-    s3BucketName: process.env.S3_BUCKET_NAME || '',
-    s3PublicUrlBase: process.env.S3_PUBLIC_URL_BASE || '',
+    encryptionKey: process.env.PODSHELF_ENCRYPTION_KEY || '',
+    geoipDbPath: process.env.GEOIP_DB_PATH || '',
 
     // Public — exposed to client
     public: {

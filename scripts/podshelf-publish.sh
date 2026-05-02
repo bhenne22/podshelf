@@ -4,6 +4,7 @@
 #
 # Usage:
 #   ./scripts/podshelf-publish.sh \
+#     --podcast <slug> \
 #     --file /path/to/episode.mp3 \
 #     --title "Episode Title" \
 #     --description "<p>Show notes</p>" \
@@ -14,6 +15,7 @@
 #
 # Or with an existing audio URL (skip upload):
 #   ./scripts/podshelf-publish.sh \
+#     --podcast <slug> \
 #     --audio-url "https://example.com/episode.mp3" \
 #     --title "Episode Title" \
 #     --description "<p>Show notes</p>"
@@ -28,6 +30,7 @@ set -euo pipefail
 PODSHELF_URL="${PODSHELF_URL:-http://localhost:3000}"
 API_KEY="${PODSHELF_API_KEY:-}"
 
+PODCAST=""
 FILE=""
 AUDIO_URL=""
 TITLE=""
@@ -40,6 +43,7 @@ STATUS="draft"
 # ── Parse args ────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --podcast)        PODCAST="$2"; shift 2 ;;
     --file)           FILE="$2"; shift 2 ;;
     --audio-url)      AUDIO_URL="$2"; shift 2 ;;
     --title)          TITLE="$2"; shift 2 ;;
@@ -58,6 +62,11 @@ if [[ -z "$API_KEY" ]]; then
   exit 1
 fi
 
+if [[ -z "$PODCAST" ]]; then
+  echo "Error: --podcast <slug> is required." >&2
+  exit 1
+fi
+
 if [[ -z "$TITLE" ]]; then
   echo "Error: --title is required." >&2
   exit 1
@@ -67,6 +76,8 @@ if [[ -z "$FILE" && -z "$AUDIO_URL" ]]; then
   echo "Error: Either --file or --audio-url is required." >&2
   exit 1
 fi
+
+PODCAST_BASE="${PODSHELF_URL}/api/podcasts/${PODCAST}"
 
 # ── Step 1: Upload audio (if --file provided) ────────────────────────
 AUDIO_SIZE=""
@@ -79,7 +90,7 @@ if [[ -n "$FILE" ]]; then
   fi
 
   echo "Uploading: $FILE"
-  UPLOAD_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "${PODSHELF_URL}/api/upload" \
+  UPLOAD_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "${PODCAST_BASE}/upload" \
     -H "X-Api-Key: ${API_KEY}" \
     -F "file=@${FILE}")
 
@@ -118,7 +129,6 @@ fi
 # ── Step 3: Create episode ────────────────────────────────────────────
 echo "Creating episode: $TITLE"
 
-# Build JSON payload
 JSON=$(jq -n \
   --arg title "$TITLE" \
   --arg description "$DESCRIPTION" \
@@ -142,7 +152,7 @@ JSON=$(jq -n \
   + (if $audio_size != "" then {audio_size_bytes: ($audio_size | tonumber)} else {} end)
   ')
 
-CREATE_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "${PODSHELF_URL}/api/episodes" \
+CREATE_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "${PODCAST_BASE}/episodes" \
   -H "X-Api-Key: ${API_KEY}" \
   -H "Content-Type: application/json" \
   -d "$JSON")
@@ -163,6 +173,6 @@ echo "Episode created successfully!"
 echo "  ID:     $EPISODE_ID"
 echo "  Slug:   $EPISODE_SLUG"
 echo "  Status: $STATUS"
-echo "  Admin:  ${PODSHELF_URL}/admin/episodes/${EPISODE_ID}"
+echo "  Admin:  ${PODSHELF_URL}/admin/${PODCAST}/episodes/${EPISODE_ID}"
 echo ""
 echo "$CREATE_BODY" | jq .

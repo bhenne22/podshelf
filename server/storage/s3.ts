@@ -1,35 +1,58 @@
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3'
+import { S3Client, PutObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3'
+import type { S3Config } from '../utils/storage-config'
 
-let _s3Client: S3Client | null = null
+export interface S3ListEntry {
+  key: string
+  size: number
+  modifiedAt: string | null
+}
 
-function getS3Client(): S3Client {
-  if (_s3Client) return _s3Client
+export interface S3TestResult {
+  ok: boolean
+  bucket: string
+  totalEntries: number
+  entries: S3ListEntry[]
+}
 
-  const region = process.env.S3_REGION || 'us-east-1'
-  const accessKeyId = process.env.S3_ACCESS_KEY_ID
-  const secretAccessKey = process.env.S3_SECRET_ACCESS_KEY
-  const endpoint = process.env.S3_ENDPOINT
+function buildClient(config: S3Config): S3Client {
+  const clientConfig: ConstructorParameters<typeof S3Client>[0] = {
+    region: config.region || 'us-east-1',
+    credentials: { accessKeyId: config.accessKeyId, secretAccessKey: config.secretAccessKey },
+  }
+  if (config.endpoint) {
+    clientConfig.endpoint = config.endpoint
+    clientConfig.forcePathStyle = true
+  }
+  return new S3Client(clientConfig)
+}
 
-  if (!accessKeyId || !secretAccessKey) {
-    throw new Error('S3 credentials incomplete. Required: S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY')
+/**
+ * Connects to S3 with the given credentials and lists the first N objects
+ * in the bucket — used to validate credentials and bucket reachability.
+ */
+export async function testS3Connection(config: S3Config, limit = 10): Promise<S3TestResult> {
+  if (!config.accessKeyId || !config.secretAccessKey || !config.bucketName) {
+    throw new Error('S3 test requires accessKeyId, secretAccessKey, and bucketName')
   }
 
-  const config: ConstructorParameters<typeof S3Client>[0] = {
-    region,
-    credentials: {
-      accessKeyId,
-      secretAccessKey,
-    },
-  }
+  const client = buildClient(config)
+  const result = await client.send(new ListObjectsV2Command({
+    Bucket: config.bucketName,
+    MaxKeys: limit,
+  }))
 
-  // Support Backblaze B2 and other S3-compatible endpoints
-  if (endpoint) {
-    config.endpoint = endpoint
-    config.forcePathStyle = true
-  }
+  const entries: S3ListEntry[] = (result.Contents || []).map((o) => ({
+    key: o.Key || '',
+    size: o.Size || 0,
+    modifiedAt: o.LastModified ? o.LastModified.toISOString() : null,
+  }))
 
-  _s3Client = new S3Client(config)
-  return _s3Client
+  return {
+    ok: true,
+    bucket: config.bucketName,
+    totalEntries: result.KeyCount || entries.length,
+    entries,
+  }
 }
 
 /**
@@ -39,30 +62,22 @@ function getS3Client(): S3Client {
 export async function uploadToS3(
   buffer: Buffer,
   filename: string,
-  contentType: string = 'application/octet-stream'
+  contentType: string,
+  config: S3Config,
 ): Promise<string> {
-  const bucketName = process.env.S3_BUCKET_NAME
-  const publicUrlBase = process.env.S3_PUBLIC_URL_BASE
-
-  if (!bucketName || !publicUrlBase) {
-    throw new Error(
-      'S3 configuration incomplete. Required: S3_BUCKET_NAME, S3_PUBLIC_URL_BASE'
-    )
+  if (!config.accessKeyId || !config.secretAccessKey || !config.bucketName || !config.publicUrlBase) {
+    throw new Error('S3 configuration incomplete: accessKeyId, secretAccessKey, bucketName, publicUrlBase are required')
   }
 
-  const client = getS3Client()
+  const client = buildClient(config)
 
-  const command = new PutObjectCommand({
-    Bucket: bucketName,
+  await client.send(new PutObjectCommand({
+    Bucket: config.bucketName,
     Key: filename,
     Body: buffer,
     ContentType: contentType,
-    // Make publicly readable
     ACL: 'public-read',
-  })
+  }))
 
-  await client.send(command)
-
-  const publicUrl = `${publicUrlBase.replace(/\/$/, '')}/${filename}`
-  return publicUrl
+  return `${config.publicUrlBase.replace(/\/$/, '')}/${filename}`
 }
