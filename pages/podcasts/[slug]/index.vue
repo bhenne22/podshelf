@@ -179,8 +179,9 @@ h1 { margin: 0; font-size: 1.5rem; color: #1a202c; }
 .row {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 0.75rem;
+  gap: 1rem;
   margin-top: 1.25rem;
+  margin-bottom: 1rem;
 }
 @media (max-width: 700px) { .row { grid-template-columns: 1fr; } }
 
