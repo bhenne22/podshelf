@@ -10,7 +10,11 @@
  */
 export default defineNuxtRouteMiddleware(async () => {
   try {
-    await $fetch('/api/me')
+    // useRequestHeaders forwards the inbound request's cookie during SSR;
+    // on the client it returns {} (browser fetch sends cookies natively).
+    // Without this, $fetch('/api/me') during SSR has no session and 401s
+    // even when the user is logged in.
+    await $fetch('/api/me', { headers: useRequestHeaders(['cookie']) })
   } catch (err: unknown) {
     const e = err as { statusCode?: number; response?: { status?: number } }
     const status = e?.statusCode ?? e?.response?.status

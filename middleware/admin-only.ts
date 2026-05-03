@@ -8,7 +8,13 @@
  */
 export default defineNuxtRouteMiddleware(async () => {
   try {
-    const me = await $fetch<{ is_admin: boolean }>('/api/me')
+    // useRequestHeaders forwards the inbound request's cookie during SSR;
+    // on the client it returns {} (browser fetch sends cookies natively).
+    // Without this, $fetch('/api/me') during SSR has no session and 401s
+    // even when the user is logged in.
+    const me = await $fetch<{ is_admin: boolean }>('/api/me', {
+      headers: useRequestHeaders(['cookie']),
+    })
     if (!me?.is_admin) {
       return navigateTo('/')
     }
