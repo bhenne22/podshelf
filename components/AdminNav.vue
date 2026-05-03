@@ -146,4 +146,42 @@ async function logout() {
   background: #fff5f5;
   color: #c53030;
 }
+
+@media (max-width: 720px) {
+  .admin-nav {
+    flex-direction: column;
+    align-items: stretch;
+    height: auto;
+    gap: 0;
+    padding: 0.5rem 0.75rem 0;
+    /* Sticky still works in column layout — no override needed. */
+  }
+  .nav-brand {
+    padding: 0.25rem 0 0.5rem;
+  }
+  .nav-links {
+    /* Horizontal scroll keeps every option reachable without a hamburger. */
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    flex-wrap: nowrap;
+    margin: 0 -0.75rem; /* edge-to-edge scroll */
+    padding: 0 0.75rem 0.5rem;
+    border-top: 1px solid #f0f4f8;
+    padding-top: 0.5rem;
+  }
+  .nav-links::-webkit-scrollbar { height: 4px; }
+  .nav-links::-webkit-scrollbar-thumb { background: #cbd5e0; border-radius: 2px; }
+  .nav-links li { flex-shrink: 0; }
+  .nav-links a, .logout-btn {
+    padding: 0.4rem 0.7rem;
+    font-size: 0.85rem;
+    white-space: nowrap;
+  }
+  .divider {
+    height: 16px;
+    margin: 0 0.25rem;
+  }
+}
 </style>

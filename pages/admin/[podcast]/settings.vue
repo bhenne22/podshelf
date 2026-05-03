@@ -579,6 +579,36 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
 .modal p { color: #4a5568; font-size: 0.9rem; margin: 0 0 1.5rem; }
 .modal-actions { display: flex; gap: 0.75rem; justify-content: flex-end; }
 
+@media (max-width: 720px) {
+  .container { padding: 1rem 0.75rem; }
+  .form-section { padding: 1rem; }
+  .input-with-action {
+    flex-wrap: wrap;
+  }
+  .input-with-action input { min-width: 0; flex: 1 1 100%; }
+  .input-with-action .btn-upload { flex: 1; justify-content: center; }
+  .artwork-preview {
+    flex-wrap: wrap;
+  }
+  .artwork-meta { flex-basis: 100%; order: 3; }
+  .dz-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.875rem;
+  }
+  .dz-row .btn-danger,
+  .dz-row .btn-restore {
+    align-self: stretch;
+  }
+  .modal {
+    padding: 1.25rem;
+    max-height: 86vh;
+    overflow-y: auto;
+  }
+  .modal-actions { flex-direction: column-reverse; }
+  .modal-actions button { width: 100%; }
+}
+
 .success-msg {
   background: #f0fff4;
   border: 1px solid #9ae6b4;

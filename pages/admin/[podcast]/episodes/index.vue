@@ -65,7 +65,7 @@
         <button type="button" class="btn-secondary" @click="clearFilters">Clear filters</button>
       </div>
 
-      <table v-else-if="!loading && !error" class="episodes-table">
+      <div v-else-if="!loading && !error" class="table-wrap"><table class="episodes-table">
         <thead>
           <tr>
             <th scope="col" title="Overall episode # — chronological index across all published episodes">Overall</th>
@@ -84,7 +84,7 @@
               <span v-else class="ep-num draft">—</span>
             </td>
             <td class="col-num">
-              <span v-if="ep.season_number" class="ep-num season">S{{ ep.season_number }}</span>
+              <span v-if="ep.season_number" class="ep-num season">{{ ep.season_number }}</span>
               <span v-else class="ep-num draft">—</span>
             </td>
             <td class="col-num">
@@ -108,7 +108,7 @@
             </td>
           </tr>
         </tbody>
-      </table>
+      </table></div>
     </div>
 
     <!-- Delete confirmation modal -->
@@ -581,5 +581,45 @@ h1 {
 .btn-danger:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.table-wrap {
+  /* Horizontal scroll on small viewports — preserves all columns. */
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-radius: 10px;
+}
+
+@media (max-width: 720px) {
+  .container { padding: 1rem 0.75rem; }
+  .page-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+  }
+  .page-header .btn-primary {
+    text-align: center;
+  }
+  .filter-bar {
+    padding: 0.625rem 0.75rem;
+    gap: 0.625rem 0.75rem;
+  }
+  .filter-summary {
+    margin-left: 0;
+    width: 100%;
+    justify-content: space-between;
+  }
+  .episodes-table th,
+  .episodes-table td {
+    padding: 0.5rem 0.625rem;
+    font-size: 0.85rem;
+  }
+  .col-num { min-width: 56px; width: auto; }
+  .col-status { min-width: 90px; width: auto; }
+  .col-date { min-width: 110px; width: auto; }
+  .col-actions { min-width: 130px; width: auto; }
+  .episodes-table { min-width: 720px; /* force horizontal scroll instead of cramming */ }
+  .modal { padding: 1.25rem; }
 }
 </style>

@@ -253,4 +253,18 @@ function formatSize(bytes: number): string {
   cursor: pointer;
 }
 .ap-btn-secondary:hover { background: #f7fafc; }
+
+@media (max-width: 720px) {
+  .ap-modal {
+    width: 100vw;
+    max-height: 100vh;
+    height: 100vh;
+    border-radius: 0;
+    padding: 0.875rem 0.875rem 0.75rem;
+  }
+  .ap-grid {
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 0.625rem;
+  }
+}
 </style>

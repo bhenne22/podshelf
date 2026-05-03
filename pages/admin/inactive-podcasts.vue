@@ -182,4 +182,23 @@ h1 { margin: 0 0 0.25rem; font-size: 1.5rem; color: #1a202c; }
 }
 .btn-danger:hover:not(:disabled) { background: #c53030; }
 button:disabled { opacity: 0.6; cursor: not-allowed; }
+
+@media (max-width: 720px) {
+  .container { padding: 1rem 0.75rem; }
+  .podcast-list li {
+    flex-wrap: wrap;
+    padding: 0.75rem;
+    gap: 0.75rem;
+  }
+  .podcast-art { width: 56px; height: 56px; }
+  .podcast-info { flex-basis: calc(100% - 56px - 0.75rem); min-width: 0; }
+  .podcast-desc { white-space: normal; }
+  .actions {
+    flex: 1 1 100%;
+    flex-direction: column-reverse;
+    gap: 0.5rem;
+  }
+  .actions .btn-restore,
+  .actions .btn-danger { width: 100%; text-align: center; }
+}
 </style>

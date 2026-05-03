@@ -35,7 +35,7 @@
         <p>No files in this directory yet.</p>
       </div>
 
-      <table v-else class="files-table">
+      <div v-else class="table-wrap"><table class="files-table">
         <thead>
           <tr>
             <th>Name</th>
@@ -66,7 +66,7 @@
             </td>
           </tr>
         </tbody>
-      </table>
+      </table></div>
     </div>
 
     <!-- Delete confirmation -->
@@ -576,4 +576,47 @@ h1 { margin: 0 0 0.25rem; font-size: 1.5rem; color: #1a202c; }
 }
 .btn-danger:hover:not(:disabled) { background: #c53030; }
 button:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-radius: 10px;
+}
+
+@media (max-width: 720px) {
+  .container { padding: 1rem 0.75rem; }
+  .tabs { flex-wrap: wrap; }
+  .refresh-btn { margin-left: 0; }
+  .upload-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+  }
+  .dir-info { font-size: 0.75rem; }
+  .files-table { min-width: 720px; }
+  .files-table th,
+  .files-table td {
+    padding: 0.5rem 0.625rem;
+    font-size: 0.825rem;
+  }
+  .col-name { gap: 0.5rem; }
+  .thumb { width: 32px; height: 32px; }
+  .action-btn {
+    margin-left: 0.2rem;
+    padding: 0.25rem 0.45rem;
+    font-size: 0.72rem;
+  }
+  .modal {
+    padding: 1.25rem;
+    max-height: 86vh;
+    overflow-y: auto;
+  }
+  .modal-actions {
+    flex-direction: column-reverse;
+  }
+  .modal-actions button {
+    width: 100%;
+  }
+}
 </style>

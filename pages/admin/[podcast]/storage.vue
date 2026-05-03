@@ -531,4 +531,20 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
   margin-right: 0.5rem;
 }
 .btn-secondary:hover:not(:disabled) { background: #f7fafc; }
+
+@media (max-width: 720px) {
+  .container { padding: 1rem 0.75rem; }
+  .form-section { padding: 1rem; }
+  .form-row { flex-direction: column; gap: 0; }
+  .form-row .form-group { flex: 1 1 auto; }
+  .radio-row { flex-wrap: wrap; gap: 0.625rem 1rem; }
+  .form-actions {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    justify-content: stretch;
+  }
+  .form-actions .btn-secondary,
+  .form-actions .btn-primary { flex: 1 1 auto; min-width: 0; }
+  .form-actions .save-status { flex-basis: 100%; order: -1; }
+}
 </style>

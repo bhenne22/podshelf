@@ -830,8 +830,29 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
   margin-bottom: 1rem;
 }
 
-@media (max-width: 600px) {
-  .form-row { flex-direction: column; }
+@media (max-width: 720px) {
+  .container { padding: 1rem 0.75rem; }
+  .form-section { padding: 1rem; }
+  .form-row { flex-direction: column; gap: 0; }
   .preview-grid { grid-template-columns: 1fr; }
+  .input-with-action { flex-wrap: wrap; }
+  .input-with-action input { flex: 1 1 100%; min-width: 0; }
+  .artwork-preview { flex-wrap: wrap; }
+  .artwork-meta { flex-basis: 100%; order: 3; }
+  .upload-and-pick { flex-direction: column; align-items: stretch; }
+  .upload-and-pick .file-input { width: 100%; min-width: 0; }
+  .upload-and-pick .btn-secondary { text-align: center; }
+  .form-actions {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .form-actions .btn-primary,
+  .form-actions .btn-publish,
+  .form-actions .btn-secondary { flex: 1 1 auto; text-align: center; }
+  .form-actions .save-status {
+    flex-basis: 100%;
+    margin-right: 0;
+    text-align: center;
+  }
 }
 </style>

@@ -264,4 +264,29 @@ h1 {
   font-family: monospace;
   color: #4c51bf;
 }
+
+@media (max-width: 720px) {
+  .container { padding: 1rem 0.75rem; }
+  .page-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+  }
+  .page-header .btn-primary { text-align: center; }
+  .podcast-list li { flex-wrap: wrap; }
+  .podcast-card {
+    flex: 1 1 100%;
+    padding: 0.75rem;
+    gap: 0.75rem;
+  }
+  .podcast-art { width: 56px; height: 56px; }
+  .podcast-title { font-size: 1rem; }
+  .podcast-desc { white-space: normal; }
+  .restore-btn {
+    flex: 1 1 100%;
+    margin-left: 0;
+    margin-top: 0.5rem;
+    text-align: center;
+  }
+}
 </style>
