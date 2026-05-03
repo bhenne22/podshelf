@@ -1,7 +1,7 @@
 <template>
   <div class="login-page">
     <div class="login-card">
-      <h1>Podshelf Admin</h1>
+      <h1>Podshelf</h1>
       <p v-if="error" class="error">{{ error }}</p>
       <form @submit.prevent="login">
         <label for="email">Email</label>
@@ -80,7 +80,9 @@ async function login() {
 h1 {
   margin: 0 0 1.5rem;
   font-size: 1.5rem;
-  color: #1a202c;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #667eea;
 }
 
 label {

@@ -122,7 +122,7 @@
             <label for="audio_tracking_prefix">Audio Tracking Prefix</label>
             <input id="audio_tracking_prefix" v-model="form.audio_tracking_prefix" type="text"
               placeholder="https://media.blubrry.com/1467354/" />
-            <p class="hint">Prepended to episode audio URLs in the RSS feed only (e.g. Blubrry, Chartable, Podtrac). To use Podshelf's built-in tracking, set this to <code>{{ siteUrl }}/track/</code>.</p>
+            <p class="hint">Prepended to episode audio URLs in the RSS feed only (e.g. Blubrry, Chartable, Podtrac).</p>
           </div>
         </div>
 
@@ -190,8 +190,6 @@ definePageMeta({ middleware: 'auth' })
 
 const route = useRoute()
 const podcastSlug = route.params.slug as string
-const config = useRuntimeConfig()
-const siteUrl = config.public.siteUrl || 'http://localhost:3000'
 
 interface PodcastRow {
   title: string

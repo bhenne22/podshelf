@@ -13,7 +13,6 @@
     <ul class="nav-links" :class="{ open: menuOpen }">
       <template v-if="podcastSlug">
         <li><NuxtLink :to="`/podcasts/${podcastSlug}/episodes`" active-class="active">Episodes</NuxtLink></li>
-        <li><NuxtLink :to="`/podcasts/${podcastSlug}/stats`" active-class="active">Analytics</NuxtLink></li>
         <li><NuxtLink :to="`/podcasts/${podcastSlug}/settings`" active-class="active">Settings</NuxtLink></li>
         <li><NuxtLink :to="`/podcasts/${podcastSlug}/storage`" active-class="active">Storage</NuxtLink></li>
         <li><NuxtLink :to="`/podcasts/${podcastSlug}/files`" active-class="active">Files</NuxtLink></li>
