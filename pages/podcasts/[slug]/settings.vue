@@ -122,7 +122,7 @@
             <label for="audio_tracking_prefix">Audio Tracking Prefix</label>
             <input id="audio_tracking_prefix" v-model="form.audio_tracking_prefix" type="text"
               placeholder="https://media.blubrry.com/1467354/" />
-            <p class="hint">Prepended to episode audio URLs in the RSS feed only (e.g. Blubrry, Chartable, Podtrac).</p>
+            <p class="hint">Prepended to episode audio URLs in the RSS feed only (e.g. Blubrry, Podtrac).</p>
           </div>
         </div>
 
