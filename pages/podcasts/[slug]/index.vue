@@ -25,7 +25,7 @@
           </NuxtLink>
         </div>
 
-        <div class="cards">
+        <div v-if="usingPodshelfAnalytics" class="cards">
           <NuxtLink :to="`/podcasts/${podcastSlug}/stats`" class="card">
             <div class="card-value">{{ data.downloads.total.toLocaleString() }}</div>
             <div class="card-label">Total Downloads</div>
@@ -94,7 +94,7 @@ definePageMeta({ middleware: 'auth' })
 const route = useRoute()
 const podcastSlug = route.params.slug as string
 
-interface Podcast { title: string }
+interface Podcast { title: string; audio_tracking_prefix: string | null }
 interface DashboardData {
   counts: { total: number; published: number; drafts: number }
   latest_published: { id: number; title: string; slug: string; episode_number: number | null; season_number: number | null; published_at: string } | null
@@ -104,6 +104,12 @@ interface DashboardData {
 
 const { data: podcast } = await useFetch<Podcast>(`/api/podcasts/${podcastSlug}`)
 const { data, pending } = await useFetch<DashboardData>(`/api/podcasts/${podcastSlug}/dashboard`)
+
+// The download cards only make sense if the podcast is routing audio
+// through Podshelf's /track/ redirect — otherwise they'd always be 0.
+const usingPodshelfAnalytics = computed(() =>
+  (podcast.value?.audio_tracking_prefix || '').includes('/track/'),
+)
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
