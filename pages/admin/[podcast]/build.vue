@@ -337,11 +337,15 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
     padding: 0.625rem 0.75rem;
     min-height: 44px;
   }
-  /* Pin native checkbox size — balloons at larger label fonts otherwise. */
+  /* Pin native checkbox size — balloons at larger label fonts otherwise.
+     Inline-block + vertical-align keeps it on the same line as its label. */
   input[type="checkbox"] {
+    display: inline-block;
     width: 18px;
     height: 18px;
+    margin: 0;
     flex-shrink: 0;
+    vertical-align: middle;
   }
   .form-actions {
     flex-wrap: wrap;

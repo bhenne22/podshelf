@@ -320,11 +320,15 @@ h1 { margin: 0; font-size: 1.5rem; color: #1a202c; }
     min-height: 44px;
     font-size: 1rem; /* prevents iOS zoom-on-focus */
   }
-  /* Pin native checkbox size — balloons at larger label fonts otherwise. */
+  /* Pin native checkbox size — balloons at larger label fonts otherwise.
+     Inline-block + vertical-align keeps it on the same line as its label. */
   .form-group input[type="checkbox"] {
+    display: inline-block;
     width: 18px;
     height: 18px;
+    margin: 0;
     flex-shrink: 0;
+    vertical-align: middle;
   }
 }
 

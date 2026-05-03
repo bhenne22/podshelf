@@ -552,14 +552,18 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
   .radio-row { flex-wrap: wrap; gap: 0.625rem 1rem; }
   .radio-row .radio { min-height: 32px; display: flex; align-items: center; gap: 0.4rem; }
   /* Pin native radio/checkbox size — they balloon at the larger label
-     font otherwise. */
+     font otherwise. Explicit inline-block keeps them on the same line as
+     their label text on mobile. */
   .radio-row input[type="radio"],
   input[type="checkbox"] {
+    display: inline-block;
     width: 18px;
     height: 18px;
     min-height: 0;
     padding: 0;
+    margin: 0;
     flex-shrink: 0;
+    vertical-align: middle;
   }
   .form-actions {
     flex-wrap: wrap;

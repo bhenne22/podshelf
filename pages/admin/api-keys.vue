@@ -666,14 +666,22 @@ h1 { margin: 0; font-size: 1.5rem; color: #1a202c; }
     min-height: 44px;
   }
   /* Pin native checkbox/radio size — on iOS/Android they balloon at the
-     larger label font without an explicit dimension. */
+     larger label font without an explicit dimension. The desktop
+     `.form-group input` rule also sets display:block / width:100%, which
+     forces a line break on mobile; explicit inline-block + vertical-align
+     keeps the control inline with its label text. */
   .form-group input[type="checkbox"],
   .form-group input[type="radio"] {
+    display: inline-block;
     width: 18px;
     height: 18px;
     min-height: 0;
     padding: 0;
+    margin: 0;
+    border: 0;
+    background: none;
     flex-shrink: 0;
+    vertical-align: middle;
   }
   .modal {
     padding: 1.25rem;
