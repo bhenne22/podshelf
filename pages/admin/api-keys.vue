@@ -683,6 +683,10 @@ h1 { margin: 0; font-size: 1.5rem; color: #1a202c; }
     flex-shrink: 0;
     vertical-align: middle;
   }
+  /* Bump the input/label gap so the podcast name doesn't sit flush against
+     the checkbox in the restrict-scope list. */
+  .checkbox-row,
+  .radio { gap: 0.65rem; }
   .modal {
     padding: 1.25rem;
     max-height: 86vh;
