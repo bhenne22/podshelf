@@ -320,6 +320,12 @@ h1 { margin: 0; font-size: 1.5rem; color: #1a202c; }
     min-height: 44px;
     font-size: 1rem; /* prevents iOS zoom-on-focus */
   }
+  /* Pin native checkbox size — balloons at larger label fonts otherwise. */
+  .form-group input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+  }
 }
 
 @media (max-width: 520px) {

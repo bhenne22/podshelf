@@ -622,6 +622,12 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
     width: 100%;
     min-height: 44px;
   }
+  /* Pin native checkbox size — balloons at larger label fonts otherwise. */
+  input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+  }
 }
 
 @media (max-width: 520px) {

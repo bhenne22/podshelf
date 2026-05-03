@@ -551,6 +551,16 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
   .form-row .form-group { flex: 1 1 auto; }
   .radio-row { flex-wrap: wrap; gap: 0.625rem 1rem; }
   .radio-row .radio { min-height: 32px; display: flex; align-items: center; gap: 0.4rem; }
+  /* Pin native radio/checkbox size — they balloon at the larger label
+     font otherwise. */
+  .radio-row input[type="radio"],
+  input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    min-height: 0;
+    padding: 0;
+    flex-shrink: 0;
+  }
   .form-actions {
     flex-wrap: wrap;
     gap: 0.5rem;

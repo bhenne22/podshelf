@@ -325,4 +325,28 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
   color: #c53030; padding: 0.875rem 1rem;
   border-radius: 8px; margin-bottom: 1rem; font-size: 0.9rem;
 }
+
+@media (max-width: 720px) {
+  .container { padding: 1rem 0.75rem; }
+  .form-section { padding: 1rem; }
+  .form-row { flex-direction: column; gap: 0; }
+  /* 16px input font prevents iOS Safari from zooming on focus. */
+  input[type="text"],
+  input[type="password"] {
+    font-size: 16px;
+    padding: 0.625rem 0.75rem;
+    min-height: 44px;
+  }
+  /* Pin native checkbox size — balloons at larger label fonts otherwise. */
+  input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+  }
+  .form-actions {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .form-actions button { flex: 1 1 auto; min-height: 44px; }
+}
 </style>

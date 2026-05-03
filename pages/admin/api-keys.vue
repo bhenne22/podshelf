@@ -665,6 +665,16 @@ h1 { margin: 0; font-size: 1.5rem; color: #1a202c; }
     padding: 0.625rem 0.75rem;
     min-height: 44px;
   }
+  /* Pin native checkbox/radio size — on iOS/Android they balloon at the
+     larger label font without an explicit dimension. */
+  .form-group input[type="checkbox"],
+  .form-group input[type="radio"] {
+    width: 18px;
+    height: 18px;
+    min-height: 0;
+    padding: 0;
+    flex-shrink: 0;
+  }
   .modal {
     padding: 1.25rem;
     max-height: 86vh;
