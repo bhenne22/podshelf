@@ -1,5 +1,5 @@
 <template>
-  <nav class="admin-nav">
+  <nav class="admin-nav" :class="{ 'menu-open': menuOpen }">
     <div class="nav-brand">
       <NuxtLink to="/admin">Podshelf</NuxtLink>
       <NuxtLink
@@ -10,7 +10,7 @@
         / {{ podcast?.title || podcastSlug }}
       </NuxtLink>
     </div>
-    <ul class="nav-links">
+    <ul class="nav-links" :class="{ open: menuOpen }">
       <template v-if="podcastSlug">
         <li><NuxtLink :to="`/admin/${podcastSlug}/episodes`" active-class="active">Episodes</NuxtLink></li>
         <li><NuxtLink :to="`/admin/${podcastSlug}/stats`" active-class="active">Analytics</NuxtLink></li>
@@ -31,6 +31,15 @@
       <li class="divider" />
       <li><button class="logout-btn" @click="logout">Sign out</button></li>
     </ul>
+    <button
+      class="hamburger"
+      type="button"
+      :aria-expanded="menuOpen"
+      aria-label="Toggle menu"
+      @click="menuOpen = !menuOpen"
+    >
+      <span></span><span></span><span></span>
+    </button>
   </nav>
 </template>
 
@@ -52,6 +61,20 @@ if (props.podcastSlug) {
     podcast.value = null
   }
 }
+
+const menuOpen = ref(false)
+const route = useRoute()
+
+// Auto-close on navigation so the drawer doesn't linger after a tap.
+watch(() => route.fullPath, () => {
+  menuOpen.value = false
+})
+
+function onKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape' && menuOpen.value) menuOpen.value = false
+}
+onMounted(() => window.addEventListener('keydown', onKeydown))
+onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 
 async function logout() {
   await $fetch('/api/auth/logout', { method: 'POST' })
@@ -77,6 +100,7 @@ async function logout() {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  min-width: 0;
 }
 
 .nav-brand a {
@@ -85,12 +109,16 @@ async function logout() {
   color: #667eea;
   text-decoration: none;
   letter-spacing: -0.02em;
+  white-space: nowrap;
 }
 
 .nav-podcast-name {
   font-size: 0.95rem;
   color: #4a5568;
   text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .nav-podcast-name:hover { color: #667eea; }
 
@@ -147,41 +175,85 @@ async function logout() {
   color: #c53030;
 }
 
+.hamburger {
+  display: none;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 0;
+  width: 44px;
+  height: 44px;
+  margin-left: auto;
+  cursor: pointer;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.hamburger span {
+  width: 18px;
+  height: 2px;
+  background: #4a5568;
+  border-radius: 2px;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+.menu-open .hamburger span:nth-child(1) { transform: translateY(6px) rotate(45deg); }
+.menu-open .hamburger span:nth-child(2) { opacity: 0; }
+.menu-open .hamburger span:nth-child(3) { transform: translateY(-6px) rotate(-45deg); }
+
 @media (max-width: 720px) {
   .admin-nav {
+    padding: 0 0.75rem;
+    gap: 0.75rem;
+  }
+  .hamburger { display: flex; }
+
+  .nav-links {
+    /* Drawer slides down beneath the bar. Hidden by default; max-height
+       is animated so the menu doesn't pop. Sits absolute so it doesn't
+       reflow the page below. */
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 100%;
     flex-direction: column;
     align-items: stretch;
-    height: auto;
+    padding: 0;
     gap: 0;
-    padding: 0.5rem 0.75rem 0;
-    /* Sticky still works in column layout — no override needed. */
+    background: white;
+    border-bottom: 1px solid #e2e8f0;
+    box-shadow: 0 6px 12px -8px rgba(0, 0, 0, 0.15);
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.2s ease;
   }
-  .nav-brand {
-    padding: 0.25rem 0 0.5rem;
+  .nav-links.open {
+    max-height: calc(100vh - 56px);
+    overflow-y: auto;
   }
-  .nav-links {
-    /* Horizontal scroll keeps every option reachable without a hamburger. */
-    overflow-x: auto;
-    overflow-y: hidden;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: thin;
-    flex-wrap: nowrap;
-    margin: 0 -0.75rem; /* edge-to-edge scroll */
-    padding: 0 0.75rem 0.5rem;
-    border-top: 1px solid #f0f4f8;
-    padding-top: 0.5rem;
-  }
-  .nav-links::-webkit-scrollbar { height: 4px; }
-  .nav-links::-webkit-scrollbar-thumb { background: #cbd5e0; border-radius: 2px; }
-  .nav-links li { flex-shrink: 0; }
+  .nav-links li { width: 100%; }
   .nav-links a, .logout-btn {
-    padding: 0.4rem 0.7rem;
-    font-size: 0.85rem;
-    white-space: nowrap;
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    text-align: left;
+    padding: 0.875rem 1.25rem;
+    font-size: 0.95rem;
+    border-radius: 0;
+    min-height: 44px;
+  }
+  .nav-links a:hover { background: #f7fafc; }
+  .nav-links a.active {
+    background: #ebf4ff;
+    border-left: 3px solid #4c51bf;
+    padding-left: calc(1.25rem - 3px);
   }
   .divider {
-    height: 16px;
-    margin: 0 0.25rem;
+    width: auto;
+    height: 1px;
+    background: #f0f4f8;
+    margin: 0.25rem 0;
   }
 }
 </style>

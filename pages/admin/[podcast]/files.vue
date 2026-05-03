@@ -587,12 +587,14 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
 @media (max-width: 720px) {
   .container { padding: 1rem 0.75rem; }
   .tabs { flex-wrap: wrap; }
-  .refresh-btn { margin-left: 0; }
+  .tab { min-height: 44px; padding: 0.6rem 1rem; }
+  .refresh-btn { margin-left: 0; min-height: 44px; padding: 0.6rem 1rem; }
   .upload-row {
     flex-direction: column;
     align-items: stretch;
     gap: 0.5rem;
   }
+  .btn-upload { min-height: 44px; padding: 0.6rem 1rem; justify-content: center; }
   .dir-info { font-size: 0.75rem; }
   .files-table { min-width: 720px; }
   .files-table th,
@@ -603,9 +605,10 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
   .col-name { gap: 0.5rem; }
   .thumb { width: 32px; height: 32px; }
   .action-btn {
-    margin-left: 0.2rem;
-    padding: 0.25rem 0.45rem;
-    font-size: 0.72rem;
+    margin-left: 0.25rem;
+    padding: 0.55rem 0.75rem;
+    font-size: 0.8rem;
+    min-height: 40px;
   }
   .modal {
     padding: 1.25rem;
@@ -617,6 +620,78 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
   }
   .modal-actions button {
     width: 100%;
+    min-height: 44px;
+  }
+}
+
+@media (max-width: 520px) {
+  /* Files: card layout for the file table at very narrow widths.
+     Same approach as the episodes table — preserves all info but stacks. */
+  .table-wrap { overflow-x: visible; border-radius: 0; }
+  .files-table {
+    display: block;
+    min-width: 0;
+    border: none;
+    background: transparent;
+    overflow: visible;
+  }
+  .files-table thead { display: none; }
+  .files-table tbody { display: block; }
+  .files-table tr {
+    display: flex;
+    flex-direction: column;
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    margin-bottom: 0.625rem;
+    padding: 0.875rem 1rem;
+  }
+  .files-table td {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.25rem 0;
+    border-bottom: none;
+    width: auto;
+    min-width: 0;
+    font-size: 0.85rem;
+  }
+  .col-name {
+    padding-bottom: 0.5rem;
+    margin-bottom: 0.5rem;
+    border-bottom: 1px solid #f0f4f8;
+    font-weight: 600;
+    word-break: break-all;
+  }
+  .col-size::before { content: "Size"; }
+  .col-modified::before { content: "Modified"; }
+  .col-status::before { content: "Status"; }
+  .col-size::before, .col-modified::before, .col-status::before {
+    color: #a0aec0;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 600;
+    width: 70px;
+    flex-shrink: 0;
+  }
+  .col-actions {
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    padding-top: 0.625rem;
+    margin-top: 0.5rem;
+    border-top: 1px solid #f0f4f8;
+    text-align: left;
+    width: auto;
+  }
+  .col-actions .action-btn {
+    flex: 1 1 calc(50% - 0.2rem);
+    min-width: 0;
+    margin-left: 0;
+    text-align: center;
+    padding: 0.55rem 0.4rem;
+    font-size: 0.8rem;
+    min-height: 40px;
   }
 }
 </style>

@@ -199,6 +199,11 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
     gap: 0.5rem;
   }
   .actions .btn-restore,
-  .actions .btn-danger { width: 100%; text-align: center; }
+  .actions .btn-danger {
+    width: 100%;
+    text-align: center;
+    min-height: 44px;
+    padding: 0.6rem 1rem;
+  }
 }
 </style>

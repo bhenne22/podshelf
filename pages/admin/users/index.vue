@@ -10,7 +10,7 @@
       <div v-if="errorMsg" class="error-msg">{{ errorMsg }}</div>
 
       <div v-if="pending" class="loading">Loading…</div>
-      <table v-else class="user-table">
+      <div v-else class="table-wrap"><table class="user-table">
         <thead>
           <tr>
             <th>Email</th>
@@ -21,17 +21,17 @@
         </thead>
         <tbody>
           <tr v-for="u in users" :key="u.id">
-            <td>{{ u.email }}</td>
-            <td>{{ u.is_admin ? 'Yes' : 'No' }}</td>
-            <td class="dim">{{ formatDate(u.created_at) }}</td>
-            <td>
+            <td class="col-email">{{ u.email }}</td>
+            <td class="col-admin" data-label="Admin">{{ u.is_admin ? 'Yes' : 'No' }}</td>
+            <td class="col-created dim" data-label="Created">{{ formatDate(u.created_at) }}</td>
+            <td class="col-actions">
               <button class="action-btn" @click="resetPassword(u)">Reset password</button>
               <button class="action-btn" @click="toggleAdmin(u)">{{ u.is_admin ? 'Demote' : 'Promote' }}</button>
               <button v-if="me && u.id !== me.id" class="action-btn danger" @click="confirmDelete(u)">Delete</button>
             </td>
           </tr>
         </tbody>
-      </table>
+      </table></div>
     </div>
 
     <!-- Create user modal -->
@@ -279,5 +279,117 @@ h1 { margin: 0; font-size: 1.5rem; color: #1a202c; }
   background: #fff5f5; border: 1px solid #fc8181;
   color: #c53030; padding: 0.875rem 1rem;
   border-radius: 8px; margin-bottom: 1rem; font-size: 0.9rem;
+}
+
+.table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-radius: 10px;
+}
+
+@media (max-width: 720px) {
+  .container { padding: 1rem 0.75rem; }
+  .page-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+  }
+  .page-header .btn-primary {
+    text-align: center;
+    min-height: 44px;
+    padding: 0.6rem 1rem;
+  }
+  .user-table { min-width: 640px; }
+  .user-table th,
+  .user-table td { padding: 0.5rem 0.625rem; font-size: 0.85rem; }
+  .action-btn { padding: 0.5rem 0.625rem; min-height: 38px; }
+  .modal {
+    padding: 1.25rem;
+    max-height: 86vh;
+    overflow-y: auto;
+  }
+  .modal-actions { flex-direction: column-reverse; }
+  .modal-actions button {
+    width: 100%;
+    min-height: 44px;
+  }
+  .form-group input[type="email"],
+  .form-group input[type="password"] {
+    padding: 0.625rem 0.75rem;
+    min-height: 44px;
+    font-size: 1rem; /* prevents iOS zoom-on-focus */
+  }
+}
+
+@media (max-width: 520px) {
+  /* Card layout for users — Email prominent, then admin/created, then actions row. */
+  .table-wrap { overflow-x: visible; border-radius: 0; }
+  .user-table {
+    display: block;
+    min-width: 0;
+    border: none;
+    background: transparent;
+    overflow: visible;
+  }
+  .user-table thead { display: none; }
+  .user-table tbody { display: block; }
+  .user-table tr {
+    display: flex;
+    flex-direction: column;
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    margin-bottom: 0.625rem;
+    padding: 0.875rem 1rem;
+  }
+  .user-table tr:last-child td { border-bottom: none; }
+  .user-table td {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.25rem 0;
+    border-bottom: none;
+    width: auto;
+    min-width: 0;
+    font-size: 0.85rem;
+  }
+  .user-table td[data-label]::before {
+    content: attr(data-label);
+    color: #a0aec0;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 600;
+    width: 64px;
+    flex-shrink: 0;
+  }
+  .col-email {
+    order: 1;
+    padding: 0 0 0.5rem;
+    margin-bottom: 0.5rem;
+    border-bottom: 1px solid #f0f4f8;
+    font-size: 1rem;
+    font-weight: 600;
+    word-break: break-all;
+  }
+  .col-admin { order: 2; }
+  .col-created { order: 3; }
+  .col-actions {
+    order: 4;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding-top: 0.625rem;
+    margin-top: 0.5rem;
+    border-top: 1px solid #f0f4f8;
+  }
+  .col-actions .action-btn {
+    width: 100%;
+    text-align: center;
+    padding: 0.625rem 0.75rem;
+    font-size: 0.85rem;
+    min-height: 40px;
+    margin-right: 0;
+  }
 }
 </style>

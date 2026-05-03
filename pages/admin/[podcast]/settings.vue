@@ -582,6 +582,18 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
 @media (max-width: 720px) {
   .container { padding: 1rem 0.75rem; }
   .form-section { padding: 1rem; }
+  /* 16px input font prevents iOS Safari from zooming on focus. */
+  input[type="text"],
+  input[type="url"],
+  input[type="email"],
+  select,
+  textarea {
+    font-size: 16px;
+    padding: 0.625rem 0.75rem;
+    min-height: 44px;
+  }
+  textarea { min-height: auto; }
+  .form-actions .btn-primary { min-height: 44px; }
   .input-with-action {
     flex-wrap: wrap;
   }

@@ -79,15 +79,15 @@
         </thead>
         <tbody>
           <tr v-for="ep in filteredEpisodes" :key="ep.id">
-            <td class="col-num">
+            <td class="col-num" data-label="Overall">
               <span v-if="overallNumber.get(ep.id)" class="ep-num overall">{{ overallNumber.get(ep.id) }}</span>
               <span v-else class="ep-num draft">—</span>
             </td>
-            <td class="col-num">
+            <td class="col-num" data-label="Season">
               <span v-if="ep.season_number" class="ep-num season">{{ ep.season_number }}</span>
               <span v-else class="ep-num draft">—</span>
             </td>
-            <td class="col-num">
+            <td class="col-num" data-label="Episode">
               <span v-if="ep.episode_number" class="ep-num">{{ ep.episode_number }}</span>
               <span v-else class="ep-num draft">—</span>
             </td>
@@ -99,7 +99,7 @@
             <td class="col-status">
               <span :class="['status-badge', ep.status]">{{ ep.status }}</span>
             </td>
-            <td class="col-date">
+            <td class="col-date" data-label="Published">
               {{ ep.published_at ? formatDate(ep.published_at) : '—' }}
             </td>
             <td class="col-actions">
@@ -600,16 +600,25 @@ h1 {
   }
   .page-header .btn-primary {
     text-align: center;
+    min-height: 44px;
+    padding: 0.6rem 1rem;
   }
   .filter-bar {
     padding: 0.625rem 0.75rem;
     gap: 0.625rem 0.75rem;
+  }
+  .filter-group select,
+  .filter-group input[type="date"] {
+    padding: 0.55rem 0.6rem;
+    font-size: 0.875rem;
+    min-height: 40px;
   }
   .filter-summary {
     margin-left: 0;
     width: 100%;
     justify-content: space-between;
   }
+  .filter-clear { padding: 0.4rem 0.5rem; min-height: 36px; }
   .episodes-table th,
   .episodes-table td {
     padding: 0.5rem 0.625rem;
@@ -618,8 +627,105 @@ h1 {
   .col-num { min-width: 56px; width: auto; }
   .col-status { min-width: 90px; width: auto; }
   .col-date { min-width: 110px; width: auto; }
-  .col-actions { min-width: 130px; width: auto; }
+  .col-actions { min-width: 160px; width: auto; }
+  .action-btn {
+    padding: 0.5rem 0.625rem;
+    font-size: 0.8rem;
+    min-height: 38px;
+  }
   .episodes-table { min-width: 720px; /* force horizontal scroll instead of cramming */ }
   .modal { padding: 1.25rem; }
+  .modal-actions button { min-height: 44px; }
+}
+
+@media (max-width: 520px) {
+  /* Card layout: rows become stacked cards. Order via flex-direction column
+     and `order` so the title sits on top regardless of HTML cell order. */
+  .table-wrap {
+    overflow-x: visible;
+    background: transparent;
+    border-radius: 0;
+  }
+  .episodes-table {
+    display: block;
+    min-width: 0;
+    border: none;
+    background: transparent;
+    overflow: visible;
+  }
+  .episodes-table thead { display: none; }
+  .episodes-table tbody { display: block; }
+  .episodes-table tr {
+    display: flex;
+    flex-direction: column;
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    margin-bottom: 0.625rem;
+    padding: 0.875rem 1rem;
+  }
+  .episodes-table tr:hover td { background: transparent; }
+  .episodes-table tr:last-child td { border-bottom: none; }
+  .episodes-table td {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.25rem 0;
+    border-bottom: none;
+    width: auto;
+    min-width: 0;
+    font-size: 0.85rem;
+  }
+  .episodes-table td[data-label]::before {
+    content: attr(data-label);
+    color: #a0aec0;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 600;
+    width: 64px;
+    flex-shrink: 0;
+  }
+  /* Title prominent at the top, no label, full-width. */
+  .col-title {
+    order: 1;
+    padding: 0 0 0.5rem;
+    margin-bottom: 0.5rem;
+    border-bottom: 1px solid #f0f4f8;
+  }
+  .col-title .ep-title { font-size: 1rem; font-weight: 600; }
+  .col-status { order: 2; }
+  .col-status::before {
+    content: "Status";
+    color: #a0aec0;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 600;
+    width: 64px;
+    flex-shrink: 0;
+  }
+  /* Numbers in HTML order: overall, season, episode. */
+  .col-num:nth-of-type(1) { order: 3; }
+  .col-num:nth-of-type(2) { order: 4; }
+  .col-num:nth-of-type(3) { order: 5; }
+  .col-date { order: 6; }
+  /* Actions row gets full-width buttons stacked. */
+  .col-actions {
+    order: 7;
+    flex-direction: row;
+    gap: 0.5rem;
+    padding-top: 0.625rem;
+    margin-top: 0.5rem;
+    border-top: 1px solid #f0f4f8;
+  }
+  .col-actions .action-btn {
+    flex: 1;
+    text-align: center;
+    padding: 0.625rem 0.75rem;
+    font-size: 0.85rem;
+    min-height: 40px;
+    margin-right: 0;
+  }
 }
 </style>

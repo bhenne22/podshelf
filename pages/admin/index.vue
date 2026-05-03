@@ -287,6 +287,9 @@ h1 {
     margin-left: 0;
     margin-top: 0.5rem;
     text-align: center;
+    min-height: 44px;
+    padding: 0.6rem 1rem;
   }
+  .page-header .btn-primary { min-height: 44px; padding: 0.6rem 1rem; }
 }
 </style>

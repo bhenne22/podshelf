@@ -155,8 +155,14 @@ function formatSize(bytes: number): string {
   cursor: pointer;
   padding: 0;
   line-height: 1;
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
 }
-.ap-close:hover { color: #1a202c; }
+.ap-close:hover { color: #1a202c; background: #f7fafc; }
 
 .ap-error {
   background: #fff5f5;

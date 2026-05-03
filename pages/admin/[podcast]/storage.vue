@@ -535,9 +535,22 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
 @media (max-width: 720px) {
   .container { padding: 1rem 0.75rem; }
   .form-section { padding: 1rem; }
+  /* 16px input font prevents iOS Safari from zooming on focus. */
+  input[type="text"],
+  input[type="url"],
+  input[type="number"],
+  input[type="password"],
+  select,
+  textarea {
+    font-size: 16px;
+    padding: 0.625rem 0.75rem;
+    min-height: 44px;
+  }
+  textarea { min-height: auto; }
   .form-row { flex-direction: column; gap: 0; }
   .form-row .form-group { flex: 1 1 auto; }
   .radio-row { flex-wrap: wrap; gap: 0.625rem 1rem; }
+  .radio-row .radio { min-height: 32px; display: flex; align-items: center; gap: 0.4rem; }
   .form-actions {
     flex-wrap: wrap;
     gap: 0.5rem;
