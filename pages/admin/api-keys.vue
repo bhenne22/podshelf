@@ -28,7 +28,7 @@
       </div>
 
       <div v-if="pending && !keys" class="loading">Loading…</div>
-      <table v-else-if="keys && keys.length" class="key-table">
+      <div v-else-if="keys && keys.length" class="table-wrap"><table class="key-table">
         <thead>
           <tr>
             <th>Label</th>
@@ -42,23 +42,23 @@
         </thead>
         <tbody>
           <tr v-for="k in keys" :key="k.id" :class="{ 'row-disabled': k.disabled || isExpired(k) }">
-            <td>{{ k.label }}</td>
-            <td>
+            <td class="col-label">{{ k.label }}</td>
+            <td class="col-perm" data-label="Permissions">
               <span :class="['perm-badge', `perm-${k.permissions}`]">{{ k.permissions }}</span>
             </td>
-            <td class="col-scope">
+            <td class="col-scope" data-label="Scope">
               <span v-if="!k.podcast_slugs" class="scope-all">All my podcasts</span>
               <template v-else>
                 <span v-for="slug in k.podcast_slugs" :key="slug" class="scope-badge">{{ slug }}</span>
               </template>
             </td>
-            <td>
+            <td class="col-status" data-label="Status">
               <span v-if="k.disabled" class="status disabled">Disabled</span>
               <span v-else-if="isExpired(k)" class="status expired">Expired</span>
               <span v-else class="status active">Active</span>
             </td>
-            <td>{{ k.expires_at ? formatDate(k.expires_at) : '—' }}</td>
-            <td class="dim">{{ k.last_used_at ? formatRelative(k.last_used_at) : 'never' }}</td>
+            <td class="col-expires" data-label="Expires">{{ k.expires_at ? formatDate(k.expires_at) : '—' }}</td>
+            <td class="col-lastused dim" data-label="Last used">{{ k.last_used_at ? formatRelative(k.last_used_at) : 'never' }}</td>
             <td class="col-actions">
               <button class="action-btn" @click="openEdit(k)">Edit</button>
               <button class="action-btn" @click="toggleDisabled(k)">
@@ -68,7 +68,7 @@
             </td>
           </tr>
         </tbody>
-      </table>
+      </table></div>
       <p v-else class="empty">No API keys yet. Create one to use the API non-interactively.</p>
     </div>
 
@@ -634,4 +634,136 @@ h1 { margin: 0; font-size: 1.5rem; color: #1a202c; }
 .form-group .hint + br + input,
 .form-group input + p.hint { margin-top: 0.4rem; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 1rem; }
+
+.table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-radius: 10px;
+}
+
+@media (max-width: 720px) {
+  .container { padding: 1rem 0.75rem; }
+  .page-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+  }
+  .page-header .btn-primary {
+    text-align: center;
+    min-height: 44px;
+    padding: 0.6rem 1rem;
+  }
+  .key-table { min-width: 880px; }
+  .key-table th,
+  .key-table td { padding: 0.5rem 0.625rem; font-size: 0.85rem; }
+  .action-btn { padding: 0.5rem 0.625rem; min-height: 38px; }
+  /* 16px input font prevents iOS Safari from zooming on focus. */
+  .form-group input,
+  .form-group select {
+    font-size: 16px;
+    padding: 0.625rem 0.75rem;
+    min-height: 44px;
+  }
+  .modal {
+    padding: 1.25rem;
+    max-height: 86vh;
+  }
+  .modal-actions { flex-direction: column-reverse; }
+  .modal-actions button {
+    width: 100%;
+    min-height: 44px;
+  }
+  .key-display { flex-wrap: wrap; }
+  .key-display code { flex: 1 1 100%; }
+  .btn-copy { min-height: 38px; padding: 0.55rem 0.875rem; }
+}
+
+@media (max-width: 520px) {
+  /* Card layout for API keys: label on top, then chips and labelled
+     metadata, then action buttons. */
+  .table-wrap { overflow-x: visible; border-radius: 0; }
+  .key-table {
+    display: block;
+    min-width: 0;
+    border: none;
+    background: transparent;
+    overflow: visible;
+  }
+  .key-table thead { display: none; }
+  .key-table tbody { display: block; }
+  .key-table tr {
+    display: flex;
+    flex-direction: column;
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    margin-bottom: 0.625rem;
+    padding: 0.875rem 1rem;
+  }
+  .key-table tr:last-child td { border-bottom: none; }
+  .key-table td {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.25rem 0;
+    border-bottom: none;
+    width: auto;
+    min-width: 0;
+    font-size: 0.85rem;
+  }
+  .key-table td[data-label]::before {
+    content: attr(data-label);
+    color: #a0aec0;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 600;
+    width: 84px;
+    flex-shrink: 0;
+  }
+  .col-label {
+    order: 1;
+    padding: 0 0 0.5rem;
+    margin-bottom: 0.5rem;
+    border-bottom: 1px solid #f0f4f8;
+    font-size: 1rem;
+    font-weight: 600;
+    word-break: break-word;
+  }
+  .col-status { order: 2; }
+  .col-perm { order: 3; }
+  .col-scope { order: 4; align-items: flex-start; max-width: none; }
+  .col-scope::before { padding-top: 0.2rem; }
+  .col-scope .scope-badge,
+  .col-scope .scope-all { margin: 0.1rem 0.2rem 0.1rem 0; }
+  .col-expires { order: 5; }
+  .col-lastused { order: 6; }
+  .col-actions {
+    order: 7;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding-top: 0.625rem;
+    margin-top: 0.5rem;
+    border-top: 1px solid #f0f4f8;
+    width: auto;
+  }
+  .col-actions .action-btn {
+    width: 100%;
+    text-align: center;
+    padding: 0.625rem 0.75rem;
+    font-size: 0.85rem;
+    min-height: 40px;
+    margin-right: 0;
+  }
+  .new-key-card { padding: 1rem; }
+  .key-display { flex-wrap: wrap; }
+  .key-display code {
+    flex: 1 1 100%;
+    font-size: 0.78rem;
+  }
+  /* In the create/edit modals, the radio + checklist groups need to stack
+     a bit tighter so the modal fits. */
+  .podcast-checklist { max-height: 200px; }
+}
 </style>
