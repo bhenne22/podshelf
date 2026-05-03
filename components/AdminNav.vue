@@ -1,10 +1,10 @@
 <template>
   <nav class="admin-nav" :class="{ 'menu-open': menuOpen }">
     <div class="nav-brand">
-      <NuxtLink to="/admin">Podshelf</NuxtLink>
+      <NuxtLink to="/">Podshelf</NuxtLink>
       <NuxtLink
         v-if="podcastSlug"
-        :to="`/admin/${podcastSlug}`"
+        :to="`/podcasts/${podcastSlug}`"
         class="nav-podcast-name"
       >
         / {{ podcast?.title || podcastSlug }}
@@ -12,20 +12,20 @@
     </div>
     <ul class="nav-links" :class="{ open: menuOpen }">
       <template v-if="podcastSlug">
-        <li><NuxtLink :to="`/admin/${podcastSlug}/episodes`" active-class="active">Episodes</NuxtLink></li>
-        <li><NuxtLink :to="`/admin/${podcastSlug}/stats`" active-class="active">Analytics</NuxtLink></li>
-        <li><NuxtLink :to="`/admin/${podcastSlug}/settings`" active-class="active">Settings</NuxtLink></li>
-        <li><NuxtLink :to="`/admin/${podcastSlug}/storage`" active-class="active">Storage</NuxtLink></li>
-        <li><NuxtLink :to="`/admin/${podcastSlug}/files`" active-class="active">Files</NuxtLink></li>
-        <li><NuxtLink :to="`/admin/${podcastSlug}/build`" active-class="active">Build</NuxtLink></li>
-        <li><NuxtLink :to="`/admin/${podcastSlug}/members`" active-class="active">Members</NuxtLink></li>
+        <li><NuxtLink :to="`/podcasts/${podcastSlug}/episodes`" active-class="active">Episodes</NuxtLink></li>
+        <li><NuxtLink :to="`/podcasts/${podcastSlug}/stats`" active-class="active">Analytics</NuxtLink></li>
+        <li><NuxtLink :to="`/podcasts/${podcastSlug}/settings`" active-class="active">Settings</NuxtLink></li>
+        <li><NuxtLink :to="`/podcasts/${podcastSlug}/storage`" active-class="active">Storage</NuxtLink></li>
+        <li><NuxtLink :to="`/podcasts/${podcastSlug}/files`" active-class="active">Files</NuxtLink></li>
+        <li><NuxtLink :to="`/podcasts/${podcastSlug}/build`" active-class="active">Build</NuxtLink></li>
+        <li><NuxtLink :to="`/podcasts/${podcastSlug}/members`" active-class="active">Members</NuxtLink></li>
         <li class="divider" />
-        <li><NuxtLink to="/admin">All podcasts</NuxtLink></li>
+        <li><NuxtLink to="/">All podcasts</NuxtLink></li>
         <li><a :href="`/feeds/${podcastSlug}.xml`" target="_blank" rel="noopener">RSS Feed ↗</a></li>
       </template>
       <template v-else>
-        <li><NuxtLink to="/admin" exact-active-class="active">Podcasts</NuxtLink></li>
-        <li><NuxtLink to="/admin/api-keys" active-class="active">API Keys</NuxtLink></li>
+        <li><NuxtLink to="/" exact-active-class="active">Podcasts</NuxtLink></li>
+        <li><NuxtLink to="/api-keys" active-class="active">API Keys</NuxtLink></li>
         <li v-if="me?.is_admin"><NuxtLink to="/admin/users" active-class="active">Users</NuxtLink></li>
       </template>
       <li class="divider" />
@@ -78,7 +78,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 
 async function logout() {
   await $fetch('/api/auth/logout', { method: 'POST' })
-  await navigateTo('/admin/login')
+  await navigateTo('/login')
 }
 </script>
 

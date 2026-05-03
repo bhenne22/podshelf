@@ -243,12 +243,14 @@ different host (your Mac mini, B2, S3, wherever).
 From your laptop:
 
 ```bash
-curl -sS -o /dev/null -w "%{http_code}\n" https://podshelf.<your-domain>/
-curl -sS -o /dev/null -w "%{http_code}\n" https://podshelf.<your-domain>/admin/login
+curl -sS -o /dev/null -w "%{http_code}\n" https://podshelf.<your-domain>/login
+curl -sSL -o /dev/null -w "%{http_code}\n" https://podshelf.<your-domain>/
 ```
 
-Both should return 200 (with `/` going through 302→/admin→/admin/login). Then
-sign in via the browser with the user `npm run create-admin` set up.
+`/login` returns 200 directly. `/` returns 302 to `/login` when not
+authenticated (the second command follows the redirect with `-L` and
+also returns 200). Then sign in via the browser with the user
+`npm run create-admin` set up.
 
 ---
 

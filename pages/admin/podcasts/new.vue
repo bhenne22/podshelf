@@ -4,7 +4,7 @@
     <div class="container">
       <div class="page-header">
         <h1>New Podcast</h1>
-        <NuxtLink to="/admin" class="btn-back">← All podcasts</NuxtLink>
+        <NuxtLink to="/" class="btn-back">← All podcasts</NuxtLink>
       </div>
 
       <div v-if="errorMsg" class="error-msg">{{ errorMsg }}</div>
@@ -16,7 +16,7 @@
             <input id="title" v-model="form.title" type="text" required @input="autoSlug" />
           </div>
           <div class="form-group">
-            <label for="slug">Slug <span class="hint">(used in /admin/[slug] and /feeds/[slug].xml)</span></label>
+            <label for="slug">Slug <span class="hint">(used in /podcasts/[slug] and /feeds/[slug].xml)</span></label>
             <input id="slug" v-model="form.slug" type="text" placeholder="auto-generated from title" />
           </div>
           <div class="form-group">
@@ -40,7 +40,7 @@
         </div>
 
         <div class="form-actions">
-          <NuxtLink to="/admin" class="btn-secondary">Cancel</NuxtLink>
+          <NuxtLink to="/" class="btn-secondary">Cancel</NuxtLink>
           <button type="submit" class="btn-primary" :disabled="saving">
             {{ saving ? 'Creating…' : 'Create Podcast' }}
           </button>
@@ -51,7 +51,7 @@
 </template>
 
 <script setup lang="ts">
-definePageMeta({ middleware: 'admin-auth' })
+definePageMeta({ middleware: 'admin-only' })
 
 const router = useRouter()
 const errorMsg = ref('')
@@ -91,7 +91,7 @@ async function onSubmit() {
       method: 'POST',
       body: { ...form },
     })
-    await router.push(`/admin/${created.slug}/settings`)
+    await router.push(`/podcasts/${created.slug}/settings`)
   } catch (err: unknown) {
     const e = err as { data?: { statusMessage?: string }, message?: string }
     errorMsg.value = e?.data?.statusMessage || e?.message || 'Failed to create podcast'

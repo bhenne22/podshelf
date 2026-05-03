@@ -4,37 +4,37 @@
     <div class="container">
       <div class="page-header">
         <h1>{{ podcast?.title || 'Dashboard' }}</h1>
-        <NuxtLink :to="`/admin/${podcastSlug}/episodes/new`" class="btn-primary">+ New Episode</NuxtLink>
+        <NuxtLink :to="`/podcasts/${podcastSlug}/episodes/new`" class="btn-primary">+ New Episode</NuxtLink>
       </div>
 
       <div v-if="pending" class="loading">Loading…</div>
 
       <template v-else-if="data">
         <div class="cards">
-          <NuxtLink :to="`/admin/${podcastSlug}/episodes`" class="card">
+          <NuxtLink :to="`/podcasts/${podcastSlug}/episodes`" class="card">
             <div class="card-value">{{ data.counts.total }}</div>
             <div class="card-label">Episodes</div>
           </NuxtLink>
-          <NuxtLink :to="`/admin/${podcastSlug}/episodes?status=published`" class="card card-published">
+          <NuxtLink :to="`/podcasts/${podcastSlug}/episodes?status=published`" class="card card-published">
             <div class="card-value">{{ data.counts.published }}</div>
             <div class="card-label">Published</div>
           </NuxtLink>
-          <NuxtLink :to="`/admin/${podcastSlug}/episodes?status=draft`" class="card card-draft">
+          <NuxtLink :to="`/podcasts/${podcastSlug}/episodes?status=draft`" class="card card-draft">
             <div class="card-value">{{ data.counts.drafts }}</div>
             <div class="card-label">Drafts</div>
           </NuxtLink>
         </div>
 
         <div class="cards">
-          <NuxtLink :to="`/admin/${podcastSlug}/stats`" class="card">
+          <NuxtLink :to="`/podcasts/${podcastSlug}/stats`" class="card">
             <div class="card-value">{{ data.downloads.total.toLocaleString() }}</div>
             <div class="card-label">Total Downloads</div>
           </NuxtLink>
-          <NuxtLink :to="`/admin/${podcastSlug}/stats`" class="card">
+          <NuxtLink :to="`/podcasts/${podcastSlug}/stats`" class="card">
             <div class="card-value">{{ data.downloads.last_30d.toLocaleString() }}</div>
             <div class="card-label">Last 30 days</div>
           </NuxtLink>
-          <NuxtLink :to="`/admin/${podcastSlug}/stats`" class="card">
+          <NuxtLink :to="`/podcasts/${podcastSlug}/stats`" class="card">
             <div class="card-value">{{ data.downloads.last_7d.toLocaleString() }}</div>
             <div class="card-label">Last 7 days</div>
           </NuxtLink>
@@ -44,7 +44,7 @@
           <section class="panel">
             <h2>Latest Published</h2>
             <div v-if="data.latest_published" class="recent">
-              <NuxtLink :to="`/admin/${podcastSlug}/episodes/${data.latest_published.id}`" class="recent-title">
+              <NuxtLink :to="`/podcasts/${podcastSlug}/episodes/${data.latest_published.id}`" class="recent-title">
                 <span v-if="data.latest_published.episode_number" class="ep-num">
                   <template v-if="data.latest_published.season_number">S{{ data.latest_published.season_number }}E{{ data.latest_published.episode_number }}</template>
                   <template v-else>#{{ data.latest_published.episode_number }}</template>
@@ -59,7 +59,7 @@
           <section class="panel">
             <h2>Newest Draft</h2>
             <div v-if="data.newest_draft" class="recent">
-              <NuxtLink :to="`/admin/${podcastSlug}/episodes/${data.newest_draft.id}`" class="recent-title">
+              <NuxtLink :to="`/podcasts/${podcastSlug}/episodes/${data.newest_draft.id}`" class="recent-title">
                 <span v-if="data.newest_draft.episode_number" class="ep-num">
                   <template v-if="data.newest_draft.season_number">S{{ data.newest_draft.season_number }}E{{ data.newest_draft.episode_number }}</template>
                   <template v-else>#{{ data.newest_draft.episode_number }}</template>
@@ -75,11 +75,11 @@
         <section class="panel">
           <h2>Quick Links</h2>
           <div class="quick-links">
-            <NuxtLink :to="`/admin/${podcastSlug}/episodes/new`" class="quick">+ New episode</NuxtLink>
-            <NuxtLink :to="`/admin/${podcastSlug}/settings`" class="quick">Show settings</NuxtLink>
-            <NuxtLink :to="`/admin/${podcastSlug}/storage`" class="quick">Storage</NuxtLink>
-            <NuxtLink :to="`/admin/${podcastSlug}/build`" class="quick">Build &amp; deploy</NuxtLink>
-            <NuxtLink :to="`/admin/${podcastSlug}/members`" class="quick">Members</NuxtLink>
+            <NuxtLink :to="`/podcasts/${podcastSlug}/episodes/new`" class="quick">+ New episode</NuxtLink>
+            <NuxtLink :to="`/podcasts/${podcastSlug}/settings`" class="quick">Show settings</NuxtLink>
+            <NuxtLink :to="`/podcasts/${podcastSlug}/storage`" class="quick">Storage</NuxtLink>
+            <NuxtLink :to="`/podcasts/${podcastSlug}/build`" class="quick">Build &amp; deploy</NuxtLink>
+            <NuxtLink :to="`/podcasts/${podcastSlug}/members`" class="quick">Members</NuxtLink>
             <a :href="`/feeds/${podcastSlug}.xml`" target="_blank" rel="noopener" class="quick">RSS feed ↗</a>
           </div>
         </section>
@@ -89,10 +89,10 @@
 </template>
 
 <script setup lang="ts">
-definePageMeta({ middleware: 'admin-auth' })
+definePageMeta({ middleware: 'auth' })
 
 const route = useRoute()
-const podcastSlug = route.params.podcast as string
+const podcastSlug = route.params.slug as string
 
 interface Podcast { title: string }
 interface DashboardData {

@@ -21,7 +21,7 @@ function checkRateLimit(ip: string) {
  * POST /api/auth/login
  *
  * Body: { email, password }
- * Sets the admin_session cookie on success.
+ * Sets the session cookie on success.
  */
 export default defineEventHandler(async (event) => {
   const ip = getRequestIP(event, { xForwardedFor: true }) || 'unknown'

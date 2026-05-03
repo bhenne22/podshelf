@@ -27,7 +27,7 @@ podshelf-watch.sh
    4. Notify Discord (if webhook configured)
        │
        ▼
-Review and publish in /admin/<slug>/episodes/<id>
+Review and publish in /podcasts/<slug>/episodes/<id>
 ```
 
 ---

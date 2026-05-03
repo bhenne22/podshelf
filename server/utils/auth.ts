@@ -26,7 +26,7 @@ export interface AuthContext {
   permissionLevel: ApiKeyPermissions | null
 }
 
-export const SESSION_COOKIE_NAME = 'admin_session'
+export const SESSION_COOKIE_NAME = 'session'
 
 function b64url(buf: Buffer): string {
   return buf.toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')

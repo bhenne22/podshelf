@@ -59,7 +59,7 @@
             <tbody>
               <tr v-for="ep in stats.byEpisode" :key="ep.id">
                 <td>
-                  <NuxtLink :to="`/admin/${podcastSlug}/episodes/${ep.id}`" class="ep-link">
+                  <NuxtLink :to="`/podcasts/${podcastSlug}/episodes/${ep.id}`" class="ep-link">
                     <span v-if="ep.season_number && ep.episode_number" class="ep-num">
                       S{{ ep.season_number }}E{{ ep.episode_number }}
                     </span>
@@ -103,10 +103,10 @@
 </template>
 
 <script setup lang="ts">
-definePageMeta({ middleware: 'admin-auth' })
+definePageMeta({ middleware: 'auth' })
 
 const route = useRoute()
-const podcastSlug = route.params.podcast as string
+const podcastSlug = route.params.slug as string
 
 interface StatRow { date: string; count: number }
 interface EpisodeRow { id: number; title: string; slug: string; episode_number: number | null; season_number: number | null; total: number; last30Days: number }

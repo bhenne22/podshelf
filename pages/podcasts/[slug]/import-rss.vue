@@ -4,7 +4,7 @@
     <div class="container">
       <div class="page-header">
         <h1>Import from RSS</h1>
-        <NuxtLink :to="`/admin/${podcastSlug}/episodes`" class="btn-back">← Back to Episodes</NuxtLink>
+        <NuxtLink :to="`/podcasts/${podcastSlug}/episodes`" class="btn-back">← Back to Episodes</NuxtLink>
       </div>
 
       <p class="intro">
@@ -40,7 +40,7 @@
         </div>
 
         <div class="form-actions">
-          <NuxtLink :to="`/admin/${podcastSlug}/episodes`" class="btn-secondary">Cancel</NuxtLink>
+          <NuxtLink :to="`/podcasts/${podcastSlug}/episodes`" class="btn-secondary">Cancel</NuxtLink>
           <button type="submit" class="btn-primary" :disabled="loading">
             {{ loading ? 'Importing…' : 'Import' }}
           </button>
@@ -51,11 +51,11 @@
 </template>
 
 <script setup lang="ts">
-definePageMeta({ middleware: 'admin-auth' })
+definePageMeta({ middleware: 'auth' })
 
 const route = useRoute()
 const router = useRouter()
-const podcastSlug = route.params.podcast as string
+const podcastSlug = route.params.slug as string
 
 const feedUrl = ref('')
 const loading = ref(false)
@@ -77,7 +77,7 @@ async function onSubmit() {
       method: 'POST',
       body: { feed_url: feedUrl.value },
     })
-    setTimeout(() => router.push(`/admin/${podcastSlug}/episodes`), 1500)
+    setTimeout(() => router.push(`/podcasts/${podcastSlug}/episodes`), 1500)
   } catch (err: unknown) {
     errorMsg.value = (err as { data?: { statusMessage?: string } })?.data?.statusMessage || 'Import failed'
   } finally {

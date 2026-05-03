@@ -48,7 +48,7 @@ async function login() {
       method: 'POST',
       body: { email: email.value, password: password.value },
     })
-    await navigateTo('/admin')
+    await navigateTo('/')
   } catch {
     error.value = 'Invalid email or password.'
   } finally {

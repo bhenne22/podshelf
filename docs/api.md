@@ -13,9 +13,9 @@ All mutation endpoints — and most read endpoints — require authentication vi
 one of:
 
 - **API key (recommended for automation):** `X-Api-Key: <key>` header, or
-  `Authorization: Bearer <key>`. Mint keys at `/admin/api-keys`. Each key
+  `Authorization: Bearer <key>`. Mint keys at `/api-keys`. Each key
   belongs to a user and inherits that user's podcast access.
-- **Session cookie:** `admin_session`, set by `POST /api/auth/login`. Used by
+- **Session cookie:** `session`, set by `POST /api/auth/login`. Used by
   the admin UI; you don't need this for scripts.
 
 API keys can have an expiration and can be disabled. Disabled or expired keys

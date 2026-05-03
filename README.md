@@ -38,10 +38,11 @@ podshelf/
 │   ├── routes/    /feeds/[slug].xml, /track/[...path] (download redirect)
 │   ├── storage/   SFTP and S3 adapters (take config args, no env-coupling)
 │   └── utils/     auth, password, crypto (AES-256-GCM), github, rss-parser
-├── pages/admin/   Admin UI: podcast list, per-podcast tabs, API keys, users
+├── pages/         User UI: dashboard `/`, login, /podcasts/[slug]/* tabs, /api-keys
+├── pages/admin/   Admin-only UI: /admin/users, /admin/podcasts/new, /admin/inactive-podcasts
 ├── components/    AdminNav, RichTextEditor (TipTap)
 ├── composables/   useEpisodes(slug), useUpload(slug)
-├── middleware/    admin-auth (verifies session via /api/me)
+├── middleware/    auth (login required), admin-only (login + is_admin)
 ├── scripts/       create-admin.ts, podshelf-publish.sh
 └── openclaw/      Bash watcher that auto-ingests episode folders via the API
 ```

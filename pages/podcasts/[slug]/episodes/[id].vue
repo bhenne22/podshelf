@@ -5,7 +5,7 @@
       <div class="page-header">
         <h1>Edit Episode</h1>
         <div class="header-actions">
-          <NuxtLink :to="`/admin/${podcastSlug}/episodes`" class="btn-back">← Episodes</NuxtLink>
+          <NuxtLink :to="`/podcasts/${podcastSlug}/episodes`" class="btn-back">← Episodes</NuxtLink>
         </div>
       </div>
 
@@ -217,7 +217,7 @@
             <span v-if="saving" class="save-status saving">Saving…</span>
             <span v-else-if="justSaved" class="save-status ok">✓ Saved</span>
             <span v-else-if="errorMsg" class="save-status err">✗ {{ errorMsg }}</span>
-            <NuxtLink :to="`/admin/${podcastSlug}/episodes`" class="btn-secondary">Cancel</NuxtLink>
+            <NuxtLink :to="`/podcasts/${podcastSlug}/episodes`" class="btn-secondary">Cancel</NuxtLink>
             <button type="submit" class="btn-primary" :disabled="saving">
               {{ saving ? 'Saving…' : 'Save Changes' }}
             </button>
@@ -231,11 +231,11 @@
 <script setup lang="ts">
 import type { Episode } from '~/composables/useEpisodes'
 
-definePageMeta({ middleware: 'admin-auth' })
+definePageMeta({ middleware: 'auth' })
 
 const route = useRoute()
 const id = Number(route.params.id)
-const podcastSlug = route.params.podcast as string
+const podcastSlug = route.params.slug as string
 const { updateEpisode } = useEpisodes(podcastSlug)
 
 const pending = ref(true)

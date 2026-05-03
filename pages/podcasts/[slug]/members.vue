@@ -69,10 +69,10 @@
 </template>
 
 <script setup lang="ts">
-definePageMeta({ middleware: 'admin-auth' })
+definePageMeta({ middleware: 'auth' })
 
 const route = useRoute()
-const podcastSlug = route.params.podcast as string
+const podcastSlug = route.params.slug as string
 
 interface Member {
   id: number

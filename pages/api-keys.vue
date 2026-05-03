@@ -184,7 +184,7 @@
 </template>
 
 <script setup lang="ts">
-definePageMeta({ middleware: 'admin-auth' })
+definePageMeta({ middleware: 'auth' })
 
 type Permissions = 'read' | 'write' | 'full'
 

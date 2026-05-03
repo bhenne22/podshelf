@@ -4,7 +4,7 @@
     <div class="container">
       <div class="page-header">
         <h1>Episodes</h1>
-        <NuxtLink :to="`/admin/${podcastSlug}/episodes/new`" class="btn-primary">+ New Episode</NuxtLink>
+        <NuxtLink :to="`/podcasts/${podcastSlug}/episodes/new`" class="btn-primary">+ New Episode</NuxtLink>
       </div>
 
       <div v-if="loading" class="loading">Loading episodes…</div>
@@ -54,8 +54,8 @@
       <div v-if="!loading && !error && !episodes.length" class="empty">
         <p>No episodes yet.</p>
         <div class="empty-actions">
-          <NuxtLink :to="`/admin/${podcastSlug}/episodes/new`" class="btn-primary">Create your first episode</NuxtLink>
-          <NuxtLink :to="`/admin/${podcastSlug}/import-rss`" class="btn-secondary">Import from existing RSS feed</NuxtLink>
+          <NuxtLink :to="`/podcasts/${podcastSlug}/episodes/new`" class="btn-primary">Create your first episode</NuxtLink>
+          <NuxtLink :to="`/podcasts/${podcastSlug}/import-rss`" class="btn-secondary">Import from existing RSS feed</NuxtLink>
         </div>
         <p class="empty-hint">Migrating from another host? Import pulls every episode in the feed at once. Available only while this podcast is empty.</p>
       </div>
@@ -92,7 +92,7 @@
               <span v-else class="ep-num draft">—</span>
             </td>
             <td class="col-title">
-              <NuxtLink :to="`/admin/${podcastSlug}/episodes/${ep.id}`" class="ep-title">
+              <NuxtLink :to="`/podcasts/${podcastSlug}/episodes/${ep.id}`" class="ep-title">
                 {{ ep.title }}
               </NuxtLink>
             </td>
@@ -103,7 +103,7 @@
               {{ ep.published_at ? formatDate(ep.published_at) : '—' }}
             </td>
             <td class="col-actions">
-              <NuxtLink :to="`/admin/${podcastSlug}/episodes/${ep.id}`" class="action-btn">Edit</NuxtLink>
+              <NuxtLink :to="`/podcasts/${podcastSlug}/episodes/${ep.id}`" class="action-btn">Edit</NuxtLink>
               <button @click="confirmDelete(ep)" class="action-btn danger">Delete</button>
             </td>
           </tr>
@@ -130,10 +130,10 @@
 <script setup lang="ts">
 import type { Episode } from '~/composables/useEpisodes'
 
-definePageMeta({ middleware: 'admin-auth' })
+definePageMeta({ middleware: 'auth' })
 
 const route = useRoute()
-const podcastSlug = route.params.podcast as string
+const podcastSlug = route.params.slug as string
 
 const { episodes, loading, error, refresh, deleteEpisode } = useEpisodes(podcastSlug)
 await refresh()

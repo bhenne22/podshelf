@@ -25,21 +25,31 @@ Nuxt handles both frontend (Vue 3, file-based routing in `pages/`) and backend (
 
 ### Pages & Routing
 
-- `/` — redirects to `/admin`
-- `/admin/login` — password login
-- `/admin/` — list of podcasts the user can access
-- `/admin/podcasts/new` — create podcast (admin only)
-- `/admin/inactive-podcasts` — admin-only purge / restore for soft-deleted podcasts
-- `/admin/users`, `/admin/api-keys` — user + key management
-- `/admin/[podcast]/episodes` — episode list for a podcast (with season + date-range filters and Overall # / Season # / Ep # columns)
-- `/admin/[podcast]/episodes/new`, `/admin/[podcast]/episodes/[id]` — episode CRUD
-- `/admin/[podcast]/settings` — podcast metadata (paste-URL or upload artwork; soft-delete in Danger Zone)
-- `/admin/[podcast]/storage` — per-podcast SFTP / S3 credentials, plus separate audio + artwork directories
-- `/admin/[podcast]/files` — file browser for the audio + artwork directories (list, upload, rename, delete, copy URL, in-use warning)
-- `/admin/[podcast]/build`, `/admin/[podcast]/stats`, `/admin/[podcast]/members`, `/admin/[podcast]/import-rss` — build dispatch, analytics, membership, RSS import
+`/admin/*` is reserved for true platform-admin functionality. Everything regular podcast members touch lives outside `/admin/`.
 
-Admin pages are protected by `middleware/admin-auth.ts` (client-side cookie check). API endpoints are protected server-side by `requireAuth` / `requirePodcastAccess` / `requireAdmin` from `server/utils/auth.ts`, accepting either:
-- An HMAC-signed session cookie (`admin_session`) — set by `POST /api/auth/login`, cleared by `POST /api/auth/logout`
+User-facing routes (login required):
+- `/login` — password login
+- `/` — list of podcasts the user can access (the dashboard)
+- `/api-keys` — per-user API key management
+- `/podcasts/[slug]` — per-podcast dashboard
+- `/podcasts/[slug]/episodes` — episode list (with season + date-range filters and Overall # / Season # / Ep # columns)
+- `/podcasts/[slug]/episodes/new`, `/podcasts/[slug]/episodes/[id]` — episode CRUD
+- `/podcasts/[slug]/settings` — podcast metadata (paste-URL or upload artwork; soft-delete in Danger Zone)
+- `/podcasts/[slug]/storage` — per-podcast SFTP / S3 credentials, plus separate audio + artwork directories
+- `/podcasts/[slug]/files` — file browser for the audio + artwork directories (list, upload, rename, delete, copy URL, in-use warning)
+- `/podcasts/[slug]/build`, `/podcasts/[slug]/stats`, `/podcasts/[slug]/members`, `/podcasts/[slug]/import-rss` — build dispatch, analytics, membership, RSS import
+
+Admin-only routes (`is_admin` required):
+- `/admin/users` — user management
+- `/admin/podcasts/new` — create a new podcast
+- `/admin/inactive-podcasts` — purge / restore soft-deleted podcasts
+
+Two route middlewares enforce these:
+- `middleware/auth.ts` — login required (used by all user-facing pages above)
+- `middleware/admin-only.ts` — login + `is_admin` required (used by `/admin/*` pages); non-admins bounce to `/`, unauthenticated callers bounce to `/login`
+
+API endpoints are protected server-side by `requireAuth` / `requirePodcastAccess` / `requireAdmin` from `server/utils/auth.ts`, accepting either:
+- An HMAC-signed session cookie (`session`) — set by `POST /api/auth/login`, cleared by `POST /api/auth/logout`
 - An API key via `X-Api-Key: <key>` or `Authorization: Bearer <key>` header — for automation. API keys can be scoped to specific podcasts and have a `read|write|full` permission level.
 
 ### API Endpoints

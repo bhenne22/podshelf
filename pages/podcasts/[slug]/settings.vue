@@ -186,10 +186,10 @@
 </template>
 
 <script setup lang="ts">
-definePageMeta({ middleware: 'admin-auth' })
+definePageMeta({ middleware: 'auth' })
 
 const route = useRoute()
-const podcastSlug = route.params.podcast as string
+const podcastSlug = route.params.slug as string
 const config = useRuntimeConfig()
 const siteUrl = config.public.siteUrl || 'http://localhost:3000'
 
@@ -261,7 +261,7 @@ async function doDelete() {
   try {
     await $fetch(`/api/podcasts/${podcastSlug}`, { method: 'DELETE' })
     showDeleteConfirm.value = false
-    await navigateTo('/admin')
+    await navigateTo('/')
   } catch (err: unknown) {
     errorMsg.value = (err as { data?: { statusMessage?: string } })?.data?.statusMessage || 'Failed to delete'
   } finally {

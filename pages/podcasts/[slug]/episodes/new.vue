@@ -4,7 +4,7 @@
     <div class="container">
       <div class="page-header">
         <h1>New Episode</h1>
-        <NuxtLink :to="`/admin/${podcastSlug}/episodes`" class="btn-back">← Back to Episodes</NuxtLink>
+        <NuxtLink :to="`/podcasts/${podcastSlug}/episodes`" class="btn-back">← Back to Episodes</NuxtLink>
       </div>
 
       <div v-if="successMsg" class="success-msg">{{ successMsg }}</div>
@@ -232,7 +232,7 @@
         <div class="form-actions">
           <span v-if="saving" class="save-status saving">Saving…</span>
           <span v-else-if="errorMsg" class="save-status err">✗ {{ errorMsg }}</span>
-          <NuxtLink :to="`/admin/${podcastSlug}/episodes`" class="btn-secondary">Cancel</NuxtLink>
+          <NuxtLink :to="`/podcasts/${podcastSlug}/episodes`" class="btn-secondary">Cancel</NuxtLink>
           <button type="submit" class="btn-primary" :disabled="saving">
             {{ saving ? 'Saving…' : 'Save Draft' }}
           </button>
@@ -251,11 +251,11 @@
 </template>
 
 <script setup lang="ts">
-definePageMeta({ middleware: 'admin-auth' })
+definePageMeta({ middleware: 'auth' })
 
 const route = useRoute()
 const router = useRouter()
-const podcastSlug = route.params.podcast as string
+const podcastSlug = route.params.slug as string
 const { createEpisode } = useEpisodes(podcastSlug)
 
 const formDirty = ref(false)
@@ -443,7 +443,7 @@ async function saveEpisode(publish = false) {
       published_at: form.published_at || null,
     })
     formSaved.value = true
-    await router.push(`/admin/${podcastSlug}/episodes/${episode.id}`)
+    await router.push(`/podcasts/${podcastSlug}/episodes/${episode.id}`)
   } catch (err: unknown) {
     errorMsg.value = err instanceof Error ? err.message : 'Failed to save episode'
   } finally {

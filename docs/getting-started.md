@@ -66,7 +66,7 @@ Enter an email and a password (≥ 8 chars). The user is created with
 npm run dev
 ```
 
-Open `http://localhost:3000`. You'll be redirected to `/admin/login`. Sign in
+Open `http://localhost:3000`. You'll be redirected to `/login`. Sign in
 with the user you just created.
 
 ---
@@ -101,7 +101,7 @@ is empty (no destructive overwrite).
 
 ## API and automation
 
-Mint an API key at `/admin/api-keys`:
+Mint an API key at `/api-keys`:
 - Label it (e.g. "Claude", "OpenClaw", "dev-laptop")
 - Optionally set an expiration
 - Pick a permission level (read / write / full)
