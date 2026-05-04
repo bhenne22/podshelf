@@ -11,7 +11,8 @@
         API keys let you (or services like Claude or OpenClaw) call the Podshelf API
         on your behalf. Send the key in the <code>X-Api-Key</code> header or as
         <code>Authorization: Bearer &lt;key&gt;</code>. Disabled or expired keys are
-        rejected at the auth layer.
+        rejected at the auth layer. The <NuxtLink to="/docs">interactive API
+        reference</NuxtLink> has a "Try it out" button that uses your key directly.
       </p>
 
       <div v-if="errorMsg" class="error-msg">{{ errorMsg }}</div>

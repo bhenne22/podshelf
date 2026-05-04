@@ -1,0 +1,1171 @@
+openapi: 3.0.3
+info:
+  title: Podshelf API
+  version: '1.0'
+  description: |
+    HTTP API for [Podshelf](https://github.com/bhenne22/podshelf), the
+    self-hosted multi-tenant podcast publishing platform.
+
+    ## Authentication
+
+    Every endpoint (except `GET /healthz`) requires authentication. Two
+    schemes are accepted:
+
+    - **API key** (preferred for automation) — `X-Api-Key: <key>` header
+      or `Authorization: Bearer <key>`. Generate one at `/api-keys`.
+      Keys can be scoped to specific podcasts and have a permission
+      level (`read` / `write` / `full`). Click **Authorize** above to
+      paste your key and try things out.
+    - **Session cookie** — set by `POST /api/auth/login`. Used by the
+      web UI; not recommended for automation.
+
+    ## Rate limits
+
+    Podshelf doesn't enforce rate limits on its own — it's a self-hosted
+    install, so any limits come from your reverse proxy or the upstream
+    services your endpoints call (storage adapter, GitHub, webhook).
+servers:
+  - url: '{site_url}'
+    description: Your Podshelf instance
+    variables:
+      site_url:
+        default: ''
+        description: |
+          Base URL of your Podshelf install (e.g. `https://podshelf.example.com`).
+          Leave blank to use the same origin you're viewing these docs on.
+
+# Default to API-key auth so the "Try it out" experience matches the
+# automation use case. Cookie auth still works for the same endpoints
+# when called from the browser session.
+security:
+  - ApiKeyAuth: []
+  - BearerAuth: []
+
+tags:
+  - name: Identity
+    description: Auth + current user
+  - name: Podcasts
+    description: Podcast CRUD, settings, soft-delete, restore, purge
+  - name: Episodes
+    description: Episode CRUD, duplicate, chapters
+  - name: People
+    description: Per-podcast roster of hosts/guests + per-episode attachments
+  - name: Uploads & files
+    description: Audio / artwork / transcript / chapters file uploads + file browser
+  - name: Storage
+    description: Storage adapter config, test, and end-to-end migration
+  - name: Webhook & build
+    description: Publish webhooks + GitHub repository_dispatch integration
+  - name: Migration
+    description: RSS / JSON archive import + export, slug aliases
+  - name: Audit
+    description: Per-podcast audit log
+  - name: Misc
+    description: Health check, audio probe
+
+paths:
+  # ---------------------------------------------------------------- Identity
+  /api/auth/login:
+    post:
+      tags: [Identity]
+      summary: Log in (sets session cookie)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, format: password }
+      responses:
+        '200':
+          description: Logged in; `Set-Cookie: session=...` header is set.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/auth/logout:
+    post:
+      tags: [Identity]
+      summary: Clear the session cookie
+      responses:
+        '200':
+          description: Session cleared.
+
+  /api/me:
+    get:
+      tags: [Identity]
+      summary: Current user
+      responses:
+        '200':
+          description: The authenticated user.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  # ---------------------------------------------------------------- Podcasts
+  /api/podcasts:
+    get:
+      tags: [Podcasts]
+      summary: List podcasts you can access
+      responses:
+        '200':
+          description: Podcasts the authenticated user is a member of (admins see all).
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Podcast' }
+    post:
+      tags: [Podcasts]
+      summary: Create a podcast (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title: { type: string }
+                slug:  { type: string, description: 'Lowercase letters, digits, hyphens. Auto-derived from title when omitted.' }
+                description: { type: string }
+                author: { type: string }
+                email: { type: string, format: email }
+                website: { type: string, format: uri }
+                language: { type: string, default: en }
+                category: { type: string, default: 'Society & Culture' }
+                explicit: { type: string, enum: ['true', 'false'], default: 'false' }
+                storage_adapter: { type: string, enum: [sftp, s3], default: sftp }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Podcast' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/podcasts/{slug}:
+    parameters:
+      - { $ref: '#/components/parameters/Slug' }
+    get:
+      tags: [Podcasts]
+      summary: Get podcast metadata
+      responses:
+        '200':
+          description: The podcast row.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Podcast' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Podcasts]
+      summary: Update podcast metadata
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: |
+                Send only the fields you want to change. Editable: `slug`,
+                `title`, `description`, `author`, `email`, `image_url`,
+                `language`, `copyright`, `category`, `explicit`, `website`,
+                `audio_tracking_prefix`, `itunes_type`, `podcast_locked`,
+                `itunes_complete`, `itunes_block`, `funding_url`,
+                `funding_label`, `verify_txt`, `license_identifier`,
+                `license_url`, `episode_title_template`,
+                `episode_description_template`, `storage_adapter`,
+                `github_owner`, `github_repo`, `github_event_type`.
+
+                Changing `slug` adds the previous slug to `slug_aliases`
+                so old subscribers continue to receive the feed (with an
+                `<itunes:new-feed-url>` redirect tag).
+              additionalProperties: true
+      responses:
+        '200':
+          description: Updated podcast.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Podcast' }
+        '409':
+          description: Slug collision (with another active podcast or with another podcast's reserved alias).
+    delete:
+      tags: [Podcasts]
+      summary: Soft-delete (RSS feed 404s; restorable)
+      responses:
+        '204':
+          description: Soft-deleted.
+
+  /api/podcasts/{slug}/restore:
+    parameters:
+      - { $ref: '#/components/parameters/Slug' }
+    post:
+      tags: [Podcasts]
+      summary: Reverse a soft-delete
+      responses:
+        '200':
+          description: Restored.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  alreadyActive: { type: boolean }
+
+  /api/podcasts/{slug}/purge:
+    parameters:
+      - { $ref: '#/components/parameters/Slug' }
+    delete:
+      tags: [Podcasts]
+      summary: Permanent delete (admin only; requires soft-deleted)
+      responses:
+        '204':
+          description: Purged.
+        '409':
+          description: Podcast must be soft-deleted (`status = 'inactive'`) first.
+
+  /api/admin/inactive-podcasts:
+    get:
+      tags: [Podcasts]
+      summary: List soft-deleted podcasts (admin only)
+      responses:
+        '200':
+          description: Inactive podcasts ordered by `deleted_at` DESC.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Podcast' }
+
+  # ---------------------------------------------------------------- Episodes
+  /api/podcasts/{slug}/episodes:
+    parameters:
+      - { $ref: '#/components/parameters/Slug' }
+    get:
+      tags: [Episodes]
+      summary: List episodes
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string, enum: [draft, scheduled, published] }
+        - in: query
+          name: slug
+          description: Fetch a single episode by per-podcast slug.
+          schema: { type: string }
+      responses:
+        '200':
+          description: Episodes (ordered by `published_at` desc, drafts last).
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: array
+                    items: { $ref: '#/components/schemas/Episode' }
+                  - { $ref: '#/components/schemas/Episode' }
+                  - { type: 'null' }
+    post:
+      tags: [Episodes]
+      summary: Create an episode
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - { $ref: '#/components/schemas/EpisodeWritable' }
+                - type: object
+                  required: [title]
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Episode' }
+
+  /api/podcasts/{slug}/episodes/{id}:
+    parameters:
+      - { $ref: '#/components/parameters/Slug' }
+      - { $ref: '#/components/parameters/EpisodeId' }
+    patch:
+      tags: [Episodes]
+      summary: Update an episode
+      description: |
+        Setting `status: published` together with a `published_at` in the
+        future stores the episode as `scheduled`; the in-process scheduler
+        flips it to `published` (firing the webhook + GitHub trigger) when
+        the time hits.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EpisodeWritable' }
+      responses:
+        '200':
+          description: Updated episode.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Episode' }
+    delete:
+      tags: [Episodes]
+      summary: Permanently delete an episode
+      responses:
+        '204':
+          description: Deleted.
+
+  /api/podcasts/{slug}/episodes/{id}/duplicate:
+    parameters:
+      - { $ref: '#/components/parameters/Slug' }
+      - { $ref: '#/components/parameters/EpisodeId' }
+    post:
+      tags: [Episodes]
+      summary: Duplicate an episode into a fresh draft
+      description: |
+        Carries: description, tags, image_url + filename, season_number,
+        season_name, episode_type, itunes_title/author, license override,
+        and people attachments (with role/group frozen at duplicate time).
+        Clears: audio file, chapters URL, transcript path/type,
+        episode_number, episode_display, published_at, GUID. Title gets
+        " (Copy)" appended; slug derives uniquely from the source slug.
+      responses:
+        '201':
+          description: New draft.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Episode' }
+
+  /api/podcasts/{slug}/episodes/{id}/chapters:
+    parameters:
+      - { $ref: '#/components/parameters/Slug' }
+      - { $ref: '#/components/parameters/EpisodeId' }
+    post:
+      tags: [Episodes]
+      summary: Build chapters JSON from a textarea-style list
+      description: |
+        Parses `text` (each line `MM:SS Title` or `HH:MM:SS Title` with
+        optional ` | url` suffix), serializes the result as Podcasting 2.0
+        chapters JSON, uploads it to the audio storage directory next to
+        the MP3, and persists `chapters_url` on the episode. Sending an
+        empty `text` clears the chapters URL.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text:
+                  type: string
+                  example: |
+                    00:00 Intro
+                    05:30 Topic one | https://example.com/topic-one
+                    12:15 Guest interview
+      responses:
+        '200':
+          description: Chapters URL persisted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  chapters_url: { type: string, nullable: true, format: uri }
+                  count: { type: integer }
+
+  /api/podcasts/{slug}/episodes/template:
+    parameters:
+      - { $ref: '#/components/parameters/Slug' }
+    get:
+      tags: [Episodes]
+      summary: Render the new-episode templates + suggested numbers
+      description: |
+        Returns the rendered title and description templates and suggested
+        next season/episode numbers — used by the New Episode form to pre-
+        fill. Placeholders supported in the templates: `{season}`,
+        `{episode}`, `{date}` (today as YYYY-MM-DD).
+      responses:
+        '200':
+          description: Rendered templates + suggestions.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  title: { type: string }
+                  description: { type: string }
+                  season_number: { type: integer, nullable: true }
+                  episode_number: { type: integer }
+
+  /api/podcasts/{slug}/episodes/{id}/people:
+    parameters:
+      - { $ref: '#/components/parameters/Slug' }
+      - { $ref: '#/components/parameters/EpisodeId' }
+    get:
+      tags: [People]
+      summary: List people attached to this episode
+      responses:
+        '200':
+          description: Attachments + the joined person's current name/img/href.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/EpisodePerson' }
+    post:
+      tags: [People]
+      summary: Attach a person to this episode
+      description: |
+        `role` and `group` default to the person's `default_role` /
+        `default_group` and are then **frozen** on the attachment row —
+        later edits to the person's defaults won't rewrite this episode.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [person_id]
+              properties:
+                person_id: { type: integer }
+                role: { type: string }
+                group: { type: string }
+      responses:
+        '200':
+          description: Attachment created (or updated, if already present).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EpisodePerson' }
+
+  /api/podcasts/{slug}/episodes/{id}/people/{attachId}:
+    parameters:
+      - { $ref: '#/components/parameters/Slug' }
+      - { $ref: '#/components/parameters/EpisodeId' }
+      - in: path
+        name: attachId
+        required: true
+        schema: { type: integer }
+    delete:
+      tags: [People]
+      summary: Detach a person from this episode
+      responses:
+        '200':
+          description: Detached.
+
+  # ---------------------------------------------------------------- People
+  /api/podcasts/{slug}/people:
+    parameters:
+      - { $ref: '#/components/parameters/Slug' }
+    get:
+      tags: [People]
+      summary: Roster — list all people for the podcast
+      responses:
+        '200':
+          description: Roster ordered by auto_attach desc, then name.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Person' }
+    post:
+      tags: [People]
+      summary: Add a person to the roster
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                img_url: { type: string, format: uri, nullable: true }
+                href: { type: string, format: uri, nullable: true }
+                default_role: { type: string, default: host, example: host }
+                default_group: { type: string, default: cast, example: cast }
+                auto_attach: { type: boolean, default: false }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Person' }
+
+  /api/podcasts/{slug}/people/{id}:
+    parameters:
+      - { $ref: '#/components/parameters/Slug' }
+      - { $ref: '#/components/parameters/PersonId' }
+    patch:
+      tags: [People]
+      summary: Update a roster record
+      description: |
+        Existing `episode_people` attachment rows are NOT rewritten — past
+        episodes preserve the role/group they were attached with.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Updated person.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Person' }
+    delete:
+      tags: [People]
+      summary: Remove from roster (cascades to all attachments)
+      responses:
+        '200':
+          description: Removed.
+
+  # ---------------------------------------------------------------- Uploads & files
+  /api/podcasts/{slug}/upload:
+    parameters:
+      - { $ref: '#/components/parameters/Slug' }
+      - in: query
+        name: kind
+        schema: { type: string, enum: [audio, artwork, transcript, chapters], default: audio }
+    post:
+      tags: [Uploads & files]
+      summary: Upload a file via the podcast's storage adapter
+      description: |
+        Multipart form upload. Field name: `file`. The file is sent through
+        whichever storage adapter (SFTP / S3) is configured for the
+        podcast. Transcripts and chapters land in the audio directory
+        (sidecar to the MP3) — Podshelf manages podcasts but doesn't host
+        listener-facing content.
+
+        | `kind`     | Allowed types                                         | Max     |
+        |------------|-------------------------------------------------------|---------|
+        | audio      | mpeg/mp3/mp4/m4a/aac/ogg/wav/flac                     | 500 MB  |
+        | artwork    | jpeg/png/webp                                         | 25 MB   |
+        | transcript | html/txt/srt/vtt/json (MIME or extension)             | 10 MB   |
+        | chapters   | application/json (Podcasting 2.0 chapters JSON)       | 2 MB    |
+
+        Returns `{ url, filename, size, content_type, kind }`. Pass the
+        `url` (and optionally `content_type`) into the appropriate fields
+        on episode create/update.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        '200':
+          description: Uploaded.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UploadResult' }
+        '409':
+          description: A storage migration is in progress; uploads are locked.
+        '413':
+          description: File too large.
+
+  /api/podcasts/{slug}/files:
+    parameters:
+      - { $ref: '#/components/parameters/Slug' }
+    get:
+      tags: [Uploads & files]
+      summary: List files in the audio or artwork directory
+      parameters:
+        - in: query
+          name: kind
+          required: true
+          schema: { type: string, enum: [audio, artwork] }
+      responses:
+        '200':
+          description: Directory listing with in-use flags.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  kind: { type: string }
+                  publicUrlBase: { type: string }
+                  files:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name: { type: string }
+                        size: { type: integer }
+                        modifiedAt: { type: string, format: date-time, nullable: true }
+                        url: { type: string, format: uri }
+                        inUse: { type: boolean }
+                        usedBy:
+                          type: array
+                          items: { type: string }
+
+  /api/podcasts/{slug}/files/delete:
+    parameters:
+      - { $ref: '#/components/parameters/Slug' }
+    post:
+      tags: [Uploads & files]
+      summary: Delete a file from the storage directory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind, name]
+              properties:
+                kind: { type: string, enum: [audio, artwork] }
+                name: { type: string }
+                force: { type: boolean, default: false }
+      responses:
+        '200':
+          description: Deleted.
+        '409':
+          description: File is referenced by an episode; resend with `force=true` to delete anyway.
+
+  /api/podcasts/{slug}/files/rename:
+    parameters:
+      - { $ref: '#/components/parameters/Slug' }
+    post:
+      tags: [Uploads & files]
+      summary: Rename a file in the storage directory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind, fromName, toName]
+              properties:
+                kind: { type: string, enum: [audio, artwork] }
+                fromName: { type: string }
+                toName: { type: string }
+      responses:
+        '200':
+          description: Renamed; references in episodes are updated.
+
+  # ---------------------------------------------------------------- Storage
+  /api/podcasts/{slug}/storage:
+    parameters:
+      - { $ref: '#/components/parameters/Slug' }
+    get:
+      tags: [Storage]
+      summary: Describe the active storage config (redacted)
+      responses:
+        '200':
+          description: Adapter + non-secret fields. Secrets are never returned.
+    post:
+      tags: [Storage]
+      summary: Save storage config (encrypted at rest)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [adapter, config]
+              properties:
+                adapter: { type: string, enum: [sftp, s3] }
+                config: { type: object, additionalProperties: true }
+      responses:
+        '200':
+          description: Saved.
+
+  /api/podcasts/{slug}/storage/test:
+    parameters:
+      - { $ref: '#/components/parameters/Slug' }
+    post:
+      tags: [Storage]
+      summary: Test connectivity to a candidate storage config
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [adapter, config]
+              properties:
+                adapter: { type: string, enum: [sftp, s3] }
+                config: { type: object, additionalProperties: true }
+                kind: { type: string, enum: [audio, artwork], default: audio }
+      responses:
+        '200':
+          description: Connected; returns a small directory listing.
+
+  /api/podcasts/{slug}/storage/migrate:
+    parameters:
+      - { $ref: '#/components/parameters/Slug' }
+    get:
+      tags: [Storage]
+      summary: Most-recent migration row (for polling progress)
+      responses:
+        '200':
+          description: Migration state, or null when nothing's been queued.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - { $ref: '#/components/schemas/StorageMigration' }
+                  - { type: 'null' }
+    post:
+      tags: [Storage]
+      summary: Queue an end-to-end storage migration
+      description: |
+        The in-process worker copies every file from the current adapter
+        to the target, then atomically rewrites every URL across
+        `episodes` + `podcasts` and swaps `storage_config_encrypted`.
+        Source files are NOT deleted. Re-runs after a failed migration
+        skip files already present at the target.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [adapter, config]
+              properties:
+                adapter: { type: string, enum: [sftp, s3] }
+                config: { type: object, additionalProperties: true }
+      responses:
+        '200':
+          description: Queued.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StorageMigration' }
+        '409':
+          description: A migration is already in progress for this podcast.
+
+  # ---------------------------------------------------------------- GitHub + webhook
+  /api/podcasts/{slug}/github:
+    parameters:
+      - { $ref: '#/components/parameters/Slug' }
+    get:
+      tags: [Webhook & build]
+      summary: Describe GitHub config (redacted)
+      responses:
+        '200':
+          description: Owner / repo / event_type / has-token / auto_trigger flag.
+    post:
+      tags: [Webhook & build]
+      summary: Save GitHub repository_dispatch config
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [owner, repo, event_type]
+              properties:
+                owner: { type: string }
+                repo: { type: string }
+                event_type: { type: string }
+                token: { type: string, description: 'PAT with repo dispatch scope. Omit to keep existing.' }
+                auto_trigger: { type: boolean }
+      responses:
+        '200':
+          description: Saved.
+
+  /api/podcasts/{slug}/github/test:
+    parameters:
+      - { $ref: '#/components/parameters/Slug' }
+    post:
+      tags: [Webhook & build]
+      summary: Verify the GitHub PAT can dispatch
+      responses:
+        '200': { description: Token works. }
+
+  /api/podcasts/{slug}/github/trigger:
+    parameters:
+      - { $ref: '#/components/parameters/Slug' }
+    post:
+      tags: [Webhook & build]
+      summary: Manually fire a repository_dispatch
+      responses:
+        '200':
+          description: Dispatched.
+
+  /api/podcasts/{slug}/webhook:
+    parameters:
+      - { $ref: '#/components/parameters/Slug' }
+    get:
+      tags: [Webhook & build]
+      summary: Describe publish-webhook config (redacted)
+      description: 'Returns `{ has_url, format, enabled, url_host }`. URL itself is encrypted at rest and never returned.'
+      responses:
+        '200':
+          description: Redacted webhook config.
+    post:
+      tags: [Webhook & build]
+      summary: Save publish-webhook config
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [format, enabled]
+              properties:
+                url:
+                  type: string
+                  format: uri
+                  description: Omit to keep existing; empty string clears.
+                format: { type: string, enum: [discord, slack, generic] }
+                enabled: { type: boolean }
+      responses:
+        '200':
+          description: Saved.
+
+  /api/podcasts/{slug}/webhook/test:
+    parameters:
+      - { $ref: '#/components/parameters/Slug' }
+    post:
+      tags: [Webhook & build]
+      summary: Send a synthetic test event through the webhook
+      responses:
+        '200':
+          description: Delivered.
+        '502':
+          description: Upstream rejected the request; body has the error.
+
+  # ---------------------------------------------------------------- Migration
+  /api/podcasts/{slug}/import-rss:
+    parameters:
+      - { $ref: '#/components/parameters/Slug' }
+    post:
+      tags: [Migration]
+      summary: Import episodes from an external RSS feed
+      description: One-shot operation; only allowed while the podcast has no episodes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [feed_url]
+              properties:
+                feed_url: { type: string, format: uri }
+      responses:
+        '200':
+          description: Import result.
+        '409':
+          description: Podcast already has episodes.
+
+  /api/podcasts/{slug}/export.json:
+    parameters:
+      - { $ref: '#/components/parameters/Slug' }
+    get:
+      tags: [Migration]
+      summary: Export the full Podshelf archive (JSON)
+      description: |
+        Includes settings, every episode (drafts + scheduled + published),
+        people, episode_people, slug_aliases. Excludes secrets (storage /
+        GitHub / webhook URLs), members, api_keys, audit_log, downloads.
+      responses:
+        '200':
+          description: Archive JSON; served with `Content-Disposition: attachment`.
+          content:
+            application/json: {}
+
+  /api/podcasts/{slug}/import-json:
+    parameters:
+      - { $ref: '#/components/parameters/Slug' }
+    post:
+      tags: [Migration]
+      summary: Import a Podshelf archive into an empty podcast
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              description: The full archive object as returned by `export.json`.
+      responses:
+        '200':
+          description: Imported counts + which settings were backfilled.
+        '409':
+          description: Podcast already has episodes.
+
+  /api/podcasts/{slug}/aliases:
+    parameters:
+      - { $ref: '#/components/parameters/Slug' }
+    get:
+      tags: [Migration]
+      summary: List previous slugs (still serving the feed via redirect tag)
+      responses:
+        '200':
+          description: Chronological list of old slugs.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id: { type: integer }
+                    old_slug: { type: string }
+                    created_at: { type: string, format: date-time }
+
+  # ---------------------------------------------------------------- Audit
+  /api/podcasts/{slug}/audit:
+    parameters:
+      - { $ref: '#/components/parameters/Slug' }
+    get:
+      tags: [Audit]
+      summary: Audit log for this podcast (paginated)
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer, default: 50, maximum: 200 }
+        - in: query
+          name: before
+          description: Return rows with `id < before` (cursor pagination).
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Page of audit rows.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entries:
+                    type: array
+                    items: { $ref: '#/components/schemas/AuditEntry' }
+                  has_more: { type: boolean }
+                  next_before: { type: integer, nullable: true }
+
+  # ---------------------------------------------------------------- Misc
+  /healthz:
+    get:
+      tags: [Misc]
+      summary: Health check
+      security: []
+      responses:
+        '200':
+          description: 'Healthy: `{ "status": "ok" }`.'
+        '503':
+          description: 'DB ping failed; body includes the error.'
+
+  /api/audio-probe:
+    get:
+      tags: [Misc]
+      summary: HEAD-probe an external audio URL for size + content-type
+      parameters:
+        - in: query
+          name: url
+          required: true
+          schema: { type: string, format: uri }
+      responses:
+        '200':
+          description: '`{ size, contentType }`.'
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-Api-Key
+      description: |
+        Per-user API key. Generate one at `/api-keys` in the web UI.
+        Keys can be scoped to specific podcasts and have a permission
+        level (`read` / `write` / `full`).
+    BearerAuth:
+      type: http
+      scheme: bearer
+      description: Same key as `X-Api-Key`, sent as `Authorization: Bearer <key>`.
+
+  parameters:
+    Slug:
+      in: path
+      name: slug
+      required: true
+      description: Per-podcast slug.
+      schema: { type: string }
+    EpisodeId:
+      in: path
+      name: id
+      required: true
+      schema: { type: integer }
+    PersonId:
+      in: path
+      name: id
+      required: true
+      schema: { type: integer }
+
+  responses:
+    Unauthorized:
+      description: Authentication missing or invalid.
+    Forbidden:
+      description: Authenticated but not authorized for this resource.
+    NotFound:
+      description: Resource not found.
+
+  schemas:
+    User:
+      type: object
+      properties:
+        id: { type: integer }
+        email: { type: string, format: email }
+        is_admin: { type: boolean }
+
+    Podcast:
+      type: object
+      properties:
+        id: { type: integer }
+        slug: { type: string }
+        title: { type: string }
+        description: { type: string, nullable: true }
+        author: { type: string, nullable: true }
+        email: { type: string, nullable: true }
+        image_url: { type: string, nullable: true }
+        language: { type: string, nullable: true }
+        copyright: { type: string, nullable: true }
+        category: { type: string, nullable: true }
+        explicit: { type: string, enum: ['true', 'false'], nullable: true }
+        website: { type: string, nullable: true }
+        audio_tracking_prefix: { type: string, nullable: true }
+        itunes_type: { type: string, enum: [episodic, serial], nullable: true }
+        podcast_locked: { type: string, enum: [yes, no], nullable: true }
+        itunes_complete: { type: string, enum: [yes, no], nullable: true }
+        itunes_block: { type: string, enum: [yes, no], nullable: true }
+        funding_url: { type: string, nullable: true }
+        funding_label: { type: string, nullable: true }
+        verify_txt: { type: string, nullable: true }
+        license_identifier: { type: string, nullable: true }
+        license_url: { type: string, nullable: true }
+        episode_title_template: { type: string, nullable: true }
+        episode_description_template: { type: string, nullable: true }
+        storage_adapter: { type: string, enum: [sftp, s3] }
+        github_owner: { type: string, nullable: true }
+        github_repo: { type: string, nullable: true }
+        github_event_type: { type: string, nullable: true }
+        status: { type: string, enum: [active, inactive] }
+        deleted_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    Episode:
+      allOf:
+        - { $ref: '#/components/schemas/EpisodeWritable' }
+        - type: object
+          properties:
+            id: { type: integer }
+            podcast_id: { type: integer }
+            guid: { type: string, nullable: true }
+            created_at: { type: string, format: date-time }
+            updated_at: { type: string, format: date-time }
+
+    EpisodeWritable:
+      type: object
+      description: Fields accepted by the create / update endpoints.
+      properties:
+        title: { type: string }
+        slug: { type: string, description: 'Auto-derived from title when blank.' }
+        episode_number: { type: integer, nullable: true }
+        season_number: { type: integer, nullable: true }
+        description: { type: string, nullable: true, description: 'HTML allowed; rendered as the episode show notes.' }
+        audio_url: { type: string, format: uri, nullable: true }
+        audio_filename: { type: string, nullable: true }
+        audio_size_bytes: { type: integer, nullable: true }
+        audio_duration_seconds: { type: integer, nullable: true }
+        image_url: { type: string, format: uri, nullable: true }
+        image_filename: { type: string, nullable: true }
+        published_at: { type: string, format: date-time, nullable: true }
+        status: { type: string, enum: [draft, scheduled, published] }
+        tags: { type: string, nullable: true, description: 'Comma-separated.' }
+        transcript_path: { type: string, format: uri, nullable: true }
+        transcript_type:
+          type: string
+          enum: [text/html, text/plain, application/srt, text/vtt, application/json]
+          nullable: true
+        chapters_url: { type: string, format: uri, nullable: true }
+        episode_type: { type: string, enum: [full, trailer, bonus], default: full }
+        itunes_title: { type: string, nullable: true }
+        itunes_author: { type: string, nullable: true }
+        itunes_explicit: { type: string, enum: ['true', 'false'], nullable: true }
+        season_name: { type: string, nullable: true }
+        episode_display: { type: string, nullable: true }
+        license_identifier: { type: string, nullable: true }
+        license_url: { type: string, format: uri, nullable: true }
+
+    Person:
+      type: object
+      properties:
+        id: { type: integer }
+        podcast_id: { type: integer }
+        name: { type: string }
+        img_url: { type: string, nullable: true }
+        href: { type: string, nullable: true }
+        default_role: { type: string }
+        default_group: { type: string }
+        auto_attach: { type: integer, description: '1 = attach to every newly-created episode.' }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    EpisodePerson:
+      type: object
+      properties:
+        id: { type: integer }
+        episode_id: { type: integer }
+        person_id: { type: integer }
+        role: { type: string, description: 'Frozen at attach time.' }
+        group: { type: string, description: 'Frozen at attach time.' }
+        position: { type: integer }
+        name: { type: string, description: "Live from the person's record." }
+        img_url: { type: string, nullable: true }
+        href: { type: string, nullable: true }
+
+    UploadResult:
+      type: object
+      properties:
+        url: { type: string, format: uri }
+        filename: { type: string }
+        size: { type: integer }
+        content_type: { type: string }
+        kind: { type: string, enum: [audio, artwork, transcript, chapters] }
+
+    StorageMigration:
+      type: object
+      properties:
+        id: { type: integer }
+        podcast_id: { type: integer }
+        status: { type: string, enum: [pending, running, complete, failed] }
+        source_adapter: { type: string }
+        target_adapter: { type: string }
+        files_total: { type: integer }
+        files_done: { type: integer }
+        files_failed: { type: integer }
+        bytes_total: { type: integer }
+        bytes_done: { type: integer }
+        current_file: { type: string, nullable: true }
+        error_message: { type: string, nullable: true }
+        started_at: { type: string, format: date-time, nullable: true }
+        finished_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    AuditEntry:
+      type: object
+      properties:
+        id: { type: integer }
+        podcast_id: { type: integer, nullable: true }
+        user_id: { type: integer, nullable: true }
+        user_email: { type: string, nullable: true, description: 'null for system events (e.g. scheduled-publish flips).' }
+        action: { type: string, example: 'episode.publish' }
+        entity_type: { type: string, nullable: true }
+        entity_id: { type: integer, nullable: true }
+        summary: { type: string, nullable: true }
+        details:
+          type: object
+          nullable: true
+          description: 'Free-form. Settings/episode updates include `changed[]`, `before`, `after`.'
+          additionalProperties: true
+        created_at: { type: string, format: date-time }

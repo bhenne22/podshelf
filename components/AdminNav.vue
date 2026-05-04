@@ -48,6 +48,7 @@
       <template v-else>
         <li><NuxtLink to="/" exact-active-class="active">Podcasts</NuxtLink></li>
         <li><NuxtLink to="/api-keys" active-class="active">API Keys</NuxtLink></li>
+        <li><NuxtLink to="/docs" active-class="active">API Docs</NuxtLink></li>
         <li v-if="me?.is_admin"><NuxtLink to="/admin/users" active-class="active">Users</NuxtLink></li>
       </template>
       <li class="divider" />
