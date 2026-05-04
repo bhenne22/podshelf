@@ -219,6 +219,29 @@
         </div>
 
         <div class="form-section">
+          <h2>New Episode Templates</h2>
+          <p class="hint section-hint">
+            Pre-fills the title and show notes when you click "+ New Episode".
+            Placeholders: <code>{season}</code>, <code>{episode}</code>, <code>{date}</code>
+            (today as YYYY-MM-DD). Episode and season numbers are also
+            auto-suggested from your most recent episode.
+          </p>
+
+          <div class="form-group">
+            <label for="episode_title_template">Title template</label>
+            <input id="episode_title_template" v-model="form.episode_title_template" type="text"
+              placeholder="S{season}E{episode}: " />
+            <p class="hint">Tip: leave a trailing space or punctuation so you can drop the new episode's title right after.</p>
+          </div>
+
+          <div class="form-group">
+            <label for="episode_description_template">Show notes template</label>
+            <RichTextEditor v-model="form.episode_description_template" :rows="10" />
+            <p class="hint">Goes into the episode description editor on every new episode. Add your standard footer (links, credits, etc.) here once.</p>
+          </div>
+        </div>
+
+        <div class="form-section">
           <h2>Publish Webhook</h2>
           <p class="hint section-hint">
             Notify a chat channel or other system when an episode goes live.
@@ -355,6 +378,8 @@ interface PodcastRow {
   verify_txt: string | null
   license_identifier: string | null
   license_url: string | null
+  episode_title_template: string | null
+  episode_description_template: string | null
   status: string
   deleted_at: string | null
 }
@@ -385,6 +410,8 @@ const form = reactive({
   verify_txt: '',
   license_identifier: '',
   license_url: '',
+  episode_title_template: '',
+  episode_description_template: '',
 })
 
 const originalSlug = ref(podcastSlug)
@@ -552,6 +579,8 @@ watch(initial, (p) => {
   form.verify_txt = p.verify_txt || ''
   form.license_identifier = p.license_identifier || ''
   form.license_url = p.license_url || ''
+  form.episode_title_template = p.episode_title_template || ''
+  form.episode_description_template = p.episode_description_template || ''
 }, { immediate: true })
 
 async function saveSettings() {

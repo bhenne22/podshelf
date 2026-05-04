@@ -117,7 +117,8 @@ fields: `slug`, `title`, `description`, `author`, `email`, `image_url`,
 `language`, `copyright`, `category`, `explicit`, `website`,
 `audio_tracking_prefix`, `itunes_type`, `podcast_locked`, `itunes_complete`,
 `itunes_block`, `funding_url`, `funding_label`, `verify_txt`,
-`license_identifier`, `license_url`, `storage_adapter`, `github_owner`,
+`license_identifier`, `license_url`, `episode_title_template`,
+`episode_description_template`, `storage_adapter`, `github_owner`,
 `github_repo`, `github_event_type`.
 
 ### `DELETE /api/podcasts/[slug]`
@@ -317,6 +318,27 @@ role/group frozen at duplicate time). Clears audio file, chapters URL,
 transcript path/type, episode_number, episode_display, published_at, and
 GUID. Title becomes "Original (Copy)", slug becomes `original-slug-copy`
 with collision handling. Returns 201 + the new episode row.
+
+### `GET /api/podcasts/[slug]/episodes/template`
+
+Returns the rendered episode templates and suggested numbers for the
+"+ New Episode" form to pre-fill:
+
+```json
+{
+  "title": "S2E22: ",
+  "description": "<p>Standard footer goes here…</p>",
+  "season_number": 2,
+  "episode_number": 22
+}
+```
+
+Placeholders supported in `episode_title_template` and
+`episode_description_template`: `{season}`, `{episode}`, `{date}` (today
+as `YYYY-MM-DD`). Suggested season = the season of the most recently-
+created episode (null when no episodes exist or the latest had no
+season). Suggested episode = `max(episode_number) + 1` scoped to the
+suggested season, or globally when no season is set.
 
 ---
 

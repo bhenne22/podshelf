@@ -447,8 +447,14 @@ watch(() => form.slug, (newVal, oldVal) => {
   }
 })
 
-// Track dirty state for unsaved-changes warning
-watch(form, () => { formDirty.value = true }, { deep: true })
+// Dirty tracking starts AFTER template pre-fill so a user who hasn't typed
+// anything doesn't get the leave-page prompt just because the template
+// populated the form for them.
+let dirtyWatcherStop: (() => void) | null = null
+function startDirtyWatcher() {
+  if (dirtyWatcherStop) return
+  dirtyWatcherStop = watch(form, () => { formDirty.value = true }, { deep: true })
+}
 
 onBeforeRouteLeave(() => {
   if (formDirty.value && !formSaved.value) {
@@ -458,6 +464,7 @@ onBeforeRouteLeave(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('beforeunload', onBeforeUnload)
+  if (dirtyWatcherStop) dirtyWatcherStop()
 })
 
 function onBeforeUnload(e: BeforeUnloadEvent) {
@@ -466,8 +473,31 @@ function onBeforeUnload(e: BeforeUnloadEvent) {
   }
 }
 
-onMounted(() => {
+interface EpisodeTemplate {
+  title: string
+  description: string
+  season_number: number | null
+  episode_number: number
+}
+
+onMounted(async () => {
   window.addEventListener('beforeunload', onBeforeUnload)
+
+  try {
+    const tpl = await $fetch<EpisodeTemplate>(
+      `/api/podcasts/${podcastSlug}/episodes/template`,
+    )
+    if (tpl.title) form.title = tpl.title
+    if (tpl.description) form.description = tpl.description
+    if (tpl.season_number !== null) form.season_number = tpl.season_number
+    form.episode_number = tpl.episode_number
+    if (form.title) form.slug = slugify(form.title)
+  } catch {
+    // Template fetch failure is non-fatal; leave the form empty.
+  }
+
+  await nextTick()
+  startDirtyWatcher()
 })
 
 async function handleFileChange(event: Event) {

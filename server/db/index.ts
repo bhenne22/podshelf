@@ -50,6 +50,8 @@ CREATE TABLE IF NOT EXISTS podcasts (
   webhook_url_encrypted    TEXT,
   webhook_format           TEXT NOT NULL DEFAULT 'generic',
   webhook_enabled          INTEGER NOT NULL DEFAULT 0,
+  episode_title_template       TEXT,
+  episode_description_template TEXT,
   feed_last_modified       TEXT NOT NULL DEFAULT (datetime('now')),
   created_at               TEXT DEFAULT (datetime('now')),
   updated_at               TEXT DEFAULT (datetime('now'))
@@ -271,6 +273,12 @@ function applyMigrations(db: Database.Database) {
   }
   if (!podcastCols.includes('webhook_enabled')) {
     db.exec('ALTER TABLE podcasts ADD COLUMN webhook_enabled INTEGER NOT NULL DEFAULT 0')
+  }
+  if (!podcastCols.includes('episode_title_template')) {
+    db.exec('ALTER TABLE podcasts ADD COLUMN episode_title_template TEXT')
+  }
+  if (!podcastCols.includes('episode_description_template')) {
+    db.exec('ALTER TABLE podcasts ADD COLUMN episode_description_template TEXT')
   }
 
   const episodeCols = cols('episodes')

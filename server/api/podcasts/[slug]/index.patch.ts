@@ -22,6 +22,7 @@ const UPDATABLE = [
   'itunes_type', 'podcast_locked', 'itunes_complete', 'itunes_block',
   'funding_url', 'funding_label',
   'verify_txt', 'license_identifier', 'license_url',
+  'episode_title_template', 'episode_description_template',
   'storage_adapter', 'github_owner', 'github_repo', 'github_event_type',
 ]
 
@@ -50,6 +51,7 @@ export default defineEventHandler(async (event) => {
            copyright, category, explicit, website, audio_tracking_prefix,
            itunes_type, podcast_locked, itunes_complete, itunes_block,
            funding_url, funding_label, verify_txt, license_identifier, license_url,
+           episode_title_template, episode_description_template,
            storage_adapter, github_owner, github_repo, github_event_type
     FROM podcasts WHERE id = ?
   `).get(podcastId) as Record<string, unknown>
@@ -93,6 +95,7 @@ export default defineEventHandler(async (event) => {
       copyright, category, explicit, website, audio_tracking_prefix,
       itunes_type, podcast_locked, itunes_complete, itunes_block,
       funding_url, funding_label, verify_txt, license_identifier, license_url,
+      episode_title_template, episode_description_template,
       storage_adapter, github_owner, github_repo, github_event_type,
       created_at, updated_at
     FROM podcasts WHERE id = ?
