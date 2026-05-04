@@ -17,7 +17,7 @@ export default defineEventHandler((event) => {
       id, slug, title, description, author, email, image_url, language,
       copyright, category, explicit, website, audio_tracking_prefix,
       itunes_type, podcast_locked, itunes_complete, itunes_block,
-      funding_url, funding_label,
+      funding_url, funding_label, verify_txt, license_identifier, license_url,
       storage_adapter, github_owner, github_repo, github_event_type,
       status, deleted_at, created_at, updated_at
     FROM podcasts

@@ -113,9 +113,12 @@ Create a new podcast.
 ### `PATCH /api/podcasts/[slug]`
 
 Update podcast metadata. Send only the fields you want to change. Editable
-fields: `title`, `description`, `author`, `email`, `image_url`, `language`,
-`copyright`, `category`, `explicit`, `website`, `audio_tracking_prefix`,
-`storage_adapter`, `github_owner`, `github_repo`, `github_event_type`.
+fields: `slug`, `title`, `description`, `author`, `email`, `image_url`,
+`language`, `copyright`, `category`, `explicit`, `website`,
+`audio_tracking_prefix`, `itunes_type`, `podcast_locked`, `itunes_complete`,
+`itunes_block`, `funding_url`, `funding_label`, `verify_txt`,
+`license_identifier`, `license_url`, `storage_adapter`, `github_owner`,
+`github_repo`, `github_event_type`.
 
 ### `DELETE /api/podcasts/[slug]`
 
@@ -204,6 +207,58 @@ on disk (used by the file browser to detect references).
 
 If `slug` is omitted it's auto-derived from `title` with collision handling.
 
+Additional Podcasting 2.0 fields accepted on create / update:
+
+| Field                | Description                                                                                |
+|----------------------|--------------------------------------------------------------------------------------------|
+| `episode_type`       | `full` (default), `trailer`, or `bonus`. Emitted as `<itunes:episodeType>`.                |
+| `transcript_path`    | URL of the transcript file. Emitted as `<podcast:transcript url>`.                         |
+| `transcript_type`    | MIME type. One of `text/html`, `text/plain`, `application/srt`, `text/vtt`, `application/json`. Auto-detected from URL extension when blank. |
+| `chapters_url`       | URL of a Podcasting 2.0 chapters JSON file. Set indirectly via the chapters endpoint.      |
+| `itunes_title`       | "Clean" episode title without season/number prefixes. Emitted as `<itunes:title>`.         |
+| `itunes_author`      | Per-episode author override. Emitted as `<itunes:author>`.                                 |
+| `itunes_explicit`    | `'true'` or `'false'`. Overrides the channel default for this single episode.              |
+| `season_name`        | Display name for `<podcast:season name="…">` (e.g. `"Series 1"`).                          |
+| `episode_display`    | Display string for `<podcast:episode display="…">` (e.g. `"S2E22"`).                       |
+| `license_identifier` | SPDX or custom license name (e.g. `CC-BY-4.0`). Per-episode license override.              |
+| `license_url`        | URL to the license terms.                                                                  |
+
+### `POST /api/podcasts/[slug]/episodes/[id]/chapters`
+
+Body: `{ "text": "MM:SS Title\n…" }`. Parses a textarea-style chapters list,
+serializes it to a Podcasting 2.0 chapters JSON file, uploads the file to the
+podcast's audio storage directory next to the MP3, and persists the public URL
+on the episode row. Each line is `MM:SS Title` or `HH:MM:SS Title`, with an
+optional ` | url` suffix. Sending an empty `text` clears the chapters URL.
+
+```bash
+curl -X POST -H "X-Api-Key: $KEY" -H "Content-Type: application/json" \
+  -d '{"text":"00:00 Intro\n05:30 Topic one | https://example.com/topic-one"}' \
+  "$SITE/api/podcasts/yousaid100miles/episodes/127/chapters"
+```
+
+Response: `{ "chapters_url": "https://…", "count": 2 }`.
+
+### People
+
+Per-podcast roster + per-episode attachments for `<podcast:person>` tags.
+
+| Endpoint                                                                  | Purpose                                                                |
+|---------------------------------------------------------------------------|------------------------------------------------------------------------|
+| `GET /api/podcasts/[slug]/people`                                         | List the podcast's roster.                                             |
+| `POST /api/podcasts/[slug]/people`                                        | Add a person. Body: `{ name, img_url?, href?, default_role?, default_group?, auto_attach? }`. |
+| `PATCH /api/podcasts/[slug]/people/[id]`                                  | Update a roster record. Does not rewrite past `episode_people` rows.   |
+| `DELETE /api/podcasts/[slug]/people/[id]`                                 | Remove from the roster (cascades to attachments).                      |
+| `GET /api/podcasts/[slug]/episodes/[id]/people`                           | List people attached to an episode.                                    |
+| `POST /api/podcasts/[slug]/episodes/[id]/people`                          | Attach. Body: `{ person_id, role?, group? }` — defaults from the person's record. |
+| `DELETE /api/podcasts/[slug]/episodes/[id]/people/[attachId]`             | Detach a single attachment.                                            |
+
+`role` and `group` on an `episode_people` attachment are captured at attach
+time and **not** updated when the underlying person's defaults change — so
+retiring or renaming a host doesn't rewrite past episodes' attribution.
+Setting `auto_attach=true` on a person opts them into automatic attachment
+on every newly-created episode.
+
 ### `PATCH /api/podcasts/[slug]/episodes/[id]`
 
 Update any field on an existing episode. Same fields as create.
@@ -228,7 +283,7 @@ Permanently deletes the episode and its download history. Returns 204.
 
 ## Uploads
 
-### `POST /api/podcasts/[slug]/upload?kind=audio|artwork`
+### `POST /api/podcasts/[slug]/upload?kind=audio|artwork|transcript|chapters`
 
 Multipart upload. Field: `file`. Routed through whichever storage adapter is
 configured for the podcast (set up in the admin UI under the **Storage** tab,
@@ -238,6 +293,8 @@ with credentials encrypted at rest).
 |-----------|--------------------------------------------------------------------------|----------|------------|
 | `audio` (default) | mpeg/mp3/mp4/m4a/aac/ogg/wav/flac                                | 500 MB   | audio dir / bucket root |
 | `artwork` | `image/jpeg`, `image/png`, `image/webp`                                  | 25 MB    | artwork dir or `artworkPrefix` |
+| `transcript` | text/html, text/plain, text/vtt, application/srt, application/json (or `.html` / `.txt` / `.srt` / `.vtt` / `.json` extension) | 10 MB | audio dir (sidecar to MP3) |
+| `chapters`   | application/json (or `.json` extension) — Podcasting 2.0 chapters JSON   | 2 MB     | audio dir (sidecar to MP3) |
 
 For `kind=artwork`, the podcast's storage must have artwork settings
 configured (SFTP `artworkRemoteDir` + `artworkPublicUrlBase`, or S3
@@ -270,7 +327,9 @@ Response:
 
 For `audio` uploads, take `url` and `size` and pass them to the episode-create
 endpoint as `audio_url` and `audio_size_bytes`. For `artwork` uploads, pass
-`url` and `filename` as `image_url` and `image_filename`.
+`url` and `filename` as `image_url` and `image_filename`. For `transcript`
+uploads, pass `url` (and optionally `content_type`) as `transcript_path` and
+`transcript_type`. For `chapters` uploads, pass `url` as `chapters_url`.
 
 ### `GET /api/audio-probe?url=<encoded-url>`
 

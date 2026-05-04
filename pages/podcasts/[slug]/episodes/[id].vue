@@ -205,6 +205,191 @@
           />
 
           <div class="form-section">
+            <h2>People</h2>
+            <p class="hint section-hint">
+              Manage the show's roster on the
+              <NuxtLink :to="`/podcasts/${podcastSlug}/people`">People page</NuxtLink>.
+              Role and group are captured at attach time so changing a person's
+              defaults later won't rewrite this episode.
+            </p>
+
+            <div v-if="episodePeople.length === 0" class="empty-people">No one attached to this episode yet.</div>
+            <ul v-else class="attached-list">
+              <li v-for="ap in episodePeople" :key="ap.id" class="attached-row">
+                <div class="attached-avatar">
+                  <img v-if="ap.img_url" :src="ap.img_url" :alt="ap.name" />
+                  <span v-else>{{ ap.name.charAt(0).toUpperCase() }}</span>
+                </div>
+                <div class="attached-meta">
+                  <strong>{{ ap.name }}</strong>
+                  <span class="attached-tags">
+                    <span class="tag">{{ ap.role }}</span>
+                    <span class="tag">{{ ap.group }}</span>
+                  </span>
+                </div>
+                <button type="button" class="btn-link danger" @click="detachPerson(ap.id)">Remove</button>
+              </li>
+            </ul>
+
+            <div class="attach-row" v-if="availableToAttach.length">
+              <select v-model.number="attachPersonId" class="attach-select">
+                <option :value="0">Add a person…</option>
+                <option v-for="p in availableToAttach" :key="p.id" :value="p.id">
+                  {{ p.name }} ({{ p.default_role }})
+                </option>
+              </select>
+              <input v-model="attachRole" type="text" placeholder="role override (optional)" class="attach-input" />
+              <input v-model="attachGroup" type="text" placeholder="group override (optional)" class="attach-input" />
+              <button type="button" class="btn-secondary" :disabled="!attachPersonId" @click="attachPerson">Attach</button>
+            </div>
+            <p v-else-if="!peopleRosterLoading && !roster.length" class="hint">
+              No people in the roster yet.
+              <NuxtLink :to="`/podcasts/${podcastSlug}/people`">Add some →</NuxtLink>
+            </p>
+          </div>
+
+          <div class="form-section">
+            <h2>Transcript</h2>
+            <p class="hint section-hint">
+              Upload a transcript file or paste a public URL. Emits <code>podcast:transcript</code> in the feed.
+            </p>
+
+            <div v-if="form.transcript_path" class="current-file">
+              <strong>Current:</strong>
+              <a :href="form.transcript_path" target="_blank" rel="noopener">{{ form.transcript_path }}</a>
+              <button type="button" class="btn-secondary btn-clear" @click="form.transcript_path = ''; form.transcript_type = ''">Clear</button>
+            </div>
+
+            <div class="form-group">
+              <label for="transcript_file">Upload transcript</label>
+              <input
+                id="transcript_file"
+                type="file"
+                accept=".html,.htm,.txt,.srt,.vtt,.json,text/html,text/plain,text/vtt,application/srt,application/x-subrip,application/json"
+                @change="handleTranscriptChange"
+                class="file-input"
+              />
+              <p class="hint">HTML, plain text, SRT, WebVTT, or JSON. Goes into your audio directory next to the MP3.</p>
+            </div>
+
+            <div v-if="transcriptUploading" class="upload-progress">Uploading transcript… {{ uploadProgress }}%</div>
+            <div v-if="transcriptError" class="probe-error">{{ transcriptError }}</div>
+
+            <div class="form-row">
+              <div class="form-group flex-2">
+                <label for="transcript_path">Transcript URL</label>
+                <input id="transcript_path" v-model="form.transcript_path" type="url" placeholder="https://example.com/episode-42.html" />
+              </div>
+              <div class="form-group">
+                <label for="transcript_type">Type</label>
+                <select id="transcript_type" v-model="form.transcript_type">
+                  <option value="">Auto-detect from URL</option>
+                  <option value="text/html">HTML</option>
+                  <option value="text/plain">Plain text</option>
+                  <option value="application/srt">SRT</option>
+                  <option value="text/vtt">WebVTT</option>
+                  <option value="application/json">JSON (closed captions)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-section">
+            <h2>Chapters</h2>
+            <p class="hint section-hint">
+              Upload a Podcasting 2.0 chapters JSON file, or paste a list below — Podshelf will build and upload the JSON for you.
+              Emits <code>podcast:chapters</code> in the feed.
+            </p>
+
+            <div v-if="form.chapters_url" class="current-file">
+              <strong>Current:</strong>
+              <a :href="form.chapters_url" target="_blank" rel="noopener">{{ form.chapters_url }}</a>
+              <button type="button" class="btn-secondary btn-clear" @click="form.chapters_url = ''">Clear</button>
+            </div>
+
+            <div class="form-group">
+              <label for="chapters_file">Upload chapters JSON</label>
+              <input
+                id="chapters_file"
+                type="file"
+                accept=".json,application/json"
+                @change="handleChaptersFileChange"
+                class="file-input"
+              />
+              <p class="hint">Upload a pre-built JSON file. <a href="https://github.com/Podcastindex-org/podcast-namespace/blob/main/docs/examples/chapters/jsonChapters.md" target="_blank" rel="noopener">Spec</a>.</p>
+            </div>
+
+            <div v-if="chaptersFileUploading" class="upload-progress">Uploading chapters… {{ uploadProgress }}%</div>
+            <div v-if="chaptersFileError" class="probe-error">{{ chaptersFileError }}</div>
+
+            <div class="chapters-divider"><span>or paste a list</span></div>
+
+            <textarea v-model="chaptersText" rows="8" class="chapters-textarea"
+              placeholder="00:00 Intro&#10;05:30 Topic one | https://example.com/topic-one&#10;12:15 Guest interview"></textarea>
+            <p class="hint">One per line as <code>MM:SS Title</code> or <code>HH:MM:SS Title</code>. Optional URL after <code> | </code>.</p>
+            <div class="chapters-actions">
+              <span class="spacer"></span>
+              <button type="button" class="btn-secondary" :disabled="chaptersSaving" @click="saveChapters">
+                {{ chaptersSaving ? 'Uploading…' : 'Build & Save Chapters' }}
+              </button>
+            </div>
+            <div v-if="chaptersMsg" class="probe-error chapters-msg" :class="{ ok: chaptersMsgOk }">{{ chaptersMsg }}</div>
+          </div>
+
+          <div class="form-section">
+            <h2>Per-episode RSS overrides</h2>
+            <p class="hint section-hint">All optional. Override the channel-level defaults for this single episode.</p>
+
+            <div class="form-row">
+              <div class="form-group flex-2">
+                <label for="itunes_title">Clean title (<code>itunes:title</code>)</label>
+                <input id="itunes_title" v-model="form.itunes_title" type="text"
+                  placeholder='Without "S2E22:" prefix' />
+                <p class="hint">Some apps display this instead of <code>&lt;title&gt;</code>.</p>
+              </div>
+              <div class="form-group">
+                <label for="itunes_explicit">Explicit override</label>
+                <select id="itunes_explicit" v-model="form.itunes_explicit">
+                  <option value="">Inherit channel default</option>
+                  <option value="false">No (Clean)</option>
+                  <option value="true">Yes (Explicit)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="itunes_author">Author override (<code>itunes:author</code>)</label>
+              <input id="itunes_author" v-model="form.itunes_author" type="text" placeholder='e.g. "Jane Doe with guest John Roe"' />
+              <p class="hint">Override the channel author for this episode (guest hosts, etc).</p>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group flex-2">
+                <label for="season_name">Season name</label>
+                <input id="season_name" v-model="form.season_name" type="text" placeholder='e.g. "Series 1"' />
+                <p class="hint">Emitted as <code>name</code> attr on <code>podcast:season</code>.</p>
+              </div>
+              <div class="form-group flex-2">
+                <label for="episode_display">Episode display</label>
+                <input id="episode_display" v-model="form.episode_display" type="text" placeholder='e.g. "S2E22"' />
+                <p class="hint">Emitted as <code>display</code> attr on <code>podcast:episode</code>.</p>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="ep_license_identifier">License override</label>
+                <input id="ep_license_identifier" v-model="form.license_identifier" type="text" placeholder="CC-BY-4.0" />
+                <p class="hint">Per-episode license. Overrides the channel license.</p>
+              </div>
+              <div class="form-group flex-2">
+                <label for="ep_license_url">License URL</label>
+                <input id="ep_license_url" v-model="form.license_url" type="url" placeholder="https://creativecommons.org/licenses/by/4.0/" />
+              </div>
+            </div>
+          </div>
+
+          <div class="form-section">
             <h2>Publishing</h2>
             <div class="form-row">
               <div class="form-group">
@@ -275,7 +460,16 @@ interface EpisodeForm {
   status: string
   tags: string
   transcript_path: string
+  transcript_type: string
+  chapters_url: string
   episode_type: string
+  itunes_title: string
+  itunes_author: string
+  itunes_explicit: string
+  season_name: string
+  episode_display: string
+  license_identifier: string
+  license_url: string
 }
 
 const form = reactive<EpisodeForm>({
@@ -294,8 +488,171 @@ const form = reactive<EpisodeForm>({
   status: 'draft',
   tags: '',
   transcript_path: '',
+  transcript_type: '',
+  chapters_url: '',
   episode_type: 'full',
+  itunes_title: '',
+  itunes_author: '',
+  itunes_explicit: '',
+  season_name: '',
+  episode_display: '',
+  license_identifier: '',
+  license_url: '',
 })
+
+interface RosterPerson {
+  id: number
+  name: string
+  img_url: string | null
+  href: string | null
+  default_role: string
+  default_group: string
+  auto_attach: number
+}
+interface AttachedPerson {
+  id: number
+  episode_id: number
+  person_id: number
+  role: string
+  group: string
+  position: number
+  name: string
+  img_url: string | null
+  href: string | null
+}
+
+const roster = ref<RosterPerson[]>([])
+const peopleRosterLoading = ref(true)
+const episodePeople = ref<AttachedPerson[]>([])
+const attachPersonId = ref<number>(0)
+const attachRole = ref('')
+const attachGroup = ref('')
+const chaptersText = ref('')
+const chaptersSaving = ref(false)
+const chaptersMsg = ref('')
+const chaptersMsgOk = ref(false)
+const transcriptUploading = ref(false)
+const transcriptError = ref('')
+const chaptersFileUploading = ref(false)
+const chaptersFileError = ref('')
+
+const VALID_TRANSCRIPT_TYPES = new Set([
+  'text/html', 'text/plain', 'text/vtt', 'application/srt', 'application/json',
+])
+
+async function handleTranscriptChange(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  transcriptError.value = ''
+  transcriptUploading.value = true
+  try {
+    const result = await uploadFile(file, 'transcript')
+    form.transcript_path = result.url
+    if (result.content_type && VALID_TRANSCRIPT_TYPES.has(result.content_type)) {
+      form.transcript_type = result.content_type
+    }
+  } catch (err: unknown) {
+    transcriptError.value = err instanceof Error ? err.message : 'Upload failed'
+  } finally {
+    transcriptUploading.value = false
+    input.value = ''
+  }
+}
+
+async function handleChaptersFileChange(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  chaptersFileError.value = ''
+  chaptersFileUploading.value = true
+  try {
+    const result = await uploadFile(file, 'chapters')
+    form.chapters_url = result.url
+    // Persist on the episode row so the feed picks it up — same DB column the
+    // textarea path writes to. Saved via the chapters endpoint with empty text
+    // to keep the URL but no parse step (we just took an externally-built file).
+    await $fetch(`/api/podcasts/${podcastSlug}/episodes/${id}`, {
+      method: 'PATCH',
+      body: { chapters_url: result.url },
+    })
+  } catch (err: unknown) {
+    chaptersFileError.value = err instanceof Error ? err.message : 'Upload failed'
+  } finally {
+    chaptersFileUploading.value = false
+    input.value = ''
+  }
+}
+
+const availableToAttach = computed(() => {
+  const attachedIds = new Set(episodePeople.value.map((p) => p.person_id))
+  return roster.value.filter((p) => !attachedIds.has(p.id))
+})
+
+async function loadRoster() {
+  peopleRosterLoading.value = true
+  try {
+    roster.value = await $fetch<RosterPerson[]>(`/api/podcasts/${podcastSlug}/people`)
+  } finally {
+    peopleRosterLoading.value = false
+  }
+}
+
+async function loadEpisodePeople() {
+  episodePeople.value = await $fetch<AttachedPerson[]>(`/api/podcasts/${podcastSlug}/episodes/${id}/people`)
+}
+
+async function attachPerson() {
+  if (!attachPersonId.value) return
+  try {
+    await $fetch(`/api/podcasts/${podcastSlug}/episodes/${id}/people`, {
+      method: 'POST',
+      body: {
+        person_id: attachPersonId.value,
+        role: attachRole.value.trim() || undefined,
+        group: attachGroup.value.trim() || undefined,
+      },
+    })
+    attachPersonId.value = 0
+    attachRole.value = ''
+    attachGroup.value = ''
+    await loadEpisodePeople()
+  } catch (err: unknown) {
+    errorMsg.value = err instanceof Error ? err.message : 'Failed to attach person'
+  }
+}
+
+async function detachPerson(attachId: number) {
+  try {
+    await $fetch(`/api/podcasts/${podcastSlug}/episodes/${id}/people/${attachId}`, { method: 'DELETE' })
+    await loadEpisodePeople()
+  } catch (err: unknown) {
+    errorMsg.value = err instanceof Error ? err.message : 'Failed to detach person'
+  }
+}
+
+async function saveChapters() {
+  chaptersSaving.value = true
+  chaptersMsg.value = ''
+  try {
+    const result = await $fetch<{ chapters_url: string | null; count: number }>(
+      `/api/podcasts/${podcastSlug}/episodes/${id}/chapters`,
+      { method: 'POST', body: { text: chaptersText.value } }
+    )
+    form.chapters_url = result.chapters_url || ''
+    chaptersMsg.value = result.count > 0
+      ? `Uploaded ${result.count} chapter${result.count === 1 ? '' : 's'}.`
+      : 'Chapters cleared.'
+    chaptersMsgOk.value = true
+  } catch (err: unknown) {
+    chaptersMsg.value = (err as { data?: { statusMessage?: string } })?.data?.statusMessage
+      || (err instanceof Error ? err.message : 'Failed to save chapters')
+    chaptersMsgOk.value = false
+  } finally {
+    chaptersSaving.value = false
+    setTimeout(() => { chaptersMsg.value = '' }, 4000)
+  }
+}
 
 const artworkUploading = ref(false)
 const artworkError = ref('')
@@ -325,8 +682,19 @@ onMounted(async () => {
       status: ep.status,
       tags: ep.tags || '',
       transcript_path: ep.transcript_path || '',
+      transcript_type: ep.transcript_type || '',
+      chapters_url: ep.chapters_url || '',
       episode_type: ep.episode_type || 'full',
+      itunes_title: ep.itunes_title || '',
+      itunes_author: ep.itunes_author || '',
+      itunes_explicit: ep.itunes_explicit || '',
+      season_name: ep.season_name || '',
+      episode_display: ep.episode_display || '',
+      license_identifier: ep.license_identifier || '',
+      license_url: ep.license_url || '',
     })
+
+    await Promise.all([loadRoster(), loadEpisodePeople()])
   } catch (err: unknown) {
     loadError.value = err instanceof Error ? err.message : 'Failed to load episode'
   } finally {
@@ -845,6 +1213,165 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
   font-size: 0.9rem;
 }
 .loading { color: #718096; padding: 2rem 0; }
+
+.section-hint {
+  margin: -0.5rem 0 1rem;
+  display: block;
+  font-size: 0.82rem;
+  color: #4a5568;
+  margin-left: 0;
+}
+.section-hint a { color: #667eea; }
+.section-hint code {
+  background: #edf2f7;
+  padding: 0.1em 0.35em;
+  border-radius: 3px;
+  font-size: 0.85em;
+}
+
+.empty-people { color: #718096; padding: 0.75rem 0; font-size: 0.875rem; }
+
+.attached-list { list-style: none; margin: 0 0 1rem; padding: 0; }
+.attached-row {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.5rem 0.625rem;
+  background: #f7fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  margin-bottom: 0.5rem;
+}
+.attached-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #edf2f7;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  overflow: hidden;
+  font-weight: 600;
+  color: #4a5568;
+}
+.attached-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.attached-meta { flex: 1; display: flex; flex-direction: column; gap: 0.15rem; }
+.attached-meta strong { color: #1a202c; }
+.attached-tags { display: flex; gap: 0.375rem; }
+.tag {
+  font-size: 0.72rem;
+  background: #edf2f7;
+  color: #4a5568;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+}
+
+.attach-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.attach-select { flex: 2; min-width: 200px; }
+.attach-input { flex: 1; min-width: 120px; }
+.attach-row .btn-secondary {
+  padding: 0.5rem 0.875rem;
+  font-size: 0.85rem;
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  color: #667eea;
+  cursor: pointer;
+  font-size: 0.85rem;
+  padding: 0.25rem 0.5rem;
+}
+.btn-link:hover { text-decoration: underline; }
+.btn-link.danger { color: #c53030; }
+
+.chapters-textarea {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: white;
+  resize: vertical;
+  min-height: 140px;
+  outline: none;
+}
+.chapters-textarea:focus {
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
+}
+
+.chapters-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.625rem;
+  flex-wrap: wrap;
+}
+.chapters-actions .spacer { flex: 1; }
+.chapters-url {
+  font-size: 0.78rem;
+  color: #4a5568;
+  word-break: break-all;
+}
+.chapters-url a { color: #667eea; }
+
+.chapters-msg.ok {
+  background: #f0fff4;
+  border: 1px solid #9ae6b4;
+  color: #276749;
+  margin-top: 0.5rem;
+}
+
+.current-file {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.5rem 0.75rem;
+  background: #f7fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  margin-bottom: 1rem;
+  font-size: 0.85rem;
+  color: #4a5568;
+  flex-wrap: wrap;
+}
+.current-file a {
+  color: #667eea;
+  word-break: break-all;
+  flex: 1;
+  min-width: 0;
+}
+.btn-clear {
+  flex-shrink: 0;
+  padding: 0.3rem 0.7rem;
+  font-size: 0.78rem;
+}
+
+.chapters-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 1rem 0 0.625rem;
+  color: #a0aec0;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.chapters-divider::before,
+.chapters-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #e2e8f0;
+}
 
 @media (max-width: 720px) {
   .container { padding: 1rem 0.75rem; }

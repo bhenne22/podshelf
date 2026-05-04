@@ -33,7 +33,8 @@ User-facing routes (login required):
 - `/api-keys` — per-user API key management
 - `/podcasts/[slug]` — per-podcast dashboard
 - `/podcasts/[slug]/episodes` — episode list (with season + date-range filters and Overall # / Season # / Ep # columns)
-- `/podcasts/[slug]/episodes/new`, `/podcasts/[slug]/episodes/[id]` — episode CRUD
+- `/podcasts/[slug]/episodes/new`, `/podcasts/[slug]/episodes/[id]` — episode CRUD (transcript + chapters file/textarea, per-episode RSS overrides, people attachments)
+- `/podcasts/[slug]/people` — per-podcast roster of hosts/guests (powers `<podcast:person>` tags in the feed)
 - `/podcasts/[slug]/settings` — podcast metadata (paste-URL or upload artwork; soft-delete in Danger Zone)
 - `/podcasts/[slug]/storage` — per-podcast SFTP / S3 credentials, plus separate audio + artwork directories
 - `/podcasts/[slug]/files` — file browser for the audio + artwork directories (list, upload, rename, delete, copy URL, in-use warning)
@@ -60,7 +61,10 @@ All under `server/api/`. The full reference is in `docs/api.md`. The shapes most
 - `GET /api/podcasts/[slug]`, `PATCH …`, `DELETE …` (soft-delete), `POST .../restore`, `DELETE .../purge` (admin-only hard delete)
 - `GET /api/admin/inactive-podcasts` — admin list of soft-deleted podcasts
 - `GET/POST /api/podcasts/[slug]/episodes`, `PATCH/DELETE /api/podcasts/[slug]/episodes/[id]`
-- `POST /api/podcasts/[slug]/upload?kind=audio|artwork` — multipart upload (audio: 500 MB, image MIME types: 25 MB)
+- `POST /api/podcasts/[slug]/episodes/[id]/chapters` — parses a textarea-style chapters list, uploads JSON sidecar to audio storage, persists `chapters_url`
+- `GET/POST/PATCH/DELETE /api/podcasts/[slug]/people` (+ `[id]`) — per-podcast roster
+- `GET/POST/DELETE /api/podcasts/[slug]/episodes/[id]/people` (+ `/[attachId]`) — per-episode attachments; `role`/`group` frozen at attach time
+- `POST /api/podcasts/[slug]/upload?kind=audio|artwork|transcript|chapters` — multipart upload (audio: 500 MB, image: 25 MB, transcript: 10 MB, chapters JSON: 2 MB; transcripts + chapters land in the audio directory as sidecar files)
 - `GET /api/podcasts/[slug]/files?kind=…`, `POST .../files/delete`, `POST .../files/rename`
 - `GET/POST /api/podcasts/[slug]/storage`, `POST .../storage/test`
 - `GET/POST /api/podcasts/[slug]/github`, `POST .../github/test`, `POST .../github/trigger` — GitHub `repository_dispatch` integration
@@ -71,7 +75,7 @@ RSS feed lives at `server/routes/feeds/[slug].xml.ts` → `GET /feeds/[slug].xml
 
 SQLite via `better-sqlite3` (sync, no async/await). Singleton initialized in `server/db/index.ts`; canonical schema in `server/db/schema.sql` (mirrored inline as `SCHEMA_SQL` in `server/db/index.ts` to dodge file-read issues in Nitro production builds — keep both in sync). Idempotent `ALTER` migrations live in `applyMigrations` in `server/db/index.ts` for backward-compatible additions.
 
-Tables: `users`, `podcasts` (per-tenant config + soft-delete `status` / `deleted_at`), `podcast_users` (membership), `api_keys`, `api_key_podcasts` (key scope), `episodes` (per-podcast, with `image_url`/`image_filename` for per-episode artwork), `downloads`.
+Tables: `users`, `podcasts` (per-tenant config + soft-delete `status` / `deleted_at`), `podcast_users` (membership), `api_keys`, `api_key_podcasts` (key scope), `episodes` (per-podcast, with `image_url`/`image_filename` for per-episode artwork, plus Podcasting 2.0 fields: `transcript_path`/`transcript_type`, `chapters_url`, `itunes_title`/`itunes_author`/`itunes_explicit`, `season_name`, `episode_display`, `license_identifier`/`license_url`), `people` (per-podcast roster: name, photo, href, default role/group, `auto_attach` flag), `episode_people` (many-to-many; `role`/`group` frozen at attach time so historical attribution survives roster edits), `downloads`.
 
 ### Storage Adapters
 

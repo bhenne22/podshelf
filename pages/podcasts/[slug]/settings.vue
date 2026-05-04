@@ -194,6 +194,28 @@
               <p class="hint">Defaults to "Support the show" if blank.</p>
             </div>
           </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="license_identifier">License</label>
+              <input id="license_identifier" v-model="form.license_identifier" type="text"
+                placeholder="CC-BY-4.0" />
+              <p class="hint">SPDX identifier (e.g. <code>CC-BY-4.0</code>) or custom name. Emits <code>podcast:license</code>.</p>
+            </div>
+            <div class="form-group flex-2">
+              <label for="license_url">License URL</label>
+              <input id="license_url" v-model="form.license_url" type="url"
+                placeholder="https://creativecommons.org/licenses/by/4.0/" />
+              <p class="hint">Link to license terms. Optional but recommended for non-SPDX identifiers.</p>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="verify_txt">Directory Verification Token</label>
+            <input id="verify_txt" v-model="form.verify_txt" type="text"
+              placeholder="apple-podcasts-connect:abc123 or spotify:xyz789" />
+            <p class="hint">Free-form token published as <code>podcast:txt purpose="verify"</code>. Use when claiming the feed in Apple Podcasts Connect or Spotify for Podcasters.</p>
+          </div>
         </div>
 
         <div class="form-actions">
@@ -280,6 +302,9 @@ interface PodcastRow {
   itunes_block: string | null
   funding_url: string | null
   funding_label: string | null
+  verify_txt: string | null
+  license_identifier: string | null
+  license_url: string | null
   status: string
   deleted_at: string | null
 }
@@ -307,6 +332,9 @@ const form = reactive({
   itunes_block: 'no',
   funding_url: '',
   funding_label: '',
+  verify_txt: '',
+  license_identifier: '',
+  license_url: '',
 })
 
 const originalSlug = ref(podcastSlug)
@@ -396,6 +424,9 @@ watch(initial, (p) => {
   form.itunes_block = p.itunes_block || 'no'
   form.funding_url = p.funding_url || ''
   form.funding_label = p.funding_label || ''
+  form.verify_txt = p.verify_txt || ''
+  form.license_identifier = p.license_identifier || ''
+  form.license_url = p.license_url || ''
 }, { immediate: true })
 
 async function saveSettings() {

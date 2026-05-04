@@ -44,6 +44,9 @@ CREATE TABLE IF NOT EXISTS podcasts (
   itunes_block             TEXT NOT NULL DEFAULT 'no',
   funding_url              TEXT,
   funding_label            TEXT,
+  verify_txt               TEXT,
+  license_identifier       TEXT,
+  license_url              TEXT,
   feed_last_modified       TEXT NOT NULL DEFAULT (datetime('now')),
   created_at               TEXT DEFAULT (datetime('now')),
   updated_at               TEXT DEFAULT (datetime('now'))
@@ -92,14 +95,51 @@ CREATE TABLE IF NOT EXISTS episodes (
   status                  TEXT DEFAULT 'draft',
   tags                    TEXT,
   transcript_path         TEXT,
+  transcript_type         TEXT,
+  chapters_url            TEXT,
   guid                    TEXT,
   episode_type            TEXT NOT NULL DEFAULT 'full',
+  itunes_title            TEXT,
+  itunes_author           TEXT,
+  itunes_explicit         TEXT,
+  season_name             TEXT,
+  episode_display         TEXT,
+  license_identifier      TEXT,
+  license_url             TEXT,
   created_at              TEXT DEFAULT (datetime('now')),
   updated_at              TEXT DEFAULT (datetime('now')),
   UNIQUE (podcast_id, slug)
 );
 
 CREATE INDEX IF NOT EXISTS idx_episodes_podcast_id ON episodes(podcast_id);
+
+CREATE TABLE IF NOT EXISTS people (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  podcast_id    INTEGER NOT NULL REFERENCES podcasts(id) ON DELETE CASCADE,
+  name          TEXT NOT NULL,
+  img_url       TEXT,
+  href          TEXT,
+  default_role  TEXT NOT NULL DEFAULT 'host',
+  default_group TEXT NOT NULL DEFAULT 'cast',
+  auto_attach   INTEGER NOT NULL DEFAULT 0,
+  created_at    TEXT DEFAULT (datetime('now')),
+  updated_at    TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_people_podcast_id ON people(podcast_id);
+
+CREATE TABLE IF NOT EXISTS episode_people (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  episode_id  INTEGER NOT NULL REFERENCES episodes(id) ON DELETE CASCADE,
+  person_id   INTEGER NOT NULL REFERENCES people(id) ON DELETE CASCADE,
+  role        TEXT NOT NULL,
+  "group"     TEXT NOT NULL,
+  position    INTEGER NOT NULL DEFAULT 0,
+  created_at  TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_episode_people_episode_id ON episode_people(episode_id);
+CREATE INDEX IF NOT EXISTS idx_episode_people_person_id ON episode_people(person_id);
 
 CREATE TABLE IF NOT EXISTS downloads (
   id               INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -196,6 +236,15 @@ function applyMigrations(db: Database.Database) {
     db.exec('ALTER TABLE podcasts ADD COLUMN feed_last_modified TEXT')
     db.exec("UPDATE podcasts SET feed_last_modified = COALESCE(updated_at, datetime('now')) WHERE feed_last_modified IS NULL")
   }
+  if (!podcastCols.includes('verify_txt')) {
+    db.exec('ALTER TABLE podcasts ADD COLUMN verify_txt TEXT')
+  }
+  if (!podcastCols.includes('license_identifier')) {
+    db.exec('ALTER TABLE podcasts ADD COLUMN license_identifier TEXT')
+  }
+  if (!podcastCols.includes('license_url')) {
+    db.exec('ALTER TABLE podcasts ADD COLUMN license_url TEXT')
+  }
 
   const episodeCols = cols('episodes')
   if (!episodeCols.includes('image_url')) {
@@ -209,6 +258,33 @@ function applyMigrations(db: Database.Database) {
   }
   if (!episodeCols.includes('episode_type')) {
     db.exec("ALTER TABLE episodes ADD COLUMN episode_type TEXT NOT NULL DEFAULT 'full'")
+  }
+  if (!episodeCols.includes('transcript_type')) {
+    db.exec('ALTER TABLE episodes ADD COLUMN transcript_type TEXT')
+  }
+  if (!episodeCols.includes('chapters_url')) {
+    db.exec('ALTER TABLE episodes ADD COLUMN chapters_url TEXT')
+  }
+  if (!episodeCols.includes('itunes_title')) {
+    db.exec('ALTER TABLE episodes ADD COLUMN itunes_title TEXT')
+  }
+  if (!episodeCols.includes('itunes_author')) {
+    db.exec('ALTER TABLE episodes ADD COLUMN itunes_author TEXT')
+  }
+  if (!episodeCols.includes('itunes_explicit')) {
+    db.exec('ALTER TABLE episodes ADD COLUMN itunes_explicit TEXT')
+  }
+  if (!episodeCols.includes('season_name')) {
+    db.exec('ALTER TABLE episodes ADD COLUMN season_name TEXT')
+  }
+  if (!episodeCols.includes('episode_display')) {
+    db.exec('ALTER TABLE episodes ADD COLUMN episode_display TEXT')
+  }
+  if (!episodeCols.includes('license_identifier')) {
+    db.exec('ALTER TABLE episodes ADD COLUMN license_identifier TEXT')
+  }
+  if (!episodeCols.includes('license_url')) {
+    db.exec('ALTER TABLE episodes ADD COLUMN license_url TEXT')
   }
 }
 

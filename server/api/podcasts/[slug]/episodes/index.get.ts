@@ -15,26 +15,28 @@ export default defineEventHandler((event) => {
   const db = getDb()
   const query = getQuery(event)
 
+  const SELECT_COLS = `
+    id, podcast_id, title, slug, episode_number, season_number,
+    description, audio_url, audio_filename, audio_size_bytes,
+    audio_duration_seconds, image_url, image_filename,
+    published_at, status, tags,
+    transcript_path, transcript_type, chapters_url, episode_type,
+    itunes_title, itunes_author, itunes_explicit,
+    season_name, episode_display,
+    license_identifier, license_url,
+    created_at, updated_at
+  `
+
   if (query.slug) {
     return db.prepare(`
-      SELECT
-        id, podcast_id, title, slug, episode_number, season_number,
-        description, audio_url, audio_filename, audio_size_bytes,
-        audio_duration_seconds, image_url, image_filename,
-        published_at, status, tags,
-        transcript_path, created_at, updated_at
+      SELECT ${SELECT_COLS}
       FROM episodes
       WHERE podcast_id = ? AND slug = ?
     `).get(podcastId, query.slug as string) || null
   }
 
   let sql = `
-    SELECT
-      id, podcast_id, title, slug, episode_number, season_number,
-      description, audio_url, audio_filename, audio_size_bytes,
-      audio_duration_seconds, image_url, image_filename,
-      published_at, status, tags,
-      transcript_path, created_at, updated_at
+    SELECT ${SELECT_COLS}
     FROM episodes
     WHERE podcast_id = ?
   `

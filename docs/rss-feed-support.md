@@ -51,6 +51,9 @@ treats both as load-bearing:
 | `<podcast:medium>` | constant: `podcast` |
 | `<podcast:locked>` | `podcasts.podcast_locked` (`yes` or `no`) |
 | `<podcast:funding>` | `podcasts.funding_url` + `podcasts.funding_label` (omitted if URL blank) |
+| `<podcast:txt purpose="verify">` | `podcasts.verify_txt` (omitted if blank) |
+| `<podcast:license>` | `podcasts.license_identifier` + optional `url` from `podcasts.license_url` (omitted if both blank) |
+| `<podcast:person>` | One per `people` row with `auto_attach=1`, using each person's *current* `default_role`/`default_group`/`name`/`img_url`/`href` |
 | `<image>` | derived from `podcasts.image_url` + title + website |
 
 Namespace declarations on the `<rss>` root: `itunes`, `content`, `atom`,
@@ -73,6 +76,15 @@ Namespace declarations on the `<rss>` root: `itunes`, `content`, `atom`,
 | `<itunes:season>` | `episodes.season_number` (omitted if blank) |
 | `<itunes:image>` | `episodes.image_url` (omitted if blank) |
 | `<itunes:episodeType>` | `episodes.episode_type` (`full`, `trailer`, or `bonus`) |
+| `<itunes:title>` | `episodes.itunes_title` (omitted if blank) — the "clean" title without `S2E22:` prefix |
+| `<itunes:author>` | `episodes.itunes_author` (omitted if blank) — overrides channel author for guest hosts |
+| `<itunes:explicit>` | `episodes.itunes_explicit` (omitted if blank — episode inherits the channel default) |
+| `<podcast:season>` | `episodes.season_number` (value) + optional `name` attr from `episodes.season_name` |
+| `<podcast:episode>` | `episodes.episode_number` (value) + optional `display` attr from `episodes.episode_display` |
+| `<podcast:transcript>` | `episodes.transcript_path` (`url`) + `episodes.transcript_type` (or guessed from extension; defaults to `text/html`) |
+| `<podcast:chapters>` | `episodes.chapters_url` (`type="application/json+chapters"`) |
+| `<podcast:license>` | `episodes.license_identifier` + optional `url` from `episodes.license_url` (overrides channel-level license; omitted if both blank) |
+| `<podcast:person>` | One per `episode_people` row, using `episode_people.role` / `episode_people."group"` (frozen at attach time) joined with the person's *current* `name` / `img_url` / `href` |
 
 ## HTTP behavior
 
@@ -97,9 +109,21 @@ existing episodes). It reads from a source feed and:
   (defaults to `full` if missing).
 - **Channel metadata backfill** — `description`, `author`, `image_url`,
   `language`, `copyright`, `category`, `explicit`, `itunes:type`,
-  `podcast:locked` are pulled from the source channel and written into
-  the podcast row, but only into fields that are currently empty or still
-  at their schema default. Pre-import edits the user made always win.
+  `podcast:locked`, `podcast:txt purpose="verify"`, and channel-level
+  `podcast:license` (identifier + URL) are pulled from the source channel
+  and written into the podcast row, but only into fields that are
+  currently empty or still at their schema default. Pre-import edits the
+  user made always win.
+- **Per-item Podcasting 2.0 tags** — `<podcast:transcript>` (URL + type),
+  `<podcast:chapters>` URL, `<podcast:season name>` and
+  `<podcast:episode display>` values, per-item `<podcast:license>`,
+  per-item `<itunes:title>` / `<itunes:author>` / `<itunes:explicit>` are
+  captured into the corresponding `episodes.*` columns.
+- **People** — channel-level `<podcast:person>` entries are inserted
+  into the `people` table with `auto_attach=on` (so they're treated as
+  regulars). Per-item `<podcast:person>` entries are deduped by name
+  (case-insensitive) into the same roster, and `episode_people` rows
+  attach them with role/group taken verbatim from the source.
 - **Title and slug** are deliberately not backfilled — those are the
   user's choice when they create the podcast in Podshelf.
 
@@ -110,30 +134,12 @@ came from the source.
 
 The big-ticket items still open:
 
-- **`<podcast:transcript>`** per episode (the `transcript_path` column
-  already exists; just needs UI + feed plumbing).
-- **`<podcast:chapters>`** per episode (sidecar JSON at a stable URL).
 - **Slug change with feed migration** — emit `<itunes:new-feed-url>` and
   keep the old slug responding for some grace period via a slug-aliases
   table. Worth it once a podcast has real subscribers.
 - **Scheduled publishing** — filter `published_at <= now` in the feed
   query so future-dated episodes don't leak.
 - **RSS export** — the inverse of the importer.
-
-## Smaller additions worth considering later
-
-These came up while building feed-quality v1 but don't have user demand
-yet:
-
-| Tag | Effort | Notes |
-|---|---|---|
-| `<podcast:season>` / `<podcast:episode display="S2E22">` | Small | Podcasting 2.0 sibling of `itunes:season`/`itunes:episode`. The `display` string is the only real value-add — Fountain and a few others prefer it. |
-| Per-episode `<itunes:title>` | Small | "Clean" title without `S2E22:` prefix. Some apps use it as the display name. Needs a column. |
-| Per-episode `<itunes:author>` | Small | Override channel author for guest hosts. |
-| Per-episode `<itunes:explicit>` | Small | Override channel default for individual episodes. |
-| `<podcast:txt purpose="verify">` | Small | Verification tokens for Apple Podcasts Connect / Spotify for Podcasters. Free-form text field per podcast. |
-| `<podcast:person>` | Medium | Hosts/guests with photos + URLs. Modern apps render avatars. Needs a people table or per-episode JSON sidecar. |
-| `<podcast:license>` | Small | License info. Niche. |
 
 ## Won't support
 

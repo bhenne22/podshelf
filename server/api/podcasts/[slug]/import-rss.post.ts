@@ -93,13 +93,43 @@ export default defineEventHandler(async (event) => {
     INSERT INTO episodes (
       podcast_id, title, slug, episode_number, season_number,
       description, audio_url, audio_size_bytes, audio_duration_seconds,
-      published_at, status, tags, guid, episode_type
+      published_at, status, tags, guid, episode_type,
+      transcript_path, transcript_type, chapters_url,
+      itunes_title, itunes_author, itunes_explicit,
+      season_name, episode_display,
+      license_identifier, license_url
     ) VALUES (
       @podcast_id, @title, @slug, @episode_number, @season_number,
       @description, @audio_url, @audio_size_bytes, @audio_duration_seconds,
-      @published_at, 'published', NULL, @guid, @episode_type
+      @published_at, 'published', NULL, @guid, @episode_type,
+      @transcript_path, @transcript_type, @chapters_url,
+      @itunes_title, @itunes_author, @itunes_explicit,
+      @season_name, @episode_display,
+      @license_identifier, @license_url
     )
   `)
+
+  // People are added as one-off rows on import — no roster pre-existing here.
+  // Same name + role inferred from item-level entries are deduped by name to
+  // avoid creating five "Jane Doe" records when she appears in five episodes.
+  const findPersonByName = db.prepare(
+    'SELECT id FROM people WHERE podcast_id = ? AND name = ? COLLATE NOCASE'
+  )
+  const insertPerson = db.prepare(`
+    INSERT INTO people (podcast_id, name, img_url, href, default_role, default_group, auto_attach)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `)
+  const insertEpisodePerson = db.prepare(`
+    INSERT INTO episode_people (episode_id, person_id, role, "group", position)
+    VALUES (?, ?, ?, ?, ?)
+  `)
+
+  function ensurePerson(name: string, defaultRole: string, defaultGroup: string, img: string | null, href: string | null, autoAttach: number): number {
+    const existing = findPersonByName.get(podcastId, name) as { id: number } | undefined
+    if (existing) return existing.id
+    const result = insertPerson.run(podcastId, name, img, href, defaultRole, defaultGroup, autoAttach)
+    return Number(result.lastInsertRowid)
+  }
 
   const tx = db.transaction((items: typeof feed.items) => {
     let imported = 0
@@ -110,7 +140,7 @@ export default defineEventHandler(async (event) => {
         continue
       }
       const slug = uniqueSlug(slugify(item.title))
-      insert.run({
+      const result = insert.run({
         podcast_id: podcastId,
         title: item.title,
         slug,
@@ -123,11 +153,38 @@ export default defineEventHandler(async (event) => {
         published_at: item.pubDate,
         guid: item.guid,
         episode_type: item.episode_type || 'full',
+        transcript_path: item.transcript_url,
+        transcript_type: item.transcript_type,
+        chapters_url: item.chapters_url,
+        itunes_title: item.itunes_title,
+        itunes_author: item.itunes_author,
+        itunes_explicit: item.itunes_explicit,
+        season_name: item.season_name,
+        episode_display: item.episode_display,
+        license_identifier: item.license_identifier,
+        license_url: item.license_url,
       })
+
+      const episodeId = Number(result.lastInsertRowid)
+      let pos = 0
+      for (const person of item.people) {
+        const personId = ensurePerson(person.name, person.role, person.group, person.img, person.href, 0)
+        insertEpisodePerson.run(episodeId, personId, person.role, person.group, pos++)
+      }
       imported++
     }
     return { imported, skipped }
   })
+
+  // Channel-level <podcast:person> are the show's regular cast; create them
+  // up front with auto_attach=1 so future episodes inherit them.
+  if (feed.people.length > 0) {
+    db.transaction(() => {
+      for (const person of feed.people) {
+        ensurePerson(person.name, person.role, person.group, person.img, person.href, 1)
+      }
+    })()
+  }
 
   const { imported, skipped } = tx(feed.items)
 
@@ -151,10 +208,11 @@ export default defineEventHandler(async (event) => {
     language: 'en',
     explicit: 'false',
   }
-  const backfillable: Array<keyof typeof SCHEMA_DEFAULTS | 'description' | 'author' | 'image_url' | 'copyright'> = [
+  const backfillable = [
     'description', 'author', 'image_url', 'language',
     'copyright', 'category', 'explicit', 'itunes_type', 'podcast_locked',
-  ]
+    'verify_txt', 'license_identifier', 'license_url',
+  ] as const
   const sourceValues: Record<string, string | null> = {
     description: feed.description,
     author: feed.author,
@@ -165,10 +223,14 @@ export default defineEventHandler(async (event) => {
     explicit: feed.explicit,
     itunes_type: feed.itunes_type,
     podcast_locked: feed.podcast_locked,
+    verify_txt: feed.verify_txt,
+    license_identifier: feed.license_identifier,
+    license_url: feed.license_url,
   }
   const current = db.prepare(`
     SELECT description, author, image_url, language, copyright, category,
-           explicit, itunes_type, podcast_locked
+           explicit, itunes_type, podcast_locked, verify_txt,
+           license_identifier, license_url
     FROM podcasts WHERE id = ?
   `).get(podcastId) as Record<string, string | null>
 

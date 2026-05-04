@@ -187,6 +187,97 @@
         />
 
         <div class="form-section">
+          <h2>Transcript</h2>
+          <p class="hint">
+            Upload a transcript file or paste a URL — emits <code>podcast:transcript</code>.
+            Leave blank to skip.
+          </p>
+
+          <div class="form-group">
+            <label for="transcript_file">Upload transcript</label>
+            <input
+              id="transcript_file"
+              type="file"
+              accept=".html,.htm,.txt,.srt,.vtt,.json,text/html,text/plain,text/vtt,application/srt,application/x-subrip,application/json"
+              @change="handleTranscriptChange"
+              class="file-input"
+            />
+            <p class="hint">HTML, plain text, SRT, WebVTT, or JSON. Goes into your audio directory.</p>
+          </div>
+
+          <div v-if="transcriptUploading" class="upload-progress">Uploading transcript… {{ uploadProgress }}%</div>
+          <div v-if="transcriptError" class="probe-error">{{ transcriptError }}</div>
+
+          <div class="form-row">
+            <div class="form-group flex-2">
+              <label for="transcript_path">Transcript URL</label>
+              <input id="transcript_path" v-model="form.transcript_path" type="url"
+                placeholder="https://example.com/episode-42.html" />
+            </div>
+            <div class="form-group">
+              <label for="transcript_type">Type</label>
+              <select id="transcript_type" v-model="form.transcript_type">
+                <option value="">Auto-detect</option>
+                <option value="text/html">HTML</option>
+                <option value="text/plain">Plain text</option>
+                <option value="application/srt">SRT</option>
+                <option value="text/vtt">WebVTT</option>
+                <option value="application/json">JSON</option>
+              </select>
+            </div>
+          </div>
+          <p class="hint">Chapters and people can be configured after the episode is created.</p>
+        </div>
+
+        <div class="form-section">
+          <h2>Per-episode RSS overrides</h2>
+          <p class="hint">All optional. Override channel-level defaults for this single episode.</p>
+          <div class="form-row">
+            <div class="form-group flex-2">
+              <label for="itunes_title">Clean title</label>
+              <input id="itunes_title" v-model="form.itunes_title" type="text"
+                placeholder='Without "S2E22:" prefix' />
+            </div>
+            <div class="form-group">
+              <label for="itunes_explicit">Explicit override</label>
+              <select id="itunes_explicit" v-model="form.itunes_explicit">
+                <option value="">Inherit</option>
+                <option value="false">No (Clean)</option>
+                <option value="true">Yes (Explicit)</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group flex-2">
+              <label for="itunes_author">Author override</label>
+              <input id="itunes_author" v-model="form.itunes_author" type="text"
+                placeholder='e.g. "Jane Doe with John Roe"' />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="season_name">Season name</label>
+              <input id="season_name" v-model="form.season_name" type="text" placeholder='e.g. "Series 1"' />
+            </div>
+            <div class="form-group">
+              <label for="episode_display">Episode display</label>
+              <input id="episode_display" v-model="form.episode_display" type="text" placeholder='e.g. "S2E22"' />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="ep_license_identifier">License override</label>
+              <input id="ep_license_identifier" v-model="form.license_identifier" type="text" placeholder="CC-BY-4.0" />
+            </div>
+            <div class="form-group flex-2">
+              <label for="ep_license_url">License URL</label>
+              <input id="ep_license_url" v-model="form.license_url" type="url"
+                placeholder="https://creativecommons.org/licenses/by/4.0/" />
+            </div>
+          </div>
+        </div>
+
+        <div class="form-section">
           <h2>Publishing</h2>
           <div class="form-row">
             <div class="form-group">
@@ -285,7 +376,15 @@ const form = reactive({
   status: 'draft',
   tags: '',
   transcript_path: '',
+  transcript_type: '',
   episode_type: 'full',
+  itunes_title: '',
+  itunes_author: '',
+  itunes_explicit: '',
+  season_name: '',
+  episode_display: '',
+  license_identifier: '',
+  license_url: '',
 })
 
 const saving = ref(false)
@@ -295,9 +394,35 @@ const fieldsUnlocked = ref(false)
 const { uploading, uploadProgress, uploadFile } = useUpload(podcastSlug)
 const artworkUploading = ref(false)
 const artworkError = ref('')
+const transcriptUploading = ref(false)
+const transcriptError = ref('')
 const errorMsg = ref('')
 const successMsg = ref('')
 let slugManuallyEdited = false
+
+const VALID_TRANSCRIPT_TYPES = new Set([
+  'text/html', 'text/plain', 'text/vtt', 'application/srt', 'application/json',
+])
+
+async function handleTranscriptChange(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  transcriptError.value = ''
+  transcriptUploading.value = true
+  try {
+    const result = await uploadFile(file, 'transcript')
+    form.transcript_path = result.url
+    if (result.content_type && VALID_TRANSCRIPT_TYPES.has(result.content_type)) {
+      form.transcript_type = result.content_type
+    }
+  } catch (err: unknown) {
+    transcriptError.value = err instanceof Error ? err.message : 'Upload failed'
+  } finally {
+    transcriptUploading.value = false
+    input.value = ''
+  }
+}
 
 function slugify(text: string): string {
   return text

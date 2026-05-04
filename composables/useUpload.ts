@@ -1,15 +1,18 @@
+type UploadKind = 'audio' | 'artwork' | 'transcript' | 'chapters'
+
 interface UploadResult {
   url: string
   filename: string
   size: number
-  kind?: 'audio' | 'artwork'
+  content_type?: string
+  kind?: UploadKind
 }
 
 export function useUpload(podcastSlug: string) {
   const uploading = ref(false)
   const uploadProgress = ref(0)
 
-  function uploadFile(file: File, kind: 'audio' | 'artwork' = 'audio'): Promise<UploadResult> {
+  function uploadFile(file: File, kind: UploadKind = 'audio'): Promise<UploadResult> {
     return new Promise((resolve, reject) => {
       const formData = new FormData()
       formData.append('file', file)

@@ -16,7 +16,16 @@ export interface Episode {
   status: string
   tags: string | null
   transcript_path: string | null
+  transcript_type: string | null
+  chapters_url: string | null
   episode_type: string
+  itunes_title: string | null
+  itunes_author: string | null
+  itunes_explicit: string | null
+  season_name: string | null
+  episode_display: string | null
+  license_identifier: string | null
+  license_url: string | null
   created_at: string
   updated_at: string
 }

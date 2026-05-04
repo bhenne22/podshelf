@@ -91,19 +91,36 @@ feeds first-class in Pocket Casts, Fountain, Castamatic, etc.
   UI controls for the toggles + funding link; feed handler honors
   conditional GET. The complete current/planned/won't-support inventory
   lives in `docs/rss-feed-support.md`.
-- **`<podcast:transcript>`** per episode — the `transcript_path` column
+- ~~**`<podcast:transcript>`** per episode — the `transcript_path` column
   already exists in the schema; just plumb it through the episode form and
-  the feed.
-- **`<podcast:chapters>`** — chapter list with timestamps. Probably a
+  the feed.~~ Shipped: new `transcript_type` column, episode form fields
+  for URL + MIME type (auto-detect from URL extension as fallback),
+  importer captures `<podcast:transcript url type>`, feed emits the tag.
+- ~~**`<podcast:chapters>`** — chapter list with timestamps. Probably a
   separate "chapters" textarea on the episode form that gets rendered as a
-  sidecar JSON file at a stable URL.
-- **Smaller feed additions.** Per-episode `<itunes:title>` /
+  sidecar JSON file at a stable URL.~~ Shipped: new `chapters_url` column;
+  episode form has a chapters textarea (`MM:SS Title` per line, optional
+  ` | url` suffix); on save, the textarea is parsed into Podcasting 2.0
+  chapters JSON and uploaded to the podcast's audio storage directory
+  (sidecar to the MP3, since Podshelf doesn't host listener-facing
+  content). The public URL is persisted on the episode and emitted as
+  `<podcast:chapters>`. Importer captures the URL from incoming feeds.
+- ~~**Smaller feed additions.** Per-episode `<itunes:title>` /
   `<itunes:author>` / `<itunes:explicit>`, `<podcast:season>` /
   `<podcast:episode display>`, `<podcast:txt purpose="verify">`,
-  `<podcast:person>`, `<podcast:license>`. None individually compelling
-  yet; the full table with effort + rationale lives in
-  `docs/rss-feed-support.md` under "Smaller additions worth considering
-  later".
+  `<podcast:person>`, `<podcast:license>`.~~ Shipped: per-episode
+  override columns (`itunes_title`, `itunes_author`, `itunes_explicit`,
+  `season_name`, `episode_display`, `license_identifier`, `license_url`)
+  with form fields under "Per-episode RSS overrides"; channel-level
+  `<podcast:txt purpose="verify">` and `<podcast:license>` controls in
+  Settings; new `people` + `episode_people` tables with a per-podcast
+  People page (manages roster, photos, role/group defaults, and an
+  `auto_attach` flag for regulars). Episode edit page has a People
+  attachment widget; role + group are captured at attach time so
+  retiring or renaming a host doesn't rewrite past episodes' attribution.
+  Importer pulls all of the above (channel + per-item) and dedupes
+  channel-level `<podcast:person>` entries into the roster with
+  `auto_attach=on`.
 
 ## Migration tools
 

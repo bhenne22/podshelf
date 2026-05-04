@@ -9,7 +9,11 @@ const UPDATABLE = [
   'title', 'slug', 'episode_number', 'season_number',
   'description', 'audio_url', 'audio_filename', 'audio_size_bytes',
   'audio_duration_seconds', 'image_url', 'image_filename',
-  'published_at', 'status', 'tags', 'transcript_path', 'episode_type',
+  'published_at', 'status', 'tags',
+  'transcript_path', 'transcript_type', 'chapters_url', 'episode_type',
+  'itunes_title', 'itunes_author', 'itunes_explicit',
+  'season_name', 'episode_display',
+  'license_identifier', 'license_url',
 ]
 
 /**

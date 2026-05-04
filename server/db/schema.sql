@@ -42,6 +42,9 @@ CREATE TABLE IF NOT EXISTS podcasts (
   itunes_block             TEXT NOT NULL DEFAULT 'no',
   funding_url              TEXT,
   funding_label            TEXT,
+  verify_txt               TEXT,
+  license_identifier       TEXT,
+  license_url              TEXT,
   feed_last_modified       TEXT NOT NULL DEFAULT (datetime('now')),
   created_at               TEXT DEFAULT (datetime('now')),
   updated_at               TEXT DEFAULT (datetime('now'))
@@ -93,14 +96,53 @@ CREATE TABLE IF NOT EXISTS episodes (
   status                  TEXT DEFAULT 'draft',
   tags                    TEXT,
   transcript_path         TEXT,
+  transcript_type         TEXT,
+  chapters_url            TEXT,
   guid                    TEXT,
   episode_type            TEXT NOT NULL DEFAULT 'full',
+  itunes_title            TEXT,
+  itunes_author           TEXT,
+  itunes_explicit         TEXT,
+  season_name             TEXT,
+  episode_display         TEXT,
+  license_identifier      TEXT,
+  license_url             TEXT,
   created_at              TEXT DEFAULT (datetime('now')),
   updated_at              TEXT DEFAULT (datetime('now')),
   UNIQUE (podcast_id, slug)
 );
 
 CREATE INDEX IF NOT EXISTS idx_episodes_podcast_id ON episodes(podcast_id);
+
+CREATE TABLE IF NOT EXISTS people (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  podcast_id    INTEGER NOT NULL REFERENCES podcasts(id) ON DELETE CASCADE,
+  name          TEXT NOT NULL,
+  img_url       TEXT,
+  href          TEXT,
+  default_role  TEXT NOT NULL DEFAULT 'host',
+  default_group TEXT NOT NULL DEFAULT 'cast',
+  auto_attach   INTEGER NOT NULL DEFAULT 0,
+  created_at    TEXT DEFAULT (datetime('now')),
+  updated_at    TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_people_podcast_id ON people(podcast_id);
+
+-- role/group are captured at attach time and NOT NULL so historical
+-- attribution doesn't change when a person's defaults are later edited.
+CREATE TABLE IF NOT EXISTS episode_people (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  episode_id  INTEGER NOT NULL REFERENCES episodes(id) ON DELETE CASCADE,
+  person_id   INTEGER NOT NULL REFERENCES people(id) ON DELETE CASCADE,
+  role        TEXT NOT NULL,
+  "group"     TEXT NOT NULL,
+  position    INTEGER NOT NULL DEFAULT 0,
+  created_at  TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_episode_people_episode_id ON episode_people(episode_id);
+CREATE INDEX IF NOT EXISTS idx_episode_people_person_id ON episode_people(person_id);
 
 CREATE TABLE IF NOT EXISTS downloads (
   id               INTEGER PRIMARY KEY AUTOINCREMENT,

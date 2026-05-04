@@ -23,6 +23,9 @@ interface Podcast {
   itunes_block: string | null
   funding_url: string | null
   funding_label: string | null
+  verify_txt: string | null
+  license_identifier: string | null
+  license_url: string | null
   feed_last_modified: string | null
 }
 
@@ -40,6 +43,33 @@ interface Episode {
   published_at: string | null
   guid: string | null
   episode_type: string | null
+  transcript_path: string | null
+  transcript_type: string | null
+  chapters_url: string | null
+  itunes_title: string | null
+  itunes_author: string | null
+  itunes_explicit: string | null
+  season_name: string | null
+  episode_display: string | null
+  license_identifier: string | null
+  license_url: string | null
+}
+
+interface PersonRow {
+  episode_id: number | null
+  name: string
+  role: string
+  group: string
+  img_url: string | null
+  href: string | null
+}
+
+interface ChannelPersonRow {
+  name: string
+  role: string
+  group: string
+  img_url: string | null
+  href: string | null
 }
 
 function escapeXml(str: string): string {
@@ -69,6 +99,22 @@ function toRfc2822(isoString: string): string {
   return new Date(isoString).toUTCString()
 }
 
+function guessTranscriptType(url: string): string {
+  const u = url.toLowerCase()
+  if (u.endsWith('.srt')) return 'application/srt'
+  if (u.endsWith('.vtt')) return 'text/vtt'
+  if (u.endsWith('.json')) return 'application/json'
+  if (u.endsWith('.txt')) return 'text/plain'
+  return 'text/html'
+}
+
+function renderPerson(p: { name: string; role: string; group: string; img_url: string | null; href: string | null }, indent: string): string {
+  const attrs: string[] = [`role="${escapeXml(p.role)}"`, `group="${escapeXml(p.group)}"`]
+  if (p.img_url) attrs.push(`img="${escapeXml(p.img_url)}"`)
+  if (p.href) attrs.push(`href="${escapeXml(p.href)}"`)
+  return `${indent}<podcast:person ${attrs.join(' ')}>${cdata(p.name)}</podcast:person>`
+}
+
 export default defineEventHandler((event) => {
   // Nitro's `[slug].xml` route binding doesn't reliably populate the slug
   // param (the literal .xml in the route eats the binding), so parse the
@@ -84,7 +130,8 @@ export default defineEventHandler((event) => {
     SELECT id, slug, title, description, author, email, image_url, language,
            copyright, category, explicit, website, audio_tracking_prefix, guid,
            itunes_type, podcast_locked, itunes_complete, itunes_block,
-           funding_url, funding_label, feed_last_modified
+           funding_url, funding_label, verify_txt, license_identifier, license_url,
+           feed_last_modified
     FROM podcasts WHERE slug = ? AND status = 'active'
   `).get(slug) as Podcast | undefined
 
@@ -122,11 +169,42 @@ export default defineEventHandler((event) => {
   const episodes = db.prepare(`
     SELECT id, title, slug, episode_number, season_number,
            description, audio_url, audio_size_bytes,
-           audio_duration_seconds, image_url, published_at, guid, episode_type
+           audio_duration_seconds, image_url, published_at, guid, episode_type,
+           transcript_path, transcript_type, chapters_url,
+           itunes_title, itunes_author, itunes_explicit,
+           season_name, episode_display,
+           license_identifier, license_url
     FROM episodes
     WHERE podcast_id = ? AND status = 'published' AND published_at IS NOT NULL
     ORDER BY published_at DESC
   `).all(podcast.id) as Episode[]
+
+  // Channel-level <podcast:person> = the show's regular cast (auto_attach=1)
+  // using each person's *current* default_role/default_group. Per-episode
+  // <podcast:person> uses the role/group frozen at attach time.
+  const channelPeople = db.prepare(`
+    SELECT name, default_role AS role, default_group AS "group", img_url, href
+    FROM people
+    WHERE podcast_id = ? AND auto_attach = 1
+    ORDER BY id
+  `).all(podcast.id) as ChannelPersonRow[]
+
+  let episodePeopleByEpId = new Map<number, PersonRow[]>()
+  if (episodes.length > 0) {
+    const placeholders = episodes.map(() => '?').join(',')
+    const rows = db.prepare(`
+      SELECT ep.episode_id, p.name, ep.role, ep."group", p.img_url, p.href
+      FROM episode_people ep
+      JOIN people p ON p.id = ep.person_id
+      WHERE ep.episode_id IN (${placeholders})
+      ORDER BY ep.episode_id, ep.position, ep.id
+    `).all(...episodes.map((e) => e.id)) as PersonRow[]
+    for (const r of rows) {
+      if (r.episode_id == null) continue
+      if (!episodePeopleByEpId.has(r.episode_id)) episodePeopleByEpId.set(r.episode_id, [])
+      episodePeopleByEpId.get(r.episode_id)!.push(r)
+    }
+  }
 
   const showTitle = podcast.title || 'Untitled Podcast'
   const showDescription = podcast.description || ''
@@ -145,6 +223,9 @@ export default defineEventHandler((event) => {
   const itunesBlock = podcast.itunes_block === 'yes'
   const fundingUrl = (podcast.funding_url || '').trim()
   const fundingLabel = (podcast.funding_label || '').trim() || 'Support the show'
+  const verifyTxt = (podcast.verify_txt || '').trim()
+  const channelLicenseId = (podcast.license_identifier || '').trim()
+  const channelLicenseUrl = (podcast.license_url || '').trim()
   const lastBuildDate = new Date().toUTCString()
 
   // Lazily lock in a stable per-episode GUID. Using the episode URL keeps
@@ -192,12 +273,31 @@ export default defineEventHandler((event) => {
       xml += `      <itunes:duration>${formatDuration(ep.audio_duration_seconds)}</itunes:duration>\n`
     }
 
+    if (ep.itunes_title && ep.itunes_title.trim()) {
+      xml += `      <itunes:title>${cdata(ep.itunes_title.trim())}</itunes:title>\n`
+    }
+    if (ep.itunes_author && ep.itunes_author.trim()) {
+      xml += `      <itunes:author>${cdata(ep.itunes_author.trim())}</itunes:author>\n`
+    }
+    if (ep.itunes_explicit === 'true' || ep.itunes_explicit === 'false') {
+      xml += `      <itunes:explicit>${ep.itunes_explicit}</itunes:explicit>\n`
+    }
+
     if (ep.episode_number !== null && ep.episode_number !== undefined) {
       xml += `      <itunes:episode>${ep.episode_number}</itunes:episode>\n`
+      // Podcasting 2.0 sibling. `display` is optional.
+      const displayAttr = ep.episode_display && ep.episode_display.trim()
+        ? ` display="${escapeXml(ep.episode_display.trim())}"`
+        : ''
+      xml += `      <podcast:episode${displayAttr}>${ep.episode_number}</podcast:episode>\n`
     }
 
     if (ep.season_number !== null && ep.season_number !== undefined) {
       xml += `      <itunes:season>${ep.season_number}</itunes:season>\n`
+      const nameAttr = ep.season_name && ep.season_name.trim()
+        ? ` name="${escapeXml(ep.season_name.trim())}"`
+        : ''
+      xml += `      <podcast:season${nameAttr}>${ep.season_number}</podcast:season>\n`
     }
 
     const epType = ep.episode_type === 'trailer' || ep.episode_type === 'bonus' ? ep.episode_type : 'full'
@@ -207,11 +307,37 @@ export default defineEventHandler((event) => {
       xml += `      <itunes:image href="${escapeXml(ep.image_url)}"/>\n`
     }
 
+    const transcriptUrl = (ep.transcript_path || '').trim()
+    if (transcriptUrl) {
+      const transcriptType = (ep.transcript_type || '').trim() || guessTranscriptType(transcriptUrl)
+      xml += `      <podcast:transcript url="${escapeXml(transcriptUrl)}" type="${escapeXml(transcriptType)}"/>\n`
+    }
+
+    if (ep.chapters_url && ep.chapters_url.trim()) {
+      xml += `      <podcast:chapters url="${escapeXml(ep.chapters_url.trim())}" type="application/json+chapters"/>\n`
+    }
+
+    // Per-episode license overrides the channel-level license for this episode.
+    const epLicenseId = (ep.license_identifier || '').trim()
+    const epLicenseUrl = (ep.license_url || '').trim()
+    if (epLicenseId || epLicenseUrl) {
+      const urlAttr = epLicenseUrl ? ` url="${escapeXml(epLicenseUrl)}"` : ''
+      xml += `      <podcast:license${urlAttr}>${cdata(epLicenseId || 'custom')}</podcast:license>\n`
+    }
+
+    const people = episodePeopleByEpId.get(ep.id) || []
+    for (const p of people) {
+      xml += renderPerson(p, '      ') + '\n'
+    }
+
     xml += `    </item>`
     return xml
   }).join('\n')
 
   const channelLink = websiteBase || ''
+  const channelPeopleXml = channelPeople.length > 0
+    ? channelPeople.map((p) => renderPerson(p, '    ')).join('\n') + '\n'
+    : ''
 
   const rss = `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0"
@@ -231,6 +357,8 @@ export default defineEventHandler((event) => {
     <podcast:medium>podcast</podcast:medium>
     <podcast:locked>${podcastLocked}</podcast:locked>
     ${fundingUrl ? `<podcast:funding url="${escapeXml(fundingUrl)}">${cdata(fundingLabel)}</podcast:funding>` : ''}
+    ${verifyTxt ? `<podcast:txt purpose="verify">${cdata(verifyTxt)}</podcast:txt>` : ''}
+    ${(channelLicenseId || channelLicenseUrl) ? `<podcast:license${channelLicenseUrl ? ` url="${escapeXml(channelLicenseUrl)}"` : ''}>${cdata(channelLicenseId || 'custom')}</podcast:license>` : ''}
     ${showCopyright ? `<copyright>${cdata(showCopyright)}</copyright>` : ''}
     <itunes:author>${cdata(showAuthor)}</itunes:author>
     <itunes:type>${itunesType}</itunes:type>
@@ -243,7 +371,7 @@ export default defineEventHandler((event) => {
     ${showImageUrl ? `<itunes:image href="${escapeXml(showImageUrl)}"/>` : ''}
     <itunes:category text="${escapeXml(showCategory)}"/>
     <itunes:explicit>${escapeXml(showExplicit)}</itunes:explicit>
-    <image>
+${channelPeopleXml}    <image>
       ${showImageUrl ? `<url>${escapeXml(showImageUrl)}</url>` : ''}
       <title>${cdata(showTitle)}</title>
       <link>${escapeXml(channelLink)}</link>

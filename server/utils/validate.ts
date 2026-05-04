@@ -2,6 +2,15 @@ import { createError } from 'h3'
 
 const VALID_STATUSES = ['draft', 'published']
 const VALID_EPISODE_TYPES = ['full', 'trailer', 'bonus']
+const VALID_EPISODE_EXPLICIT = ['true', 'false']
+const VALID_TRANSCRIPT_TYPES = [
+  'text/html',
+  'text/plain',
+  'application/srt',
+  'application/x-subrip',
+  'text/vtt',
+  'application/json',
+]
 
 export function validateEpisodeFields(body: Record<string, unknown>) {
   if (body.episode_number != null) {
@@ -24,6 +33,19 @@ export function validateEpisodeFields(body: Record<string, unknown>) {
 
   if (body.episode_type != null && !VALID_EPISODE_TYPES.includes(body.episode_type as string)) {
     throw createError({ statusCode: 400, statusMessage: `episode_type must be one of: ${VALID_EPISODE_TYPES.join(', ')}` })
+  }
+
+  if (body.itunes_explicit != null && body.itunes_explicit !== ''
+      && !VALID_EPISODE_EXPLICIT.includes(body.itunes_explicit as string)) {
+    throw createError({ statusCode: 400, statusMessage: `itunes_explicit must be 'true' or 'false'` })
+  }
+
+  if (body.transcript_type != null && body.transcript_type !== ''
+      && !VALID_TRANSCRIPT_TYPES.includes(body.transcript_type as string)) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: `transcript_type must be one of: ${VALID_TRANSCRIPT_TYPES.join(', ')}`,
+    })
   }
 
   if (body.published_at != null && body.published_at !== '') {

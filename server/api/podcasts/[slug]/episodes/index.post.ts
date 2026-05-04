@@ -51,12 +51,18 @@ export default defineEventHandler(async (event) => {
       podcast_id, title, slug, episode_number, season_number,
       description, audio_url, audio_filename, audio_size_bytes,
       audio_duration_seconds, image_url, image_filename,
-      published_at, status, tags, transcript_path, episode_type
+      published_at, status, tags, transcript_path, transcript_type,
+      chapters_url, episode_type, itunes_title, itunes_author,
+      itunes_explicit, season_name, episode_display,
+      license_identifier, license_url
     ) VALUES (
       @podcast_id, @title, @slug, @episode_number, @season_number,
       @description, @audio_url, @audio_filename, @audio_size_bytes,
       @audio_duration_seconds, @image_url, @image_filename,
-      @published_at, @status, @tags, @transcript_path, @episode_type
+      @published_at, @status, @tags, @transcript_path, @transcript_type,
+      @chapters_url, @episode_type, @itunes_title, @itunes_author,
+      @itunes_explicit, @season_name, @episode_display,
+      @license_identifier, @license_url
     )
   `).run({
     podcast_id: podcastId,
@@ -75,10 +81,38 @@ export default defineEventHandler(async (event) => {
     status: body.status ?? 'draft',
     tags: body.tags ?? null,
     transcript_path: body.transcript_path ?? null,
+    transcript_type: body.transcript_type ?? null,
+    chapters_url: body.chapters_url ?? null,
     episode_type: body.episode_type ?? 'full',
+    itunes_title: body.itunes_title ?? null,
+    itunes_author: body.itunes_author ?? null,
+    itunes_explicit: body.itunes_explicit ?? null,
+    season_name: body.season_name ?? null,
+    episode_display: body.episode_display ?? null,
+    license_identifier: body.license_identifier ?? null,
+    license_url: body.license_url ?? null,
   })
 
-  const episode = db.prepare('SELECT * FROM episodes WHERE id = ?').get(result.lastInsertRowid) as { status: string }
+  const episodeId = Number(result.lastInsertRowid)
+
+  // Auto-attach people that are flagged for it; freeze role/group at attach
+  // time so a later edit to people.default_role doesn't rewrite history.
+  const autoAttachPeople = db.prepare(
+    'SELECT id, default_role, default_group FROM people WHERE podcast_id = ? AND auto_attach = 1 ORDER BY id'
+  ).all(podcastId) as { id: number; default_role: string; default_group: string }[]
+  if (autoAttachPeople.length > 0) {
+    const attach = db.prepare(
+      'INSERT INTO episode_people (episode_id, person_id, role, "group", position) VALUES (?, ?, ?, ?, ?)'
+    )
+    db.transaction(() => {
+      let i = 0
+      for (const p of autoAttachPeople) {
+        attach.run(episodeId, p.id, p.default_role, p.default_group, i++)
+      }
+    })()
+  }
+
+  const episode = db.prepare('SELECT * FROM episodes WHERE id = ?').get(episodeId) as { status: string }
 
   // Only kick a rebuild if this episode lands in the published feed.
   if (episode.status === 'published') {

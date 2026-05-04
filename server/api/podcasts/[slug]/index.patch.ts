@@ -11,6 +11,7 @@ const FEED_VISIBLE_FIELDS = new Set([
   'copyright', 'category', 'explicit', 'website', 'audio_tracking_prefix',
   'itunes_type', 'podcast_locked', 'itunes_complete', 'itunes_block',
   'funding_url', 'funding_label',
+  'verify_txt', 'license_identifier', 'license_url',
 ])
 
 const UPDATABLE = [
@@ -19,6 +20,7 @@ const UPDATABLE = [
   'copyright', 'category', 'explicit', 'website', 'audio_tracking_prefix',
   'itunes_type', 'podcast_locked', 'itunes_complete', 'itunes_block',
   'funding_url', 'funding_label',
+  'verify_txt', 'license_identifier', 'license_url',
   'storage_adapter', 'github_owner', 'github_repo', 'github_event_type',
 ]
 
@@ -86,7 +88,7 @@ export default defineEventHandler(async (event) => {
       id, slug, title, description, author, email, image_url, language,
       copyright, category, explicit, website, audio_tracking_prefix,
       itunes_type, podcast_locked, itunes_complete, itunes_block,
-      funding_url, funding_label,
+      funding_url, funding_label, verify_txt, license_identifier, license_url,
       storage_adapter, github_owner, github_repo, github_event_type,
       created_at, updated_at
     FROM podcasts WHERE id = ?
