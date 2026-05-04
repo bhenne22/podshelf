@@ -13,11 +13,6 @@ rather than deleting; keeps the rationale findable.
 - **Webhook on publish.** Hit a Discord / Slack / Mastodon webhook when an
   episode goes live. Same pattern as the existing GitHub `repository_dispatch`
   trigger but aimed at humans instead of CI.
-- ~~**Health check endpoint.** `GET /healthz` returning 200 + a DB ping. Wire
-  into uptime-kuma alongside the other `*.hennemo.com` services.~~ Shipped:
-  `server/routes/healthz.get.ts` returns `{ status: 'ok' }` on a successful
-  `SELECT 1` ping, 503 with the error message otherwise. Still needs the
-  uptime-kuma monitor wired up.
 - **Audit log.** Per-podcast log of who changed what when — settings edits,
   episode publishes, member adds, deletes. Becomes essential if a podcast
   ever has multiple editors.
@@ -35,92 +30,12 @@ rather than deleting; keeps the rationale findable.
   bulk re-tag.
 - **Search across episodes.** Title / tag / description, scoped per podcast.
   Becomes essential past ~50 episodes.
-- ~~**Slug change in the Settings UI.** Add `slug` to the `UPDATABLE` list in
-  `index.patch.ts`, validate (lowercase, hyphenated, unique, not blank),
-  show a clear warning about feed/bookmark breakage. Trivial to implement;
-  doesn't include feed-migration tags (see below).~~ Shipped: server-side
-  format + uniqueness checks in `index.patch.ts`, slug field on the Settings
-  page with an inline warning + `confirm()` dialog when changed, then
-  redirect to the new URL on success.
 - **Slug change with feed migration.** For an actively-subscribed podcast,
   keep the old feed alive temporarily and emit
   `<itunes:new-feed-url>` so subscribers' apps auto-follow. Needs a
   `slug_aliases` table (or `previous_slug` column) and an extra route in
   `feeds/[slug].xml.ts`. Only worth it once a podcast has real subscribers.
 
-## Feed quality (Podcasting 2.0)
-
-The modern podcast ecosystem has standardised on the `podcast:` XML namespace
-for things the iTunes namespace doesn't cover. Adopting these makes Podshelf
-feeds first-class in Pocket Casts, Fountain, Castamatic, etc.
-
-- ~~**`<podcast:guid>`** at the channel level — a stable identifier so apps
-  can keep subscribers if the feed URL ever changes. Trivial to add, big
-  payoff. Do this **before** acquiring real subscribers.~~ Shipped: new
-  `podcasts.guid` column, lazily computed as a UUIDv5 of the normalized feed
-  URL on first feed render and persisted, then emitted as
-  `<podcast:guid>` (with the `xmlns:podcast` namespace) in the channel.
-- ~~**Stable per-episode `<guid>`.**~~ Shipped: new `episodes.guid` column.
-  The feed handler lazily locks in the existing URL-as-GUID value (so
-  in-flight subscribers don't see every episode as "new"), then future slug
-  or website changes leave the GUID untouched. The RSS importer preserves
-  both the source feed's channel `<podcast:guid>` and per-item `<guid>`
-  values, so migrating an existing podcast onto Podshelf doesn't churn
-  subscribers.
-- ~~**Channel-level feed elements.** `<atom:link rel="self">`, `<itunes:type>`,
-  `<podcast:locked>`, `<lastBuildDate>`.~~ Shipped: feed root now declares
-  the `xmlns:atom` namespace and emits all four. New `podcasts.itunes_type`
-  (episodic/serial) and `podcasts.podcast_locked` (yes/no) columns with
-  Settings UI controls.
-- ~~**Per-episode `<itunes:episodeType>`.**~~ Shipped: new
-  `episodes.episode_type` column (full/trailer/bonus, default `full`),
-  validated in the create / patch endpoints, exposed in both episode forms,
-  captured by the RSS importer, and emitted in the feed.
-- ~~**RSS importer pulls channel metadata.**~~ Shipped: importer now
-  backfills `description`, `author`, `image_url`, `language`, `copyright`,
-  `category`, `explicit`, `itunes_type`, `podcast_locked` from the source
-  channel into the podcast row — but only into fields that are currently
-  empty or still at their schema default, so any pre-import edits the user
-  made win. Channel `<podcast:guid>` continues to overwrite (subscriber
-  continuity is the entire point).
-- ~~**Feed quality v1 polish.** `<generator>`, `<podcast:medium>`,
-  `<itunes:complete>`, `<itunes:block>`, `<podcast:funding>`, plus HTTP
-  conditional GET (`Last-Modified` / `If-Modified-Since` → 304 Not
-  Modified).~~ Shipped: new `itunes_complete`, `itunes_block`,
-  `funding_url`, `funding_label`, `feed_last_modified` columns; Settings
-  UI controls for the toggles + funding link; feed handler honors
-  conditional GET. The complete current/planned/won't-support inventory
-  lives in `docs/rss-feed-support.md`.
-- ~~**`<podcast:transcript>`** per episode — the `transcript_path` column
-  already exists in the schema; just plumb it through the episode form and
-  the feed.~~ Shipped: new `transcript_type` column, episode form fields
-  for URL + MIME type (auto-detect from URL extension as fallback),
-  importer captures `<podcast:transcript url type>`, feed emits the tag.
-- ~~**`<podcast:chapters>`** — chapter list with timestamps. Probably a
-  separate "chapters" textarea on the episode form that gets rendered as a
-  sidecar JSON file at a stable URL.~~ Shipped: new `chapters_url` column;
-  episode form has a chapters textarea (`MM:SS Title` per line, optional
-  ` | url` suffix); on save, the textarea is parsed into Podcasting 2.0
-  chapters JSON and uploaded to the podcast's audio storage directory
-  (sidecar to the MP3, since Podshelf doesn't host listener-facing
-  content). The public URL is persisted on the episode and emitted as
-  `<podcast:chapters>`. Importer captures the URL from incoming feeds.
-- ~~**Smaller feed additions.** Per-episode `<itunes:title>` /
-  `<itunes:author>` / `<itunes:explicit>`, `<podcast:season>` /
-  `<podcast:episode display>`, `<podcast:txt purpose="verify">`,
-  `<podcast:person>`, `<podcast:license>`.~~ Shipped: per-episode
-  override columns (`itunes_title`, `itunes_author`, `itunes_explicit`,
-  `season_name`, `episode_display`, `license_identifier`, `license_url`)
-  with form fields under "Per-episode RSS overrides"; channel-level
-  `<podcast:txt purpose="verify">` and `<podcast:license>` controls in
-  Settings; new `people` + `episode_people` tables with a per-podcast
-  People page (manages roster, photos, role/group defaults, and an
-  `auto_attach` flag for regulars). Episode edit page has a People
-  attachment widget; role + group are captured at attach time so
-  retiring or renaming a host doesn't rewrite past episodes' attribution.
-  Importer pulls all of the above (channel + per-item) and dedupes
-  channel-level `<podcast:person>` entries into the roster with
-  `auto_attach=on`.
 
 ## Migration tools
 
