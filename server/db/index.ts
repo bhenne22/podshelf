@@ -146,6 +146,15 @@ CREATE TABLE IF NOT EXISTS episode_people (
 CREATE INDEX IF NOT EXISTS idx_episode_people_episode_id ON episode_people(episode_id);
 CREATE INDEX IF NOT EXISTS idx_episode_people_person_id ON episode_people(person_id);
 
+CREATE TABLE IF NOT EXISTS slug_aliases (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  podcast_id  INTEGER NOT NULL REFERENCES podcasts(id) ON DELETE CASCADE,
+  old_slug    TEXT NOT NULL UNIQUE,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_slug_aliases_podcast_id ON slug_aliases(podcast_id);
+
 CREATE TABLE IF NOT EXISTS audit_log (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   podcast_id  INTEGER REFERENCES podcasts(id) ON DELETE CASCADE,
@@ -160,6 +169,28 @@ CREATE TABLE IF NOT EXISTS audit_log (
 
 CREATE INDEX IF NOT EXISTS idx_audit_log_podcast_id ON audit_log(podcast_id, id DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log(created_at DESC);
+
+CREATE TABLE IF NOT EXISTS storage_migrations (
+  id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+  podcast_id               INTEGER NOT NULL REFERENCES podcasts(id) ON DELETE CASCADE,
+  status                   TEXT NOT NULL DEFAULT 'pending',
+  source_adapter           TEXT NOT NULL,
+  target_adapter           TEXT NOT NULL,
+  target_config_encrypted  TEXT NOT NULL,
+  files_total              INTEGER NOT NULL DEFAULT 0,
+  files_done               INTEGER NOT NULL DEFAULT 0,
+  files_failed             INTEGER NOT NULL DEFAULT 0,
+  bytes_total              INTEGER NOT NULL DEFAULT 0,
+  bytes_done               INTEGER NOT NULL DEFAULT 0,
+  current_file             TEXT,
+  error_message            TEXT,
+  started_at               TEXT,
+  finished_at              TEXT,
+  created_at               TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_storage_migrations_podcast_id ON storage_migrations(podcast_id, id DESC);
+CREATE INDEX IF NOT EXISTS idx_storage_migrations_status ON storage_migrations(status);
 
 CREATE TABLE IF NOT EXISTS downloads (
   id               INTEGER PRIMARY KEY AUTOINCREMENT,

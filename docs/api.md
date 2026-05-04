@@ -175,6 +175,47 @@ Saves encrypted at rest.
 Fires a synthetic test episode through the configured webhook. 502s with the
 upstream error if delivery fails.
 
+### `GET /api/podcasts/[slug]/aliases`
+
+Returns this podcast's previous slugs (chronological). Each old slug
+permanently serves the feed with `<itunes:new-feed-url>` pointing at the
+canonical URL. Aliases can never be reused (by this podcast or any
+other) — the whole point is permanence for subscriber continuity.
+
+### `GET /api/podcasts/[slug]/export.json`
+
+Downloads a full Podshelf archive for this podcast: settings, all
+episodes (drafts + scheduled + published), people roster, episode_people
+attachments, and slug aliases. Excludes secrets (storage / GitHub /
+webhook URLs), members, api_keys, audit_log, downloads. Importable into
+another Podshelf instance via the import-json endpoint below.
+
+### `POST /api/podcasts/[slug]/import-json`
+
+Body: a Podshelf archive JSON (the output of `export.json`). Restores
+into an empty target podcast — same constraint as the RSS importer.
+Existing settings on the target are preserved unless they're empty / at
+schema defaults; episodes/people/aliases are inserted fresh with new
+ids while preserving the relations between them.
+
+### Storage migration
+
+End-to-end copy of every audio + artwork file from the podcast's current
+storage to a new adapter or host, plus a database rewrite of every
+matching URL.
+
+| Endpoint                                         | Purpose                                                     |
+|--------------------------------------------------|-------------------------------------------------------------|
+| `POST /api/podcasts/[slug]/storage/migrate`      | Body: `{ adapter, config }` — queues a migration            |
+| `GET  /api/podcasts/[slug]/storage/migrate`      | Returns the most-recent migration row (poll for progress)   |
+
+Source files are not deleted. The active storage config swaps to the
+target only after every file copies successfully — a half-finished
+migration leaves the podcast on its original storage with stray files at
+the target. Re-running skips files already present at the target, so
+retries are safe. New uploads (audio, artwork, transcript, chapters) are
+blocked while a migration is in progress.
+
 ---
 
 ## Episodes

@@ -149,6 +149,19 @@ CREATE TABLE IF NOT EXISTS episode_people (
 CREATE INDEX IF NOT EXISTS idx_episode_people_episode_id ON episode_people(episode_id);
 CREATE INDEX IF NOT EXISTS idx_episode_people_person_id ON episode_people(person_id);
 
+-- Slugs that used to belong to a podcast. Permanent — we never want to
+-- recycle a slug because subscribers may still be polling the old feed
+-- URL. The feed handler matches by alias and serves the same content
+-- with `<itunes:new-feed-url>` so modern apps auto-migrate.
+CREATE TABLE IF NOT EXISTS slug_aliases (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  podcast_id  INTEGER NOT NULL REFERENCES podcasts(id) ON DELETE CASCADE,
+  old_slug    TEXT NOT NULL UNIQUE,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_slug_aliases_podcast_id ON slug_aliases(podcast_id);
+
 -- Per-podcast audit trail. podcast_id is nullable so we can capture
 -- platform-level events (admin actions on podcasts as a whole, etc.).
 -- user_id is nullable for system-generated events (e.g. the scheduler
@@ -167,6 +180,32 @@ CREATE TABLE IF NOT EXISTS audit_log (
 
 CREATE INDEX IF NOT EXISTS idx_audit_log_podcast_id ON audit_log(podcast_id, id DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log(created_at DESC);
+
+-- One row per migration of a podcast's storage from its current adapter
+-- to a new one (SFTP→S3, S3→SFTP, or like-to-like). Holds the encrypted
+-- target config until completion, at which point the podcast row's
+-- storage_config_encrypted is swapped to it.
+CREATE TABLE IF NOT EXISTS storage_migrations (
+  id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+  podcast_id               INTEGER NOT NULL REFERENCES podcasts(id) ON DELETE CASCADE,
+  status                   TEXT NOT NULL DEFAULT 'pending',
+  source_adapter           TEXT NOT NULL,
+  target_adapter           TEXT NOT NULL,
+  target_config_encrypted  TEXT NOT NULL,
+  files_total              INTEGER NOT NULL DEFAULT 0,
+  files_done               INTEGER NOT NULL DEFAULT 0,
+  files_failed             INTEGER NOT NULL DEFAULT 0,
+  bytes_total              INTEGER NOT NULL DEFAULT 0,
+  bytes_done               INTEGER NOT NULL DEFAULT 0,
+  current_file             TEXT,
+  error_message            TEXT,
+  started_at               TEXT,
+  finished_at              TEXT,
+  created_at               TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_storage_migrations_podcast_id ON storage_migrations(podcast_id, id DESC);
+CREATE INDEX IF NOT EXISTS idx_storage_migrations_status ON storage_migrations(status);
 
 CREATE TABLE IF NOT EXISTS downloads (
   id               INTEGER PRIMARY KEY AUTOINCREMENT,

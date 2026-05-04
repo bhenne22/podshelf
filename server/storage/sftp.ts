@@ -199,6 +199,70 @@ export async function deleteFromSftp(config: SftpConfig, kind: StorageKind, file
   }
 }
 
+/**
+ * Download a file's contents from the configured remote dir for `kind`.
+ * Returns the bytes as a Buffer. Used by the storage migration worker.
+ */
+export async function downloadFromSftp(config: SftpConfig, kind: StorageKind, filename: string): Promise<Buffer> {
+  const { host, port = 22, username, privateKey, passphrase, password } = config
+  const { remoteDir } = resolveSftpTarget(config, kind)
+  if (!host || !username || !remoteDir) {
+    throw new Error(`SFTP ${kind} directory not configured`)
+  }
+  if (!privateKey && !password) {
+    throw new Error('SFTP configuration requires either privateKey or password')
+  }
+
+  const sftp = new SftpClient()
+  try {
+    await sftp.connect({
+      host,
+      port,
+      username,
+      ...(privateKey ? { privateKey: normalizeKey(privateKey) } : {}),
+      ...(privateKey && passphrase ? { passphrase } : {}),
+      ...(password ? { password } : {}),
+    })
+    // ssh2-sftp-client.get with no destination returns a Buffer.
+    const result = await sftp.get(`${remoteDir}/${filename}`) as Buffer
+    return result
+  } finally {
+    await sftp.end()
+  }
+}
+
+/**
+ * Probe whether a file already exists in the target dir (for kind). Returns
+ * the file's size on hit, null on miss. Used by the migration worker to
+ * skip already-uploaded files when retrying a failed migration.
+ */
+export async function statSftp(config: SftpConfig, kind: StorageKind, filename: string): Promise<number | null> {
+  const { host, port = 22, username, privateKey, passphrase, password } = config
+  const { remoteDir } = resolveSftpTarget(config, kind)
+  if (!host || !username || !remoteDir) return null
+  if (!privateKey && !password) return null
+
+  const sftp = new SftpClient()
+  try {
+    await sftp.connect({
+      host,
+      port,
+      username,
+      ...(privateKey ? { privateKey: normalizeKey(privateKey) } : {}),
+      ...(privateKey && passphrase ? { passphrase } : {}),
+      ...(password ? { password } : {}),
+    })
+    try {
+      const info = await sftp.stat(`${remoteDir}/${filename}`)
+      return info?.size ?? null
+    } catch {
+      return null
+    }
+  } finally {
+    await sftp.end()
+  }
+}
+
 export async function renameInSftp(config: SftpConfig, kind: StorageKind, fromName: string, toName: string): Promise<string> {
   const { host, port = 22, username, privateKey, passphrase, password } = config
   const { remoteDir, publicUrlBase } = resolveSftpTarget(config, kind)

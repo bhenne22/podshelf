@@ -26,13 +26,26 @@
               Use lowercase letters, digits, and hyphens only (e.g. <code>my-show</code>).
             </p>
             <p v-else-if="slugChanged" class="slug-warning">
-              <strong>Heads-up:</strong> changing the slug will break existing RSS subscribers and
-              bookmarks. The feed URL becomes <code>/feeds/{{ form.slug.trim() }}.xml</code> and the
-              old URL will return 404. Only safe if no one is subscribed yet.
+              <strong>Heads-up:</strong> changing the slug. The old feed URL
+              <code>/feeds/{{ originalSlug }}.xml</code> keeps working and emits
+              <code>&lt;itunes:new-feed-url&gt;</code> so modern podcast apps auto-migrate
+              subscribers. Admin URLs like <code>/podcasts/{{ originalSlug }}/episodes</code>
+              <em>will</em> 404 — bookmarks need updating.
             </p>
             <p v-else class="hint">
               Used in the public RSS feed URL (<code>/feeds/{{ originalSlug }}.xml</code>) and admin links.
             </p>
+          </div>
+
+          <div v-if="aliases.length" class="form-group">
+            <label>Past slugs</label>
+            <ul class="alias-list">
+              <li v-for="a in aliases" :key="a.id">
+                <code>/feeds/{{ a.old_slug }}.xml</code>
+                <span class="alias-meta">added {{ formatAliasDate(a.created_at) }}</span>
+              </li>
+            </ul>
+            <p class="hint">Permanent — old slugs are never recycled. Each still serves the feed with a redirect tag pointing at the current URL.</p>
           </div>
 
           <div class="form-group">
@@ -426,6 +439,27 @@ const errorMsg = ref('')
 const { uploading: artworkUploading, uploadProgress, uploadFile } = useUpload(podcastSlug)
 const artworkError = ref('')
 
+interface SlugAlias {
+  id: number
+  old_slug: string
+  created_at: string
+}
+
+const aliases = ref<SlugAlias[]>([])
+async function loadAliases() {
+  try {
+    aliases.value = await $fetch<SlugAlias[]>(`/api/podcasts/${podcastSlug}/aliases`)
+  } catch {
+    aliases.value = []
+  }
+}
+await loadAliases()
+
+function formatAliasDate(iso: string): string {
+  const d = new Date(iso.endsWith('Z') ? iso : iso + 'Z')
+  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+}
+
 interface WebhookDescription {
   has_url: boolean
   format: 'discord' | 'slack' | 'generic'
@@ -596,9 +630,10 @@ async function saveSettings() {
   if (slugChanged.value) {
     const ok = window.confirm(
       `Change slug from "${originalSlug.value}" to "${trimmedSlug}"?\n\n` +
-      'Existing RSS subscribers will stop receiving episodes — apps fetch the old feed URL ' +
-      `(/feeds/${originalSlug.value}.xml) which will return 404. Bookmarks and links to the ` +
-      'admin pages will also break. Only do this if no one is subscribed yet.'
+      `The old feed URL (/feeds/${originalSlug.value}.xml) keeps working — it now emits ` +
+      'an <itunes:new-feed-url> tag so modern podcast apps auto-migrate subscribers ' +
+      'to the new URL. Admin/dashboard bookmarks under the old slug WILL 404 and need updating.\n\n' +
+      'Note: the old slug is permanently reserved to this podcast and can never be reused.'
     )
     if (!ok) return
   }
@@ -796,6 +831,34 @@ textarea { resize: vertical; line-height: 1.6; }
   padding: 0.05em 0.3em;
   border-radius: 3px;
   font-size: 0.9em;
+}
+
+.alias-list {
+  list-style: none;
+  margin: 0 0 0.5rem;
+  padding: 0;
+}
+.alias-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.4rem 0.625rem;
+  background: #f7fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  margin-bottom: 0.25rem;
+  font-size: 0.85rem;
+}
+.alias-list code {
+  background: white;
+  padding: 0.15em 0.4em;
+  border-radius: 4px;
+  border: 1px solid #e2e8f0;
+}
+.alias-meta {
+  color: #718096;
+  font-size: 0.78rem;
+  margin-left: auto;
 }
 
 .form-actions {

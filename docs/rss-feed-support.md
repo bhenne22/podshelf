@@ -135,14 +135,25 @@ existing episodes). It reads from a source feed and:
 The response includes a `settings_backfilled` array listing which fields
 came from the source.
 
-## Planned (in `docs/enhancements.md`)
+## Slug migration
 
-The big-ticket items still open:
+When a podcast's slug changes, the old slug is permanently recorded in
+`slug_aliases` and continues to serve the same feed at the old URL. Modern
+podcast apps that honor `<itunes:new-feed-url>` will auto-migrate the
+subscription to the new URL on their next poll; older apps continue to see
+the same content at the old URL forever. Old slugs are never recycled, even
+back to the original podcast (rolling back to a self-alias is allowed and
+removes that alias row).
 
-- **Slug change with feed migration** — emit `<itunes:new-feed-url>` and
-  keep the old slug responding for some grace period via a slug-aliases
-  table. Worth it once a podcast has real subscribers.
-- **RSS export** — the inverse of the importer.
+## Archive export / import
+
+`GET /api/podcasts/<slug>/export.json` returns a Podshelf JSON archive
+including settings, every episode (drafts + scheduled + published), the
+people roster, episode_people attachments, and slug_aliases. Excludes
+secrets (storage / GitHub / webhook URLs), members, api_keys, audit_log,
+and downloads. `POST /api/podcasts/<slug>/import-json` accepts the same
+shape and restores into an empty target podcast — the canonical exit ramp
+when moving between Podshelf instances.
 
 ## Won't support
 

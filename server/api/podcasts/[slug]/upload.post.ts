@@ -1,6 +1,7 @@
 import { defineEventHandler, readMultipartFormData, getRouterParam, getQuery, createError } from 'h3'
 import { requirePodcastAccess } from '../../../utils/auth'
 import { loadPodcastStorage } from '../../../utils/storage-config'
+import { isMigrationActive } from '../../../utils/storage-migration'
 import { uploadToSftp } from '../../../storage/sftp'
 import { uploadToS3 } from '../../../storage/s3'
 
@@ -57,6 +58,13 @@ export default defineEventHandler(async (event) => {
   ) ? rawKind : 'audio'
   // Physical storage directory: artwork → artwork dir, everything else → audio dir.
   const storageKind: 'audio' | 'artwork' = kind === 'artwork' ? 'artwork' : 'audio'
+
+  if (isMigrationActive(podcastId)) {
+    throw createError({
+      statusCode: 409,
+      statusMessage: 'A storage migration is in progress for this podcast. Wait until it finishes before uploading new files.',
+    })
+  }
 
   const storage = loadPodcastStorage(podcastId)
   if (!storage || (!storage.sftp && !storage.s3)) {

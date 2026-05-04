@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, ListObjectsV2Command, DeleteObjectCommand, CopyObjectCommand } from '@aws-sdk/client-s3'
+import { S3Client, PutObjectCommand, ListObjectsV2Command, DeleteObjectCommand, CopyObjectCommand, GetObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3'
 import type { S3Config, StorageKind } from '../utils/storage-config'
 import { resolveS3Target } from '../utils/storage-config'
 
@@ -117,6 +117,49 @@ export async function deleteFromS3(config: S3Config, kind: StorageKind, filename
     Bucket: config.bucketName,
     Key: prefix + filename,
   }))
+}
+
+/**
+ * Download an object from the bucket and return its bytes as a Buffer.
+ * Used by the storage migration worker.
+ */
+export async function downloadFromS3(config: S3Config, kind: StorageKind, filename: string): Promise<Buffer> {
+  const { prefix } = resolveS3Target(config, kind)
+  const client = buildClient(config)
+  const result = await client.send(new GetObjectCommand({
+    Bucket: config.bucketName,
+    Key: prefix + filename,
+  }))
+  // SDK v3: Body is a stream-like with transformToByteArray helper in Node.
+  const body = result.Body as { transformToByteArray?: () => Promise<Uint8Array> } | undefined
+  if (!body || !body.transformToByteArray) {
+    throw new Error(`S3 GetObject returned an unreadable body for ${filename}`)
+  }
+  const bytes = await body.transformToByteArray()
+  return Buffer.from(bytes)
+}
+
+/**
+ * Probe whether an object exists at the given key. Returns size on hit,
+ * null on miss. Used to skip already-uploaded files on retry.
+ */
+export async function statS3(config: S3Config, kind: StorageKind, filename: string): Promise<number | null> {
+  const { prefix } = resolveS3Target(config, kind)
+  const client = buildClient(config)
+  try {
+    const info = await client.send(new HeadObjectCommand({
+      Bucket: config.bucketName,
+      Key: prefix + filename,
+    }))
+    return info.ContentLength ?? null
+  } catch (err: unknown) {
+    // 404 → not found; anything else propagates so we don't silently skip.
+    if (err && typeof err === 'object' && '$metadata' in err) {
+      const meta = (err as { $metadata?: { httpStatusCode?: number } }).$metadata
+      if (meta?.httpStatusCode === 404) return null
+    }
+    throw err
+  }
 }
 
 export async function renameInS3(config: S3Config, kind: StorageKind, fromName: string, toName: string): Promise<string> {

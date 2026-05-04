@@ -56,6 +56,8 @@ export default defineEventHandler(async (event) => {
     FROM podcasts WHERE id = ?
   `).get(podcastId) as Record<string, unknown>
 
+  let aliasRollback: { oldSlug: string } | null = null
+  let aliasInsert: { oldSlug: string } | null = null
   if ('slug' in body) {
     const newSlug = typeof body.slug === 'string' ? body.slug.trim() : ''
     if (!newSlug || !SLUG_RE.test(newSlug)) {
@@ -69,6 +71,24 @@ export default defineEventHandler(async (event) => {
       if (taken) {
         throw createError({ statusCode: 409, statusMessage: `Podcast slug "${newSlug}" already exists` })
       }
+      // Disallow reusing another podcast's old slug — that would route
+      // their old subscribers to your feed.
+      const conflictAlias = db.prepare(`
+        SELECT podcast_id FROM slug_aliases WHERE old_slug = ?
+      `).get(newSlug) as { podcast_id: number } | undefined
+      if (conflictAlias && conflictAlias.podcast_id !== podcastId) {
+        throw createError({
+          statusCode: 409,
+          statusMessage: `Slug "${newSlug}" was previously used by another podcast and is permanently reserved`,
+        })
+      }
+      // Self-alias: rolling back to a slug this podcast used before.
+      // Remove that alias row since the slug becomes active again.
+      if (conflictAlias && conflictAlias.podcast_id === podcastId) {
+        aliasRollback = { oldSlug: newSlug }
+      }
+      // Stage the new alias row for after the UPDATE succeeds.
+      aliasInsert = { oldSlug: slug }
     }
     body.slug = newSlug
   }
@@ -87,7 +107,22 @@ export default defineEventHandler(async (event) => {
   }
 
   updates.push(`updated_at = datetime('now')`)
-  db.prepare(`UPDATE podcasts SET ${updates.join(', ')} WHERE id = @id`).run(values)
+
+  db.transaction(() => {
+    db.prepare(`UPDATE podcasts SET ${updates.join(', ')} WHERE id = @id`).run(values)
+    if (aliasRollback) {
+      db.prepare('DELETE FROM slug_aliases WHERE old_slug = ? AND podcast_id = ?').run(
+        aliasRollback.oldSlug,
+        podcastId,
+      )
+    }
+    if (aliasInsert) {
+      db.prepare('INSERT INTO slug_aliases (podcast_id, old_slug) VALUES (?, ?)').run(
+        podcastId,
+        aliasInsert.oldSlug,
+      )
+    }
+  })()
 
   const updated = db.prepare(`
     SELECT

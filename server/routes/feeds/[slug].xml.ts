@@ -127,7 +127,7 @@ export default defineEventHandler((event) => {
   }
   const db = getDb()
 
-  const podcast = db.prepare(`
+  let podcast = db.prepare(`
     SELECT id, slug, title, description, author, email, image_url, language,
            copyright, category, explicit, website, audio_tracking_prefix, guid,
            itunes_type, podcast_locked, itunes_complete, itunes_block,
@@ -135,6 +135,28 @@ export default defineEventHandler((event) => {
            feed_last_modified
     FROM podcasts WHERE slug = ? AND status = 'active'
   `).get(slug) as Podcast | undefined
+
+  // Slug-alias fallback: if the requested slug doesn't match an active
+  // podcast, check whether it's a previous slug. When it is, serve the same
+  // feed but with `<itunes:new-feed-url>` so modern apps auto-migrate
+  // subscribers to the canonical URL.
+  let viaAlias = false
+  if (!podcast) {
+    const alias = db.prepare(`
+      SELECT p.id, p.slug, p.title, p.description, p.author, p.email, p.image_url, p.language,
+             p.copyright, p.category, p.explicit, p.website, p.audio_tracking_prefix, p.guid,
+             p.itunes_type, p.podcast_locked, p.itunes_complete, p.itunes_block,
+             p.funding_url, p.funding_label, p.verify_txt, p.license_identifier, p.license_url,
+             p.feed_last_modified
+      FROM slug_aliases a
+      JOIN podcasts p ON p.id = a.podcast_id
+      WHERE a.old_slug = ? AND p.status = 'active'
+    `).get(slug) as Podcast | undefined
+    if (alias) {
+      podcast = alias
+      viaAlias = true
+    }
+  }
 
   if (!podcast) {
     throw createError({ statusCode: 404, statusMessage: 'Podcast not found' })
@@ -163,6 +185,9 @@ export default defineEventHandler((event) => {
   }
 
   const siteUrl = (useRuntimeConfig().public.siteUrl as string || '').replace(/\/+$/, '')
+  // selfFeedUrl always points at the canonical (current) slug — even when
+  // we're serving the response under an alias slug, we want subscribers'
+  // apps to follow the new-feed-url and update their stored subscription.
   const selfFeedUrl = `${siteUrl}/feeds/${podcast.slug}.xml`
 
   // Lazily assign a stable Podcasting 2.0 channel GUID on first feed render.
@@ -361,6 +386,7 @@ export default defineEventHandler((event) => {
     <language>${escapeXml(showLanguage)}</language>
     <lastBuildDate>${lastBuildDate}</lastBuildDate>
     <generator>Podshelf</generator>
+    ${viaAlias ? `<itunes:new-feed-url>${escapeXml(selfFeedUrl)}</itunes:new-feed-url>` : ''}
     <podcast:guid>${escapeXml(podcastGuid)}</podcast:guid>
     <podcast:medium>podcast</podcast:medium>
     <podcast:locked>${podcastLocked}</podcast:locked>

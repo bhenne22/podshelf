@@ -8,6 +8,13 @@
       <div v-if="successMsg" class="success-msg">{{ successMsg }}</div>
       <div v-if="errorMsg" class="error-msg">{{ errorMsg }}</div>
 
+      <div v-if="activeMigration" class="migration-banner">
+        <strong>Storage migration in progress.</strong>
+        <span>{{ activeMigration.source_adapter }} → {{ activeMigration.target_adapter }} ·
+          {{ activeMigration.files_done }}/{{ activeMigration.files_total || '?' }} files</span>
+        <NuxtLink :to="`/podcasts/${podcastSlug}/storage/migrate`" class="migration-link">View progress →</NuxtLink>
+      </div>
+
       <div v-if="testResult" class="test-result">
         <div class="test-summary">
           <strong>Connected.</strong>
@@ -187,6 +194,19 @@
           </button>
         </div>
       </form>
+
+      <div v-if="current?.configured" class="form-section">
+        <h2>Move storage</h2>
+        <p class="hint">
+          Copy every file in this podcast's audio + artwork directories to a new
+          host (or a different adapter) and rewrite the URLs Podshelf has stored.
+          Source files aren't deleted — keep them around until you've verified
+          the new feed before cleaning up.
+        </p>
+        <NuxtLink :to="`/podcasts/${podcastSlug}/storage/migrate`" class="btn-secondary">
+          Migrate to new storage →
+        </NuxtLink>
+      </div>
     </div>
   </div>
 </template>
@@ -204,6 +224,25 @@ interface StorageDescription {
 }
 
 const { data: current, refresh } = await useFetch<StorageDescription>(`/api/podcasts/${podcastSlug}/storage`)
+
+interface MigrationRow {
+  id: number
+  status: string
+  source_adapter: string
+  target_adapter: string
+  files_total: number
+  files_done: number
+}
+const activeMigration = ref<MigrationRow | null>(null)
+async function loadActiveMigration() {
+  try {
+    const row = await $fetch<MigrationRow | null>(`/api/podcasts/${podcastSlug}/storage/migrate`)
+    activeMigration.value = row && (row.status === 'pending' || row.status === 'running') ? row : null
+  } catch {
+    activeMigration.value = null
+  }
+}
+await loadActiveMigration()
 
 const adapter = ref<'sftp' | 's3'>(current.value?.adapter || 'sftp')
 
@@ -574,4 +613,25 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
   .form-actions .btn-primary { flex: 1 1 auto; min-width: 0; }
   .form-actions .save-status { flex-basis: 100%; order: -1; }
 }
+
+.migration-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: #ebf4ff;
+  border: 1px solid #c3dafe;
+  color: #4c51bf;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  font-size: 0.875rem;
+  flex-wrap: wrap;
+}
+.migration-link {
+  margin-left: auto;
+  color: #4c51bf;
+  text-decoration: none;
+  font-weight: 500;
+}
+.migration-link:hover { text-decoration: underline; }
 </style>

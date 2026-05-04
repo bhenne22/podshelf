@@ -14,28 +14,17 @@ priority within each section.
 ## Publishing workflow
 
 - **Bulk operations on drafts.** Multi-select + bulk delete / bulk publish /
-  bulk re-tag.
-- **Slug change with feed migration.** For an actively-subscribed podcast,
-  keep the old feed alive temporarily and emit
-  `<itunes:new-feed-url>` so subscribers' apps auto-follow. Needs a
-  `slug_aliases` table (or `previous_slug` column) and an extra route in
-  `feeds/[slug].xml.ts`. Only worth it once a podcast has real subscribers.
+  bulk re-tag. ~ Not going to do. Frequency of having enough drafts that need 
+  a bulk edit should be quite low, and if there really is a need there's a 
+  robust API that could be handed off to an AI assistant.
 
-
-## Migration tools
-
-- **RSS export.** The inverse of the existing importer. Always good to have
-  a documented exit ramp; also handy when moving a podcast between Podshelf
-  instances.
-- **Storage migration.** "Copy all audio from SFTP to S3 (or vice versa) and
-  rewrite `audio_url` for matching files." Useful when a host gets too
-  expensive or unreliable.
 
 ## Mobile / install
 
 - **PWA manifest + service worker.** Lets Podshelf be installed to a phone
   home screen. Doesn't need to be sophisticated — just a manifest and an
-  icon set; the existing mobile-friendly UI handles the rest.
+  icon set; the existing mobile-friendly UI handles the rest. ~ Not going to
+  do. No tangible benefit at this time.  
 
 ## Analytics (deferred)
 
