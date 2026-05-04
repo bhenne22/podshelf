@@ -44,8 +44,8 @@ export default defineEventHandler((event) => {
 
   if (query.status) {
     const status = query.status as string
-    if (!['draft', 'published'].includes(status)) {
-      throw createError({ statusCode: 400, statusMessage: 'status must be draft or published' })
+    if (!['draft', 'published', 'scheduled'].includes(status)) {
+      throw createError({ statusCode: 400, statusMessage: 'status must be draft, published, or scheduled' })
     }
     sql += ' AND status = ?'
     params.push(status)

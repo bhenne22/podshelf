@@ -1,6 +1,7 @@
 import { defineEventHandler, setHeader, getHeader, setResponseStatus, createError } from 'h3'
 import getDb from '../../db/index'
 import { computePodcastGuid } from '../../utils/podcast-guid'
+import { processScheduledFlips } from '../../utils/scheduler'
 
 interface Podcast {
   id: number
@@ -138,6 +139,13 @@ export default defineEventHandler((event) => {
   if (!podcast) {
     throw createError({ statusCode: 404, statusMessage: 'Podcast not found' })
   }
+
+  // Lazy flip: if the in-process scheduler is dead (or the server just
+  // started and a scheduled time has already passed), make sure overdue
+  // episodes are flipped before we render the feed. Cheap when nothing's
+  // overdue (single indexed SELECT). The webhook/GitHub side effects are
+  // fire-and-forget inside processScheduledFlips so this doesn't block.
+  processScheduledFlips(podcast.id)
 
   // Conditional GET: most podcast app polls return identical XML, so honor
   // If-Modified-Since with a 304 to save bandwidth. Compare at second

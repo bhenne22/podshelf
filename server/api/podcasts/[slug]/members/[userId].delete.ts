@@ -1,5 +1,6 @@
 import { defineEventHandler, getRouterParam, createError, setResponseStatus } from 'h3'
 import { requireAdmin } from '../../../../utils/auth'
+import { logAudit } from '../../../../utils/audit'
 import getDb from '../../../../db/index'
 
 /**
@@ -8,7 +9,7 @@ import getDb from '../../../../db/index'
  * Admin-only. Removes a user's access to the podcast.
  */
 export default defineEventHandler((event) => {
-  requireAdmin(event)
+  const admin = requireAdmin(event)
 
   const slug = getRouterParam(event, 'slug') as string
   const userId = getRouterParam(event, 'userId')
@@ -23,7 +24,20 @@ export default defineEventHandler((event) => {
     throw createError({ statusCode: 404, statusMessage: 'Podcast not found' })
   }
 
-  db.prepare('DELETE FROM podcast_users WHERE podcast_id = ? AND user_id = ?').run(podcast.id, userId)
+  const u = db.prepare('SELECT email FROM users WHERE id = ?').get(userId) as { email: string } | undefined
+  const result = db.prepare('DELETE FROM podcast_users WHERE podcast_id = ? AND user_id = ?').run(podcast.id, userId)
+
+  if (result.changes > 0) {
+    logAudit({
+      podcastId: podcast.id,
+      userId: admin.id,
+      action: 'podcast.member.remove',
+      entityType: 'user',
+      entityId: Number(userId),
+      summary: `Removed ${u?.email ?? `user ${userId}`} from podcast members`,
+    })
+  }
+
   setResponseStatus(event, 204)
   return null
 })

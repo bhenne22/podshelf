@@ -24,6 +24,11 @@ treats both as load-bearing:
   import). It returns 304 Not Modified with no body when the request's
   `If-Modified-Since` is at or after the stored timestamp. Polite to
   podcast apps, saves bandwidth.
+- **Scheduled episodes never leak.** Episodes with `status='scheduled'`
+  are excluded from the feed query (it requires `status='published'`).
+  An in-process timer runs every 60s and flips eligible scheduled rows;
+  the feed handler also calls `processScheduledFlips(podcast.id)` on
+  every render so a dead timer can't cause a missed publish window.
 
 ## What the feed includes
 
@@ -137,8 +142,6 @@ The big-ticket items still open:
 - **Slug change with feed migration** — emit `<itunes:new-feed-url>` and
   keep the old slug responding for some grace period via a slug-aliases
   table. Worth it once a podcast has real subscribers.
-- **Scheduled publishing** — filter `published_at <= now` in the feed
-  query so future-dated episodes don't leak.
 - **RSS export** — the inverse of the importer.
 
 ## Won't support

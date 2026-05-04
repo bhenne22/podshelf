@@ -1,5 +1,6 @@
 import { defineEventHandler, getRouterParam, createError, setResponseStatus } from 'h3'
 import { requireAdmin } from '../../../utils/auth'
+import { logAudit } from '../../../utils/audit'
 import getDb from '../../../db/index'
 
 /**
@@ -11,12 +12,12 @@ import getDb from '../../../db/index'
  * of live podcasts.
  */
 export default defineEventHandler((event) => {
-  requireAdmin(event)
+  const admin = requireAdmin(event)
 
   const slug = getRouterParam(event, 'slug') as string
   const db = getDb()
 
-  const podcast = db.prepare('SELECT id, status FROM podcasts WHERE slug = ?').get(slug) as { id: number; status: string } | undefined
+  const podcast = db.prepare('SELECT id, status, title FROM podcasts WHERE slug = ?').get(slug) as { id: number; status: string; title: string } | undefined
   if (!podcast) {
     throw createError({ statusCode: 404, statusMessage: 'Podcast not found' })
   }
@@ -26,6 +27,17 @@ export default defineEventHandler((event) => {
       statusMessage: 'Podcast must be soft-deleted (inactive) before it can be purged',
     })
   }
+
+  // Log BEFORE delete — the audit row's podcast_id FK cascades on delete,
+  // so post-delete logging would orphan the entry.
+  logAudit({
+    podcastId: null,
+    userId: admin.id,
+    action: 'podcast.purge',
+    entityType: 'podcast',
+    entityId: podcast.id,
+    summary: `Permanently purged podcast "${podcast.title}" (slug ${slug})`,
+  })
 
   db.prepare('DELETE FROM podcasts WHERE id = ?').run(podcast.id)
   setResponseStatus(event, 204)

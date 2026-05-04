@@ -1,5 +1,6 @@
 import { defineEventHandler, readBody, createError } from 'h3'
 import { requireAdmin } from '../../utils/auth'
+import { logAudit } from '../../utils/audit'
 import getDb from '../../db/index'
 
 function slugify(text: string): string {
@@ -71,6 +72,15 @@ export default defineEventHandler(async (event) => {
     website: body.website ?? null,
     audio_tracking_prefix: body.audio_tracking_prefix ?? null,
     storage_adapter: body.storage_adapter ?? 'sftp',
+  })
+
+  logAudit({
+    podcastId: Number(id),
+    userId: user.id,
+    action: 'podcast.create',
+    entityType: 'podcast',
+    entityId: Number(id),
+    summary: `Created podcast "${body.title}" (slug ${slug})`,
   })
 
   event.node.res.statusCode = 201

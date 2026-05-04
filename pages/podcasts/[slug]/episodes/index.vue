@@ -13,6 +13,26 @@
 
       <template v-else-if="episodes.length">
         <div class="filter-bar">
+          <div class="filter-group filter-search">
+            <label>Search</label>
+            <input
+              type="search"
+              v-model="searchInput"
+              placeholder="Title, tags, or description…"
+              autocomplete="off"
+            />
+          </div>
+
+          <div class="filter-group">
+            <label>Status</label>
+            <select v-model="statusFilter">
+              <option value="">All statuses</option>
+              <option value="published">Published</option>
+              <option value="scheduled">Scheduled</option>
+              <option value="draft">Draft</option>
+            </select>
+          </div>
+
           <div class="filter-group">
             <label>Season</label>
             <select v-model="seasonFilter">
@@ -100,7 +120,10 @@
               <span :class="['status-badge', ep.status]">{{ ep.status }}</span>
             </td>
             <td class="col-date" data-label="Published">
-              {{ ep.published_at ? formatDate(ep.published_at) : '—' }}
+              <span v-if="ep.status === 'scheduled' && ep.published_at" class="scheduled-date" :title="`Scheduled for ${formatDateTime(ep.published_at)}`">
+                {{ formatDate(ep.published_at) }}
+              </span>
+              <span v-else>{{ ep.published_at ? formatDate(ep.published_at) : '—' }}</span>
             </td>
             <td class="col-actions">
               <NuxtLink :to="`/podcasts/${podcastSlug}/episodes/${ep.id}`" class="action-btn">Edit</NuxtLink>
@@ -150,6 +173,19 @@ const overallNumber = computed(() => {
 })
 
 const seasonFilter = ref<string>('')
+const statusFilter = ref<string>('')
+const searchInput = ref<string>('')
+const debouncedSearch = ref<string>('')
+let searchDebounceHandle: ReturnType<typeof setTimeout> | null = null
+watch(searchInput, (value) => {
+  if (searchDebounceHandle) clearTimeout(searchDebounceHandle)
+  searchDebounceHandle = setTimeout(() => {
+    debouncedSearch.value = value.trim().toLowerCase()
+  }, 200)
+})
+onBeforeUnmount(() => {
+  if (searchDebounceHandle) clearTimeout(searchDebounceHandle)
+})
 const rangePreset = ref<'all' | '30' | '90' | 'year' | 'custom'>('all')
 const customFrom = ref<string>('')
 const customTo = ref<string>('')
@@ -185,7 +221,10 @@ const filteredEpisodes = computed(() => {
     if (customTo.value) to = new Date(customTo.value + 'T23:59:59')
   }
 
+  const q = debouncedSearch.value
+
   return episodes.value.filter((ep) => {
+    if (statusFilter.value && ep.status !== statusFilter.value) return false
     if (seasonFilter.value === 'none') {
       if (ep.season_number != null) return false
     } else if (seasonFilter.value !== '') {
@@ -197,16 +236,26 @@ const filteredEpisodes = computed(() => {
       if (from && d < from) return false
       if (to && d > to) return false
     }
+    if (q) {
+      const haystack = [ep.title, ep.tags, ep.description].filter(Boolean).join(' ').toLowerCase()
+      if (!haystack.includes(q)) return false
+    }
     return true
   })
 })
 
 const hasActiveFilters = computed(() =>
-  seasonFilter.value !== '' || rangePreset.value !== 'all',
+  seasonFilter.value !== ''
+  || statusFilter.value !== ''
+  || rangePreset.value !== 'all'
+  || debouncedSearch.value !== '',
 )
 
 function clearFilters() {
   seasonFilter.value = ''
+  statusFilter.value = ''
+  searchInput.value = ''
+  debouncedSearch.value = ''
   rangePreset.value = 'all'
   customFrom.value = ''
   customTo.value = ''
@@ -235,6 +284,13 @@ function formatDate(iso: string): string {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
+  })
+}
+
+function formatDateTime(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, {
+    year: 'numeric', month: 'short', day: 'numeric',
+    hour: '2-digit', minute: '2-digit',
   })
 }
 
@@ -483,6 +539,29 @@ h1 {
   background: #fef3c7;
   color: #92400e;
 }
+
+.status-badge.scheduled {
+  background: #ebf4ff;
+  color: #4c51bf;
+}
+
+.scheduled-date {
+  color: #4c51bf;
+  font-style: italic;
+}
+
+.filter-search { flex: 1; min-width: 220px; }
+.filter-search input[type="search"] {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 5px;
+  font-size: 0.85rem;
+  background: white;
+  color: #2d3748;
+  outline: none;
+  width: 100%;
+}
+.filter-search input[type="search"]:focus { border-color: #667eea; }
 
 .action-btn {
   display: inline-block;

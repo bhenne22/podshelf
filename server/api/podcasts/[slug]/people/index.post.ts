@@ -1,5 +1,6 @@
 import { defineEventHandler, readBody, getRouterParam, createError } from 'h3'
 import { requirePodcastAccess } from '../../../../utils/auth'
+import { logAudit } from '../../../../utils/audit'
 import getDb from '../../../../db/index'
 
 /**
@@ -9,7 +10,7 @@ import getDb from '../../../../db/index'
  */
 export default defineEventHandler(async (event) => {
   const slug = getRouterParam(event, 'slug') as string
-  const { podcastId } = requirePodcastAccess(event, slug)
+  const { user, podcastId } = requirePodcastAccess(event, slug)
 
   const body = await readBody(event)
   const name = String(body?.name ?? '').trim()
@@ -35,6 +36,16 @@ export default defineEventHandler(async (event) => {
     autoAttach,
   )
 
+  const personId = Number(result.lastInsertRowid)
+  logAudit({
+    podcastId,
+    userId: user.id,
+    action: 'people.create',
+    entityType: 'person',
+    entityId: personId,
+    summary: `Added ${name} (${defaultRole}) to roster${autoAttach ? ' (auto-attach on)' : ''}`,
+  })
+
   event.node.res.statusCode = 201
-  return db.prepare('SELECT * FROM people WHERE id = ?').get(result.lastInsertRowid)
+  return db.prepare('SELECT * FROM people WHERE id = ?').get(personId)
 })

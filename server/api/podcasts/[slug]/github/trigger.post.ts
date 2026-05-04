@@ -1,6 +1,7 @@
 import { defineEventHandler, getRouterParam, createError } from 'h3'
 import { requirePodcastAccess } from '../../../../utils/auth'
 import { dispatchRepositoryEvent, loadGithubConfig } from '../../../../utils/github'
+import { logAudit } from '../../../../utils/audit'
 
 /**
  * POST /api/podcasts/[slug]/github/trigger
@@ -10,7 +11,7 @@ import { dispatchRepositoryEvent, loadGithubConfig } from '../../../../utils/git
  */
 export default defineEventHandler(async (event) => {
   const slug = getRouterParam(event, 'slug') as string
-  const { podcastId } = requirePodcastAccess(event, slug)
+  const { user, podcastId } = requirePodcastAccess(event, slug)
 
   const config = loadGithubConfig(podcastId)
   if (!config) {
@@ -25,6 +26,14 @@ export default defineEventHandler(async (event) => {
       config,
       { reason: 'podshelf:manual', podcast_id: podcastId, fired_at: new Date().toISOString() },
     )
+    logAudit({
+      podcastId,
+      userId: user.id,
+      action: 'podcast.github.trigger',
+      entityType: 'podcast',
+      entityId: podcastId,
+      summary: `Manually triggered GitHub rebuild (${config.owner}/${config.repo})`,
+    })
     return { ok: true, status: result.status }
   } catch (err: unknown) {
     throw createError({

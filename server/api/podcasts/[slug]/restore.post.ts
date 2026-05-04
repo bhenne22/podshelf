@@ -1,5 +1,6 @@
 import { defineEventHandler, getRouterParam, createError } from 'h3'
 import { requirePodcastAccess } from '../../../utils/auth'
+import { logAudit } from '../../../utils/audit'
 import getDb from '../../../db/index'
 
 /**
@@ -9,10 +10,10 @@ import getDb from '../../../db/index'
  */
 export default defineEventHandler((event) => {
   const slug = getRouterParam(event, 'slug') as string
-  const { podcastId } = requirePodcastAccess(event, slug)
+  const { user, podcastId } = requirePodcastAccess(event, slug)
   const db = getDb()
 
-  const existing = db.prepare('SELECT status FROM podcasts WHERE id = ?').get(podcastId) as { status: string } | undefined
+  const existing = db.prepare('SELECT status, title FROM podcasts WHERE id = ?').get(podcastId) as { status: string; title: string } | undefined
   if (!existing) {
     throw createError({ statusCode: 404, statusMessage: 'Podcast not found' })
   }
@@ -25,6 +26,15 @@ export default defineEventHandler((event) => {
     SET status = 'active', deleted_at = NULL, updated_at = datetime('now')
     WHERE id = ?
   `).run(podcastId)
+
+  logAudit({
+    podcastId,
+    userId: user.id,
+    action: 'podcast.restore',
+    entityType: 'podcast',
+    entityId: podcastId,
+    summary: `Restored podcast "${existing.title}"`,
+  })
 
   return { ok: true }
 })

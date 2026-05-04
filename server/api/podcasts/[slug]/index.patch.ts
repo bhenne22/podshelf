@@ -2,6 +2,7 @@ import { defineEventHandler, readBody, getRouterParam, createError } from 'h3'
 import { requirePodcastAccess } from '../../../utils/auth'
 import { maybeAutoTrigger } from '../../../utils/github'
 import { bumpFeedLastModified } from '../../../utils/feed-cache'
+import { logAudit, diffFields, summarizeChanges } from '../../../utils/audit'
 import getDb from '../../../db/index'
 
 // Fields that show up in the public RSS feed; an edit to any of these is
@@ -35,7 +36,7 @@ const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
  */
 export default defineEventHandler(async (event) => {
   const slug = getRouterParam(event, 'slug') as string
-  const { podcastId } = requirePodcastAccess(event, slug)
+  const { user, podcastId } = requirePodcastAccess(event, slug)
 
   const body = await readBody(event)
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
@@ -43,6 +44,15 @@ export default defineEventHandler(async (event) => {
   }
 
   const db = getDb()
+
+  const before = db.prepare(`
+    SELECT slug, title, description, author, email, image_url, language,
+           copyright, category, explicit, website, audio_tracking_prefix,
+           itunes_type, podcast_locked, itunes_complete, itunes_block,
+           funding_url, funding_label, verify_txt, license_identifier, license_url,
+           storage_adapter, github_owner, github_repo, github_event_type
+    FROM podcasts WHERE id = ?
+  `).get(podcastId) as Record<string, unknown>
 
   if ('slug' in body) {
     const newSlug = typeof body.slug === 'string' ? body.slug.trim() : ''
@@ -77,13 +87,7 @@ export default defineEventHandler(async (event) => {
   updates.push(`updated_at = datetime('now')`)
   db.prepare(`UPDATE podcasts SET ${updates.join(', ')} WHERE id = @id`).run(values)
 
-  const touchedFeedField = Object.keys(body).some((k) => FEED_VISIBLE_FIELDS.has(k))
-  if (touchedFeedField) {
-    bumpFeedLastModified(podcastId)
-    maybeAutoTrigger(podcastId, 'podcast-settings-update')
-  }
-
-  return db.prepare(`
+  const updated = db.prepare(`
     SELECT
       id, slug, title, description, author, email, image_url, language,
       copyright, category, explicit, website, audio_tracking_prefix,
@@ -92,5 +96,26 @@ export default defineEventHandler(async (event) => {
       storage_adapter, github_owner, github_repo, github_event_type,
       created_at, updated_at
     FROM podcasts WHERE id = ?
-  `).get(podcastId)
+  `).get(podcastId) as Record<string, unknown>
+
+  const diff = diffFields(before, updated)
+  if (diff.changed.length > 0) {
+    logAudit({
+      podcastId,
+      userId: user.id,
+      action: 'podcast.settings.update',
+      entityType: 'podcast',
+      entityId: podcastId,
+      summary: summarizeChanges('Updated podcast settings', diff.changed),
+      details: diff,
+    })
+  }
+
+  const touchedFeedField = Object.keys(body).some((k) => FEED_VISIBLE_FIELDS.has(k))
+  if (touchedFeedField) {
+    bumpFeedLastModified(podcastId)
+    maybeAutoTrigger(podcastId, 'podcast-settings-update')
+  }
+
+  return updated
 })

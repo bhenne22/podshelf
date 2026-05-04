@@ -39,6 +39,7 @@ User-facing routes (login required):
 - `/podcasts/[slug]/storage` — per-podcast SFTP / S3 credentials, plus separate audio + artwork directories
 - `/podcasts/[slug]/files` — file browser for the audio + artwork directories (list, upload, rename, delete, copy URL, in-use warning)
 - `/podcasts/[slug]/build`, `/podcasts/[slug]/stats`, `/podcasts/[slug]/members`, `/podcasts/[slug]/import-rss` — build dispatch, analytics, membership, RSS import
+- `/podcasts/[slug]/audit` — chronological audit log of every change (visible to all members)
 
 Admin-only routes (`is_admin` required):
 - `/admin/users` — user management
@@ -64,7 +65,10 @@ All under `server/api/`. The full reference is in `docs/api.md`. The shapes most
 - `POST /api/podcasts/[slug]/episodes/[id]/chapters` — parses a textarea-style chapters list, uploads JSON sidecar to audio storage, persists `chapters_url`
 - `GET/POST/PATCH/DELETE /api/podcasts/[slug]/people` (+ `[id]`) — per-podcast roster
 - `GET/POST/DELETE /api/podcasts/[slug]/episodes/[id]/people` (+ `/[attachId]`) — per-episode attachments; `role`/`group` frozen at attach time
+- `POST /api/podcasts/[slug]/episodes/[id]/duplicate` — clone an episode into a fresh draft, carries description/tags/image/season/etc + people attachments, clears audio/chapters/transcript/numbers/dates
 - `POST /api/podcasts/[slug]/upload?kind=audio|artwork|transcript|chapters` — multipart upload (audio: 500 MB, image: 25 MB, transcript: 10 MB, chapters JSON: 2 MB; transcripts + chapters land in the audio directory as sidecar files)
+- `GET /api/podcasts/[slug]/audit?limit=50&before=<id>` — paginated per-podcast audit log
+- `GET/POST /api/podcasts/[slug]/webhook`, `POST .../webhook/test` — per-podcast publish-webhook config (URL encrypted at rest, format selector for discord/slack/generic)
 - `GET /api/podcasts/[slug]/files?kind=…`, `POST .../files/delete`, `POST .../files/rename`
 - `GET/POST /api/podcasts/[slug]/storage`, `POST .../storage/test`
 - `GET/POST /api/podcasts/[slug]/github`, `POST .../github/test`, `POST .../github/trigger` — GitHub `repository_dispatch` integration
@@ -75,7 +79,9 @@ RSS feed lives at `server/routes/feeds/[slug].xml.ts` → `GET /feeds/[slug].xml
 
 SQLite via `better-sqlite3` (sync, no async/await). Singleton initialized in `server/db/index.ts`; canonical schema in `server/db/schema.sql` (mirrored inline as `SCHEMA_SQL` in `server/db/index.ts` to dodge file-read issues in Nitro production builds — keep both in sync). Idempotent `ALTER` migrations live in `applyMigrations` in `server/db/index.ts` for backward-compatible additions.
 
-Tables: `users`, `podcasts` (per-tenant config + soft-delete `status` / `deleted_at`), `podcast_users` (membership), `api_keys`, `api_key_podcasts` (key scope), `episodes` (per-podcast, with `image_url`/`image_filename` for per-episode artwork, plus Podcasting 2.0 fields: `transcript_path`/`transcript_type`, `chapters_url`, `itunes_title`/`itunes_author`/`itunes_explicit`, `season_name`, `episode_display`, `license_identifier`/`license_url`), `people` (per-podcast roster: name, photo, href, default role/group, `auto_attach` flag), `episode_people` (many-to-many; `role`/`group` frozen at attach time so historical attribution survives roster edits), `downloads`.
+Tables: `users`, `podcasts` (per-tenant config + soft-delete `status` / `deleted_at`, plus webhook config: `webhook_url_encrypted`/`webhook_format`/`webhook_enabled`), `podcast_users` (membership), `api_keys`, `api_key_podcasts` (key scope), `episodes` (per-podcast, with `image_url`/`image_filename` for per-episode artwork, plus Podcasting 2.0 fields: `transcript_path`/`transcript_type`, `chapters_url`, `itunes_title`/`itunes_author`/`itunes_explicit`, `season_name`, `episode_display`, `license_identifier`/`license_url`; status enum is `draft|scheduled|published`), `people` (per-podcast roster: name, photo, href, default role/group, `auto_attach` flag), `episode_people` (many-to-many; `role`/`group` frozen at attach time so historical attribution survives roster edits), `audit_log` (per-podcast change history, nullable `user_id` for system events like the scheduled-publish flip), `downloads`.
+
+Background work: `server/plugins/scheduler.ts` boots an in-process timer that runs `processScheduledFlips()` every 60s, flipping `status='scheduled'` episodes whose `published_at` has arrived. The feed handler also calls `processScheduledFlips(podcast.id)` on every render as a fallback if the timer is dead. Publish side effects (webhook + GitHub repository_dispatch) fan out from `firePublishEvent()` in `server/utils/publish-event.ts`.
 
 ### Storage Adapters
 

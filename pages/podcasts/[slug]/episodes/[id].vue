@@ -5,6 +5,9 @@
       <div class="page-header">
         <h1>Edit Episode</h1>
         <div class="header-actions">
+          <button type="button" class="btn-back" :disabled="duplicating" @click="duplicateEpisode">
+            {{ duplicating ? 'Duplicating…' : 'Duplicate' }}
+          </button>
           <NuxtLink :to="`/podcasts/${podcastSlug}/episodes`" class="btn-back">← Episodes</NuxtLink>
         </div>
       </div>
@@ -19,9 +22,12 @@
         <!-- Publish toggle banner -->
         <div :class="['publish-banner', form.status]">
           <span>
-            Status: <strong>{{ form.status === 'published' ? 'Published' : 'Draft' }}</strong>
+            Status: <strong>{{ statusLabel }}</strong>
             <span v-if="form.status === 'published' && form.published_at">
               on {{ formatDate(form.published_at) }}
+            </span>
+            <span v-else-if="form.status === 'scheduled' && form.published_at">
+              for {{ formatDateTime(form.published_at) }}
             </span>
           </span>
           <button
@@ -30,7 +36,7 @@
             class="btn-publish-toggle"
             :disabled="saving"
           >
-            Publish Now
+            {{ publishedAtIsFuture ? 'Schedule' : 'Publish Now' }}
           </button>
           <button
             v-else
@@ -396,8 +402,10 @@
                 <label for="status">Status</label>
                 <select id="status" v-model="form.status">
                   <option value="draft">Draft</option>
+                  <option value="scheduled" :disabled="!publishedAtIsFuture">Scheduled</option>
                   <option value="published">Published</option>
                 </select>
+                <p class="hint">Setting status to "Published" with a future date saves as Scheduled and auto-publishes at the chosen time.</p>
               </div>
               <div class="form-group flex-2">
                 <label for="published_at">Publish Date</label>
@@ -533,6 +541,25 @@ const chaptersMsg = ref('')
 const chaptersMsgOk = ref(false)
 const transcriptUploading = ref(false)
 const transcriptError = ref('')
+const duplicating = ref(false)
+
+async function duplicateEpisode() {
+  duplicating.value = true
+  errorMsg.value = ''
+  try {
+    const newEp = await $fetch<{ id: number }>(
+      `/api/podcasts/${podcastSlug}/episodes/${id}/duplicate`,
+      { method: 'POST' },
+    )
+    formSaved.value = true
+    await navigateTo(`/podcasts/${podcastSlug}/episodes/${newEp.id}`)
+  } catch (err: unknown) {
+    errorMsg.value = (err as { data?: { statusMessage?: string } })?.data?.statusMessage
+      || (err instanceof Error ? err.message : 'Duplicate failed')
+  } finally {
+    duplicating.value = false
+  }
+}
 const chaptersFileUploading = ref(false)
 const chaptersFileError = ref('')
 
@@ -757,11 +784,24 @@ async function togglePublish() {
     if (!form.published_at) {
       form.published_at = new Date().toISOString().slice(0, 16)
     }
+    // The server coerces to 'scheduled' automatically when published_at is in the future.
   } else {
     form.status = 'draft'
   }
   await saveEpisode()
 }
+
+const publishedAtIsFuture = computed(() => {
+  if (!form.published_at) return false
+  const t = new Date(form.published_at).getTime()
+  return Number.isFinite(t) && t > Date.now()
+})
+
+const statusLabel = computed(() => {
+  if (form.status === 'published') return 'Published'
+  if (form.status === 'scheduled') return 'Scheduled'
+  return 'Draft'
+})
 
 async function handleFileChange(event: Event) {
   const input = event.target as HTMLInputElement
@@ -853,6 +893,13 @@ function formatDate(iso: string): string {
   })
 }
 
+function formatDateTime(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, {
+    year: 'numeric', month: 'short', day: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  })
+}
+
 useHead({ title: () => `Edit: ${form.title || '…'} — Podshelf Admin` })
 </script>
 
@@ -907,6 +954,11 @@ h1 { margin: 0; font-size: 1.5rem; color: #1a202c; }
   background: #fffff0;
   border: 1px solid #faf089;
   color: #744210;
+}
+.publish-banner.scheduled {
+  background: #ebf4ff;
+  border: 1px solid #c3dafe;
+  color: #4c51bf;
 }
 
 .btn-publish-toggle {

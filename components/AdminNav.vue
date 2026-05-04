@@ -19,6 +19,7 @@
         <li><NuxtLink :to="`/podcasts/${podcastSlug}/files`" active-class="active">Files</NuxtLink></li>
         <li><NuxtLink :to="`/podcasts/${podcastSlug}/build`" active-class="active">Build</NuxtLink></li>
         <li><NuxtLink :to="`/podcasts/${podcastSlug}/members`" active-class="active">Members</NuxtLink></li>
+        <li><NuxtLink :to="`/podcasts/${podcastSlug}/audit`" active-class="active">Audit Log</NuxtLink></li>
         <li class="divider" />
         <li><NuxtLink to="/">All podcasts</NuxtLink></li>
         <li><a :href="`/feeds/${podcastSlug}.xml`" target="_blank" rel="noopener">RSS Feed ↗</a></li>

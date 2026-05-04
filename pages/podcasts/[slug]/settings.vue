@@ -218,6 +218,56 @@
           </div>
         </div>
 
+        <div class="form-section">
+          <h2>Publish Webhook</h2>
+          <p class="hint section-hint">
+            Notify a chat channel or other system when an episode goes live.
+            Discord and Slack receive a richly-formatted message; <code>generic</code>
+            posts a JSON body that any catcher (n8n, Zapier, custom) can consume.
+          </p>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="webhook_format">Format</label>
+              <select id="webhook_format" v-model="webhook.format">
+                <option value="generic">Generic JSON</option>
+                <option value="discord">Discord</option>
+                <option value="slack">Slack</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="webhook_enabled">Status</label>
+              <select id="webhook_enabled" v-model="webhook.enabled">
+                <option :value="false">Disabled</option>
+                <option :value="true">Enabled</option>
+              </select>
+              <p class="hint">When disabled, the URL is kept on file but no events fire.</p>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="webhook_url">Webhook URL</label>
+            <input id="webhook_url" v-model="webhook.url" type="url"
+              :placeholder="webhook.has_url ? `(set; host ${webhook.url_host || 'unknown'}) — leave blank to keep` : 'https://discord.com/api/webhooks/…'" />
+            <p class="hint">
+              <span v-if="webhook.has_url && !webhook.url">A URL is currently saved for {{ webhook.url_host || 'an unknown host' }}. Leave blank to keep it; type a new one to replace; clear and submit "" to remove.</span>
+              <span v-else>Stored encrypted at rest. Discord webhook URLs include a token, so they're treated as a secret.</span>
+            </p>
+          </div>
+
+          <div class="webhook-actions">
+            <button type="button" class="btn-secondary" :disabled="webhookSaving || !webhook.has_url" @click="testWebhook">
+              {{ webhookTesting ? 'Sending…' : 'Send test' }}
+            </button>
+            <button type="button" class="btn-secondary" :disabled="webhookSaving" @click="saveWebhook">
+              {{ webhookSaving ? 'Saving…' : 'Save webhook' }}
+            </button>
+            <span v-if="webhookMsg" class="webhook-msg" :class="{ ok: webhookMsgOk, err: !webhookMsgOk }">
+              {{ webhookMsg }}
+            </span>
+          </div>
+        </div>
+
         <div class="form-actions">
           <span v-if="saving" class="save-status saving">Saving…</span>
           <span v-else-if="justSaved" class="save-status ok">✓ Saved</span>
@@ -348,6 +398,81 @@ const errorMsg = ref('')
 
 const { uploading: artworkUploading, uploadProgress, uploadFile } = useUpload(podcastSlug)
 const artworkError = ref('')
+
+interface WebhookDescription {
+  has_url: boolean
+  format: 'discord' | 'slack' | 'generic'
+  enabled: boolean
+  url_host: string | null
+}
+
+const webhook = reactive({
+  url: '',
+  format: 'generic' as 'discord' | 'slack' | 'generic',
+  enabled: false,
+  has_url: false,
+  url_host: null as string | null,
+})
+const webhookSaving = ref(false)
+const webhookTesting = ref(false)
+const webhookMsg = ref('')
+const webhookMsgOk = ref(false)
+
+async function loadWebhook() {
+  try {
+    const data = await $fetch<WebhookDescription>(`/api/podcasts/${podcastSlug}/webhook`)
+    webhook.format = data.format
+    webhook.enabled = data.enabled
+    webhook.has_url = data.has_url
+    webhook.url_host = data.url_host
+    webhook.url = ''
+  } catch {
+    // best-effort — leave defaults
+  }
+}
+await loadWebhook()
+
+async function saveWebhook() {
+  webhookSaving.value = true
+  webhookMsg.value = ''
+  try {
+    const body: Record<string, unknown> = {
+      format: webhook.format,
+      enabled: webhook.enabled,
+    }
+    // Only include url if the user typed something. Empty string is
+    // intentional clear; undefined preserves the existing value.
+    if (webhook.url !== '') body.url = webhook.url
+    await $fetch(`/api/podcasts/${podcastSlug}/webhook`, { method: 'POST', body })
+    webhookMsg.value = 'Webhook saved.'
+    webhookMsgOk.value = true
+    await loadWebhook()
+  } catch (err: unknown) {
+    webhookMsg.value = (err as { data?: { statusMessage?: string } })?.data?.statusMessage
+      || (err instanceof Error ? err.message : 'Save failed')
+    webhookMsgOk.value = false
+  } finally {
+    webhookSaving.value = false
+    setTimeout(() => { webhookMsg.value = '' }, 4000)
+  }
+}
+
+async function testWebhook() {
+  webhookTesting.value = true
+  webhookMsg.value = ''
+  try {
+    await $fetch(`/api/podcasts/${podcastSlug}/webhook/test`, { method: 'POST' })
+    webhookMsg.value = 'Test webhook delivered.'
+    webhookMsgOk.value = true
+  } catch (err: unknown) {
+    webhookMsg.value = (err as { data?: { statusMessage?: string } })?.data?.statusMessage
+      || (err instanceof Error ? err.message : 'Test failed')
+    webhookMsgOk.value = false
+  } finally {
+    webhookTesting.value = false
+    setTimeout(() => { webhookMsg.value = '' }, 6000)
+  }
+}
 
 async function handleArtworkChange(event: Event) {
   const input = event.target as HTMLInputElement
@@ -807,6 +932,53 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
   font-size: 0.9rem;
 }
 .loading { color: #718096; padding: 2rem 0; }
+
+.section-hint {
+  margin: -0.75rem 0 1rem;
+  font-size: 0.82rem;
+  color: #4a5568;
+}
+.section-hint code {
+  background: #edf2f7;
+  padding: 0.1em 0.35em;
+  border-radius: 3px;
+  font-size: 0.85em;
+}
+
+.webhook-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  flex-wrap: wrap;
+}
+.webhook-actions .btn-secondary {
+  padding: 0.45rem 0.875rem;
+  font-size: 0.85rem;
+  background: #edf2f7;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #4a5568;
+}
+.webhook-actions .btn-secondary:hover:not(:disabled) {
+  background: #e2e8f0;
+}
+.webhook-msg {
+  font-size: 0.82rem;
+  padding: 0.3rem 0.6rem;
+  border-radius: 5px;
+}
+.webhook-msg.ok {
+  background: #f0fff4;
+  border: 1px solid #9ae6b4;
+  color: #276749;
+}
+.webhook-msg.err {
+  background: #fff5f5;
+  border: 1px solid #fc8181;
+  color: #c53030;
+}
 
 @media (max-width: 600px) {
   .form-row { flex-direction: column; }

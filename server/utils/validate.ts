@@ -1,6 +1,6 @@
 import { createError } from 'h3'
 
-const VALID_STATUSES = ['draft', 'published']
+const VALID_STATUSES = ['draft', 'published', 'scheduled']
 const VALID_EPISODE_TYPES = ['full', 'trailer', 'bonus']
 const VALID_EPISODE_EXPLICIT = ['true', 'false']
 const VALID_TRANSCRIPT_TYPES = [

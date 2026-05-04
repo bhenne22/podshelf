@@ -1,6 +1,7 @@
 import { defineEventHandler, readBody, getRouterParam, createError } from 'h3'
 import { requirePodcastAccess } from '../../../utils/auth'
 import { savePodcastStorage, type SftpConfig, type S3Config } from '../../../utils/storage-config'
+import { logAudit } from '../../../utils/audit'
 
 /**
  * POST /api/podcasts/[slug]/storage
@@ -11,7 +12,7 @@ import { savePodcastStorage, type SftpConfig, type S3Config } from '../../../uti
  */
 export default defineEventHandler(async (event) => {
   const slug = getRouterParam(event, 'slug') as string
-  const { podcastId } = requirePodcastAccess(event, slug)
+  const { user, podcastId } = requirePodcastAccess(event, slug)
 
   const body = await readBody(event)
   const adapter = body?.adapter as string
@@ -43,6 +44,16 @@ export default defineEventHandler(async (event) => {
     }
     savePodcastStorage(podcastId, 's3', c)
   }
+
+  // Don't log credentials — just record that storage was reconfigured.
+  logAudit({
+    podcastId,
+    userId: user.id,
+    action: 'podcast.storage.update',
+    entityType: 'podcast',
+    entityId: podcastId,
+    summary: `Updated storage configuration (${adapter})`,
+  })
 
   return { ok: true }
 })

@@ -1,6 +1,7 @@
 import { defineEventHandler, readBody, getRouterParam, createError } from 'h3'
 import { requirePodcastAccess } from '../../../utils/auth'
 import { saveGithubConfig } from '../../../utils/github'
+import { logAudit } from '../../../utils/audit'
 
 /**
  * POST /api/podcasts/[slug]/github
@@ -11,7 +12,7 @@ import { saveGithubConfig } from '../../../utils/github'
  */
 export default defineEventHandler(async (event) => {
   const slug = getRouterParam(event, 'slug') as string
-  const { podcastId } = requirePodcastAccess(event, slug)
+  const { user, podcastId } = requirePodcastAccess(event, slug)
 
   const body = await readBody(event)
   const owner = String(body?.owner || '').trim()
@@ -30,6 +31,15 @@ export default defineEventHandler(async (event) => {
     event_type: eventType,
     token: token || undefined,
     auto_trigger: autoTrigger,
+  })
+
+  logAudit({
+    podcastId,
+    userId: user.id,
+    action: 'podcast.github.update',
+    entityType: 'podcast',
+    entityId: podcastId,
+    summary: `Updated GitHub config (${owner}/${repo}, event ${eventType}, auto-trigger ${autoTrigger ? 'on' : 'off'})`,
   })
 
   return { ok: true }

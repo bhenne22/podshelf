@@ -1,6 +1,7 @@
 import { defineEventHandler, readBody, getRouterParam, createError } from 'h3'
 import { requirePodcastAccess } from '../../../../utils/auth'
 import { bumpFeedLastModified } from '../../../../utils/feed-cache'
+import { logAudit, diffFields, summarizeChanges } from '../../../../utils/audit'
 import getDb from '../../../../db/index'
 
 const UPDATABLE = ['name', 'img_url', 'href', 'default_role', 'default_group', 'auto_attach']
@@ -15,14 +16,16 @@ const UPDATABLE = ['name', 'img_url', 'href', 'default_role', 'default_group', '
 export default defineEventHandler(async (event) => {
   const slug = getRouterParam(event, 'slug') as string
   const id = Number(getRouterParam(event, 'id'))
-  const { podcastId } = requirePodcastAccess(event, slug)
+  const { user, podcastId } = requirePodcastAccess(event, slug)
 
   if (!Number.isFinite(id)) {
     throw createError({ statusCode: 400, statusMessage: 'person id required' })
   }
 
   const db = getDb()
-  const existing = db.prepare('SELECT id FROM people WHERE id = ? AND podcast_id = ?').get(id, podcastId)
+  const existing = db.prepare(
+    'SELECT name, img_url, href, default_role, default_group, auto_attach FROM people WHERE id = ? AND podcast_id = ?'
+  ).get(id, podcastId) as Record<string, unknown> | undefined
   if (!existing) {
     throw createError({ statusCode: 404, statusMessage: 'Person not found' })
   }
@@ -56,6 +59,22 @@ export default defineEventHandler(async (event) => {
   // Name / img / href updates are reflected live in the feed; bump the
   // cache marker so subscribers refetch.
   bumpFeedLastModified(podcastId)
+
+  const after = db.prepare(
+    'SELECT name, img_url, href, default_role, default_group, auto_attach FROM people WHERE id = ?'
+  ).get(id) as Record<string, unknown>
+  const diff = diffFields(existing, after)
+  if (diff.changed.length > 0) {
+    logAudit({
+      podcastId,
+      userId: user.id,
+      action: 'people.update',
+      entityType: 'person',
+      entityId: id,
+      summary: summarizeChanges(`Updated person "${after.name}"`, diff.changed),
+      details: diff,
+    })
+  }
 
   return db.prepare('SELECT * FROM people WHERE id = ?').get(id)
 })

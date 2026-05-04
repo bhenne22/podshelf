@@ -2,6 +2,7 @@ import { defineEventHandler, readBody, getRouterParam, createError } from 'h3'
 import { requirePodcastAccess } from '../../../../../utils/auth'
 import { bumpFeedLastModified } from '../../../../../utils/feed-cache'
 import { maybeAutoTrigger } from '../../../../../utils/github'
+import { logAudit } from '../../../../../utils/audit'
 import getDb from '../../../../../db/index'
 
 /**
@@ -16,7 +17,7 @@ import getDb from '../../../../../db/index'
 export default defineEventHandler(async (event) => {
   const slug = getRouterParam(event, 'slug') as string
   const id = Number(getRouterParam(event, 'id'))
-  const { podcastId } = requirePodcastAccess(event, slug)
+  const { user, podcastId } = requirePodcastAccess(event, slug)
 
   if (!Number.isFinite(id)) {
     throw createError({ statusCode: 400, statusMessage: 'episode id required' })
@@ -69,6 +70,18 @@ export default defineEventHandler(async (event) => {
     bumpFeedLastModified(podcastId)
     maybeAutoTrigger(podcastId, 'episode-people-update')
   }
+
+  const personRow = db.prepare('SELECT name FROM people WHERE id = ?').get(personId) as { name: string }
+  logAudit({
+    podcastId,
+    userId: user.id,
+    action: existing ? 'episode.people.update' : 'episode.people.attach',
+    entityType: 'episode',
+    entityId: id,
+    summary: existing
+      ? `Updated ${personRow.name}'s attachment (${role}/${group})`
+      : `Attached ${personRow.name} (${role}) to episode`,
+  })
 
   return db.prepare(`
     SELECT ep.id, ep.episode_id, ep.person_id, ep.role, ep."group" AS "group", ep.position,

@@ -45,6 +45,9 @@ CREATE TABLE IF NOT EXISTS podcasts (
   verify_txt               TEXT,
   license_identifier       TEXT,
   license_url              TEXT,
+  webhook_url_encrypted    TEXT,
+  webhook_format           TEXT NOT NULL DEFAULT 'generic',
+  webhook_enabled          INTEGER NOT NULL DEFAULT 0,
   feed_last_modified       TEXT NOT NULL DEFAULT (datetime('now')),
   created_at               TEXT DEFAULT (datetime('now')),
   updated_at               TEXT DEFAULT (datetime('now'))
@@ -143,6 +146,25 @@ CREATE TABLE IF NOT EXISTS episode_people (
 
 CREATE INDEX IF NOT EXISTS idx_episode_people_episode_id ON episode_people(episode_id);
 CREATE INDEX IF NOT EXISTS idx_episode_people_person_id ON episode_people(person_id);
+
+-- Per-podcast audit trail. podcast_id is nullable so we can capture
+-- platform-level events (admin actions on podcasts as a whole, etc.).
+-- user_id is nullable for system-generated events (e.g. the scheduler
+-- flipping a scheduled episode to published).
+CREATE TABLE IF NOT EXISTS audit_log (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  podcast_id  INTEGER REFERENCES podcasts(id) ON DELETE CASCADE,
+  user_id     INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  action      TEXT NOT NULL,
+  entity_type TEXT,
+  entity_id   INTEGER,
+  summary     TEXT,
+  details     TEXT,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_log_podcast_id ON audit_log(podcast_id, id DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log(created_at DESC);
 
 CREATE TABLE IF NOT EXISTS downloads (
   id               INTEGER PRIMARY KEY AUTOINCREMENT,

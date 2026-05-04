@@ -1,5 +1,6 @@
 import { defineEventHandler, readBody, getRouterParam, createError } from 'h3'
 import { requireAdmin } from '../../../../utils/auth'
+import { logAudit } from '../../../../utils/audit'
 import getDb from '../../../../db/index'
 
 /**
@@ -9,7 +10,7 @@ import getDb from '../../../../db/index'
  * Body: { user_id } or { email }
  */
 export default defineEventHandler(async (event) => {
-  requireAdmin(event)
+  const admin = requireAdmin(event)
 
   const slug = getRouterParam(event, 'slug') as string
   const body = await readBody(event)
@@ -31,9 +32,21 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'user_id or email required' })
   }
 
-  db.prepare(`
+  const result = db.prepare(`
     INSERT OR IGNORE INTO podcast_users (podcast_id, user_id) VALUES (?, ?)
   `).run(podcast.id, userId)
+
+  if (result.changes > 0) {
+    const u = db.prepare('SELECT email FROM users WHERE id = ?').get(userId) as { email: string } | undefined
+    logAudit({
+      podcastId: podcast.id,
+      userId: admin.id,
+      action: 'podcast.member.add',
+      entityType: 'user',
+      entityId: userId,
+      summary: `Added ${u?.email ?? `user ${userId}`} as a podcast member`,
+    })
+  }
 
   event.node.res.statusCode = 201
   return { podcast_id: podcast.id, user_id: userId }

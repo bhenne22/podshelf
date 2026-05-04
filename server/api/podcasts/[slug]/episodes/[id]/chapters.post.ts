@@ -3,6 +3,7 @@ import { requirePodcastAccess } from '../../../../../utils/auth'
 import { parseChapterLines, uploadChaptersJson } from '../../../../../utils/chapters'
 import { bumpFeedLastModified } from '../../../../../utils/feed-cache'
 import { maybeAutoTrigger } from '../../../../../utils/github'
+import { logAudit } from '../../../../../utils/audit'
 import getDb from '../../../../../db/index'
 
 /**
@@ -21,7 +22,7 @@ import getDb from '../../../../../db/index'
 export default defineEventHandler(async (event) => {
   const slugParam = getRouterParam(event, 'slug') as string
   const id = Number(getRouterParam(event, 'id'))
-  const { podcastId } = requirePodcastAccess(event, slugParam)
+  const { user, podcastId } = requirePodcastAccess(event, slugParam)
 
   if (!Number.isFinite(id)) {
     throw createError({ statusCode: 400, statusMessage: 'episode id required' })
@@ -39,6 +40,14 @@ export default defineEventHandler(async (event) => {
 
   if (!text) {
     db.prepare(`UPDATE episodes SET chapters_url = NULL, updated_at = datetime('now') WHERE id = ?`).run(id)
+    logAudit({
+      podcastId,
+      userId: user.id,
+      action: 'episode.chapters.clear',
+      entityType: 'episode',
+      entityId: id,
+      summary: `Cleared chapters on episode ${ep.slug}`,
+    })
     if (ep.status === 'published') {
       bumpFeedLastModified(podcastId)
       maybeAutoTrigger(podcastId, 'episode-chapters-clear')
@@ -67,6 +76,16 @@ export default defineEventHandler(async (event) => {
   }
 
   db.prepare(`UPDATE episodes SET chapters_url = ?, updated_at = datetime('now') WHERE id = ?`).run(url, id)
+
+  logAudit({
+    podcastId,
+    userId: user.id,
+    action: 'episode.chapters.update',
+    entityType: 'episode',
+    entityId: id,
+    summary: `Updated chapters on episode ${ep.slug} (${chapters.length} chapter${chapters.length === 1 ? '' : 's'})`,
+    details: { chapters_url: url, count: chapters.length },
+  })
 
   if (ep.status === 'published') {
     bumpFeedLastModified(podcastId)

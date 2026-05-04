@@ -148,6 +148,32 @@ flow is `DELETE` → review → `DELETE …/purge`. Returns 204.
 Lists every soft-deleted podcast across the platform, ordered by `deleted_at`
 DESC. Used by the admin "Inactive Podcasts" page.
 
+### `GET /api/podcasts/[slug]/audit?limit=50&before=<id>`
+
+Paginated audit log for the podcast, newest first. `before` is the lowest id
+from the previous page; `limit` defaults to 50 (max 200). Visible to all
+podcast members. Response: `{ entries: [...], has_more: bool, next_before: id|null }`.
+Each entry has `action`, `summary`, `user_email`, `created_at`, and a parsed
+`details` object — for setting/episode updates this includes `changed[]`,
+`before`, and `after`.
+
+### `GET /api/podcasts/[slug]/webhook`
+
+Returns the redacted webhook config: `{ has_url, format, enabled, url_host }`.
+URL itself is never returned (it's encrypted at rest and may include a token
+in the path).
+
+### `POST /api/podcasts/[slug]/webhook`
+
+Body: `{ url?, format, enabled }`. `format` is `discord` / `slack` / `generic`.
+Omitting `url` preserves the existing one; sending an empty string clears it.
+Saves encrypted at rest.
+
+### `POST /api/podcasts/[slug]/webhook/test`
+
+Fires a synthetic test episode through the configured webhook. 502s with the
+upstream error if delivery fails.
+
 ---
 
 ## Episodes
@@ -158,10 +184,10 @@ All episode endpoints are scoped under a podcast slug.
 
 Lists episodes. Optional query params:
 
-| Param  | Description                                      |
-|--------|--------------------------------------------------|
-| status | `draft` or `published`                           |
-| slug   | Fetch a single episode by its (per-podcast) slug |
+| Param  | Description                                                       |
+|--------|-------------------------------------------------------------------|
+| status | `draft`, `published`, or `scheduled`                              |
+| slug   | Fetch a single episode by its (per-podcast) slug                  |
 
 ```bash
 # All episodes
@@ -199,6 +225,9 @@ defaults.
 
 `status` defaults to `"draft"`. Setting `status: "published"` requires
 `published_at` (or it'll be null and the episode won't appear in the RSS feed).
+If `status: "published"` is paired with a `published_at` in the future, the
+server stores the episode as `"scheduled"` and an in-process scheduler flips
+it to `"published"` (firing the webhook + GitHub trigger) when the time hits.
 
 `image_url` is optional per-episode artwork — when set, it's emitted as
 `<itunes:image>` at the item level in the RSS feed. Episodes without one
@@ -278,6 +307,16 @@ curl -X PATCH -H "X-Api-Key: $KEY" -H "Content-Type: application/json" \
 ### `DELETE /api/podcasts/[slug]/episodes/[id]`
 
 Permanently deletes the episode and its download history. Returns 204.
+
+### `POST /api/podcasts/[slug]/episodes/[id]/duplicate`
+
+Clone an episode into a new draft. Carries over description, tags,
+image_url + filename, season_number, season_name, episode_type,
+itunes_title/author, license override, and people attachments (with their
+role/group frozen at duplicate time). Clears audio file, chapters URL,
+transcript path/type, episode_number, episode_display, published_at, and
+GUID. Title becomes "Original (Copy)", slug becomes `original-slug-copy`
+with collision handling. Returns 201 + the new episode row.
 
 ---
 

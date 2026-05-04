@@ -3,6 +3,7 @@ import { requirePodcastAccess } from '../../../utils/auth'
 import { parsePodcastFeed } from '../../../utils/rss-parser'
 import { maybeAutoTrigger } from '../../../utils/github'
 import { bumpFeedLastModified } from '../../../utils/feed-cache'
+import { logAudit } from '../../../utils/audit'
 import getDb from '../../../db/index'
 
 function slugify(text: string): string {
@@ -26,7 +27,7 @@ function slugify(text: string): string {
  */
 export default defineEventHandler(async (event) => {
   const slug = getRouterParam(event, 'slug') as string
-  const { podcastId } = requirePodcastAccess(event, slug)
+  const { user, podcastId } = requirePodcastAccess(event, slug)
 
   const body = await readBody(event)
   const feedUrl = String(body?.feed_url || '').trim()
@@ -255,6 +256,22 @@ export default defineEventHandler(async (event) => {
   if (imported > 0) {
     maybeAutoTrigger(podcastId, 'rss-import')
   }
+
+  logAudit({
+    podcastId,
+    userId: user.id,
+    action: 'podcast.import-rss',
+    entityType: 'podcast',
+    entityId: podcastId,
+    summary: `Imported ${imported} episode${imported === 1 ? '' : 's'} from ${feedUrl} (${skipped} skipped)`,
+    details: {
+      feed_url: feedUrl,
+      feed_title: feed.title,
+      imported,
+      skipped,
+      settings_backfilled: setClauses.map((c) => c.split(' = ')[0]),
+    },
+  })
 
   return {
     feed_title: feed.title,

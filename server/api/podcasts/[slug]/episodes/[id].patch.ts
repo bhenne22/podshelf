@@ -3,6 +3,9 @@ import { requirePodcastAccess } from '../../../../utils/auth'
 import { validateEpisodeFields } from '../../../../utils/validate'
 import { maybeAutoTrigger } from '../../../../utils/github'
 import { bumpFeedLastModified } from '../../../../utils/feed-cache'
+import { logAudit, diffFields, summarizeChanges } from '../../../../utils/audit'
+import { firePublishEvent } from '../../../../utils/publish-event'
+import { coerceScheduledStatus } from '../../../../utils/scheduler'
 import getDb from '../../../../db/index'
 
 const UPDATABLE = [
@@ -22,21 +25,30 @@ const UPDATABLE = [
 export default defineEventHandler(async (event) => {
   const slugParam = getRouterParam(event, 'slug') as string
   const id = getRouterParam(event, 'id')
-  const { podcastId } = requirePodcastAccess(event, slugParam)
+  const { user, podcastId } = requirePodcastAccess(event, slugParam)
 
   if (!id) {
     throw createError({ statusCode: 400, statusMessage: 'id is required' })
   }
 
   const db = getDb()
-  const existing = db.prepare('SELECT id, status FROM episodes WHERE id = ? AND podcast_id = ?')
-    .get(id, podcastId) as { id: number; status: string } | undefined
-  if (!existing) {
+  const beforeRow = db.prepare(`SELECT ${UPDATABLE.join(', ')}, status AS _status FROM episodes WHERE id = ? AND podcast_id = ?`)
+    .get(id, podcastId) as Record<string, unknown> & { _status: string } | undefined
+  if (!beforeRow) {
     throw createError({ statusCode: 404, statusMessage: 'Episode not found' })
   }
+  const beforeStatus = beforeRow._status
 
   const body = await readBody(event)
   validateEpisodeFields(body)
+
+  // If status is being set to 'published' with a future published_at, coerce
+  // to 'scheduled'. Same logic on create — keeps the publish-now vs publish-
+  // later semantics in one place.
+  if (body.status === 'published') {
+    const incomingPubDate = 'published_at' in body ? body.published_at : beforeRow.published_at
+    body.status = coerceScheduledStatus('published', incomingPubDate as string | null | undefined)
+  }
 
   const updates: string[] = []
   const values: Record<string, unknown> = { id, podcast_id: podcastId }
@@ -54,11 +66,46 @@ export default defineEventHandler(async (event) => {
   updates.push(`updated_at = datetime('now')`)
   db.prepare(`UPDATE episodes SET ${updates.join(', ')} WHERE id = @id AND podcast_id = @podcast_id`).run(values)
 
-  const updated = db.prepare('SELECT * FROM episodes WHERE id = ?').get(id) as { status: string }
+  const updated = db.prepare('SELECT * FROM episodes WHERE id = ?').get(id) as Record<string, unknown> & { status: string; title: string }
 
-  // Fire if the episode is or was published — covers status flips and edits
-  // to live episodes; ignores draft-only edits.
-  if (existing.status === 'published' || updated.status === 'published') {
+  const afterRow: Record<string, unknown> = {}
+  for (const f of UPDATABLE) afterRow[f] = updated[f]
+  delete (beforeRow as Record<string, unknown>)._status
+  const diff = diffFields(beforeRow as Record<string, unknown>, afterRow)
+
+  if (diff.changed.length > 0) {
+    // Status flips get their own action so the audit feed is readable
+    // (publish / unpublish / schedule are the events users actually care
+    // about, vs general field edits).
+    let action = 'episode.update'
+    let summary = summarizeChanges(`Updated episode "${updated.title}"`, diff.changed)
+    if (diff.changed.includes('status')) {
+      const newStatus = updated.status
+      if (newStatus === 'published') action = 'episode.publish'
+      else if (newStatus === 'draft' && beforeStatus === 'published') action = 'episode.unpublish'
+      summary = `${action === 'episode.publish' ? 'Published' :
+                  action === 'episode.unpublish' ? 'Reverted to draft' :
+                  'Updated'} "${updated.title}"`
+    }
+    logAudit({
+      podcastId,
+      userId: user.id,
+      action,
+      entityType: 'episode',
+      entityId: Number(id),
+      summary,
+      details: diff,
+    })
+  }
+
+  // The "just became live" transition fires the webhook (via firePublishEvent).
+  // Edits to already-live episodes still bump the feed cache + trigger CI but
+  // skip the webhook so we don't spam the channel on every typo fix.
+  const becamePublished = beforeStatus !== 'published' && updated.status === 'published'
+  const wasOrIsPublished = beforeStatus === 'published' || updated.status === 'published'
+  if (becamePublished) {
+    await firePublishEvent(podcastId, Number(id), 'episode-update', user.id)
+  } else if (wasOrIsPublished) {
     bumpFeedLastModified(podcastId)
     maybeAutoTrigger(podcastId, 'episode-update')
   }

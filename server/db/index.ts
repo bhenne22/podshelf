@@ -47,6 +47,9 @@ CREATE TABLE IF NOT EXISTS podcasts (
   verify_txt               TEXT,
   license_identifier       TEXT,
   license_url              TEXT,
+  webhook_url_encrypted    TEXT,
+  webhook_format           TEXT NOT NULL DEFAULT 'generic',
+  webhook_enabled          INTEGER NOT NULL DEFAULT 0,
   feed_last_modified       TEXT NOT NULL DEFAULT (datetime('now')),
   created_at               TEXT DEFAULT (datetime('now')),
   updated_at               TEXT DEFAULT (datetime('now'))
@@ -140,6 +143,21 @@ CREATE TABLE IF NOT EXISTS episode_people (
 
 CREATE INDEX IF NOT EXISTS idx_episode_people_episode_id ON episode_people(episode_id);
 CREATE INDEX IF NOT EXISTS idx_episode_people_person_id ON episode_people(person_id);
+
+CREATE TABLE IF NOT EXISTS audit_log (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  podcast_id  INTEGER REFERENCES podcasts(id) ON DELETE CASCADE,
+  user_id     INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  action      TEXT NOT NULL,
+  entity_type TEXT,
+  entity_id   INTEGER,
+  summary     TEXT,
+  details     TEXT,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_log_podcast_id ON audit_log(podcast_id, id DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log(created_at DESC);
 
 CREATE TABLE IF NOT EXISTS downloads (
   id               INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -244,6 +262,15 @@ function applyMigrations(db: Database.Database) {
   }
   if (!podcastCols.includes('license_url')) {
     db.exec('ALTER TABLE podcasts ADD COLUMN license_url TEXT')
+  }
+  if (!podcastCols.includes('webhook_url_encrypted')) {
+    db.exec('ALTER TABLE podcasts ADD COLUMN webhook_url_encrypted TEXT')
+  }
+  if (!podcastCols.includes('webhook_format')) {
+    db.exec("ALTER TABLE podcasts ADD COLUMN webhook_format TEXT NOT NULL DEFAULT 'generic'")
+  }
+  if (!podcastCols.includes('webhook_enabled')) {
+    db.exec('ALTER TABLE podcasts ADD COLUMN webhook_enabled INTEGER NOT NULL DEFAULT 0')
   }
 
   const episodeCols = cols('episodes')

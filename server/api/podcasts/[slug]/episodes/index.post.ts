@@ -1,8 +1,9 @@
 import { defineEventHandler, readBody, getRouterParam, createError } from 'h3'
 import { requirePodcastAccess } from '../../../../utils/auth'
 import { validateEpisodeFields } from '../../../../utils/validate'
-import { maybeAutoTrigger } from '../../../../utils/github'
-import { bumpFeedLastModified } from '../../../../utils/feed-cache'
+import { logAudit } from '../../../../utils/audit'
+import { firePublishEvent } from '../../../../utils/publish-event'
+import { coerceScheduledStatus } from '../../../../utils/scheduler'
 import getDb from '../../../../db/index'
 
 function slugify(text: string): string {
@@ -20,7 +21,7 @@ function slugify(text: string): string {
  */
 export default defineEventHandler(async (event) => {
   const slugParam = getRouterParam(event, 'slug') as string
-  const { podcastId } = requirePodcastAccess(event, slugParam)
+  const { user, podcastId } = requirePodcastAccess(event, slugParam)
 
   const body = await readBody(event)
   if (!body?.title) {
@@ -45,6 +46,10 @@ export default defineEventHandler(async (event) => {
     }
     slug = candidate
   }
+
+  // Coerce status: published + future date → scheduled.
+  const desiredStatus = body.status ?? 'draft'
+  const effectiveStatus = coerceScheduledStatus(desiredStatus, body.published_at) ?? 'draft'
 
   const result = db.prepare(`
     INSERT INTO episodes (
@@ -78,7 +83,7 @@ export default defineEventHandler(async (event) => {
     image_url: body.image_url ?? null,
     image_filename: body.image_filename ?? null,
     published_at: body.published_at ?? null,
-    status: body.status ?? 'draft',
+    status: effectiveStatus,
     tags: body.tags ?? null,
     transcript_path: body.transcript_path ?? null,
     transcript_type: body.transcript_type ?? null,
@@ -114,10 +119,18 @@ export default defineEventHandler(async (event) => {
 
   const episode = db.prepare('SELECT * FROM episodes WHERE id = ?').get(episodeId) as { status: string }
 
+  logAudit({
+    podcastId,
+    userId: user.id,
+    action: 'episode.create',
+    entityType: 'episode',
+    entityId: episodeId,
+    summary: `Created episode "${body.title}" as ${episode.status}`,
+  })
+
   // Only kick a rebuild if this episode lands in the published feed.
   if (episode.status === 'published') {
-    bumpFeedLastModified(podcastId)
-    maybeAutoTrigger(podcastId, 'episode-create')
+    await firePublishEvent(podcastId, episodeId, 'episode-create', user.id)
   }
 
   event.node.res.statusCode = 201
