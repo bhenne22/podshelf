@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS podcasts (
   github_auto_trigger      INTEGER NOT NULL DEFAULT 0,
   status                   TEXT NOT NULL DEFAULT 'active',
   deleted_at               TEXT,
+  guid                     TEXT,
   created_at               TEXT DEFAULT (datetime('now')),
   updated_at               TEXT DEFAULT (datetime('now'))
 );
@@ -84,6 +85,7 @@ CREATE TABLE IF NOT EXISTS episodes (
   status                  TEXT DEFAULT 'draft',
   tags                    TEXT,
   transcript_path         TEXT,
+  guid                    TEXT,
   created_at              TEXT DEFAULT (datetime('now')),
   updated_at              TEXT DEFAULT (datetime('now')),
   UNIQUE (podcast_id, slug)
@@ -159,6 +161,9 @@ function applyMigrations(db: Database.Database) {
   if (!podcastCols.includes('deleted_at')) {
     db.exec('ALTER TABLE podcasts ADD COLUMN deleted_at TEXT')
   }
+  if (!podcastCols.includes('guid')) {
+    db.exec('ALTER TABLE podcasts ADD COLUMN guid TEXT')
+  }
 
   const episodeCols = cols('episodes')
   if (!episodeCols.includes('image_url')) {
@@ -166,6 +171,9 @@ function applyMigrations(db: Database.Database) {
   }
   if (!episodeCols.includes('image_filename')) {
     db.exec('ALTER TABLE episodes ADD COLUMN image_filename TEXT')
+  }
+  if (!episodeCols.includes('guid')) {
+    db.exec('ALTER TABLE episodes ADD COLUMN guid TEXT')
   }
 }
 

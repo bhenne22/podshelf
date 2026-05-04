@@ -14,6 +14,7 @@ export interface ParsedItem {
 
 export interface ParsedFeed {
   title: string | null
+  podcast_guid: string | null
   items: ParsedItem[]
 }
 
@@ -119,6 +120,7 @@ export function parsePodcastFeed(xml: string): ParsedFeed {
 
   return {
     title: asString(channel.title),
+    podcast_guid: asString(channel['podcast:guid']),
     items,
   }
 }

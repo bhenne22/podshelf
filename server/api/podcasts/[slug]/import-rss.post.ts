@@ -92,11 +92,11 @@ export default defineEventHandler(async (event) => {
     INSERT INTO episodes (
       podcast_id, title, slug, episode_number, season_number,
       description, audio_url, audio_size_bytes, audio_duration_seconds,
-      published_at, status, tags
+      published_at, status, tags, guid
     ) VALUES (
       @podcast_id, @title, @slug, @episode_number, @season_number,
       @description, @audio_url, @audio_size_bytes, @audio_duration_seconds,
-      @published_at, 'published', NULL
+      @published_at, 'published', NULL, @guid
     )
   `)
 
@@ -120,6 +120,7 @@ export default defineEventHandler(async (event) => {
         audio_size_bytes: item.audio_size_bytes,
         audio_duration_seconds: item.audio_duration_seconds,
         published_at: item.pubDate,
+        guid: item.guid,
       })
       imported++
     }
@@ -127,6 +128,14 @@ export default defineEventHandler(async (event) => {
   })
 
   const { imported, skipped } = tx(feed.items)
+
+  // Preserve the source feed's channel <podcast:guid> so existing
+  // subscribers stay subscribed when they re-point their app at our feed.
+  // The importer only runs on empty podcasts, so overwriting any GUID we
+  // had previously lazy-computed is safe (no one's subscribed yet).
+  if (feed.podcast_guid) {
+    db.prepare('UPDATE podcasts SET guid = ? WHERE id = ?').run(feed.podcast_guid, podcastId)
+  }
 
   if (imported > 0) {
     maybeAutoTrigger(podcastId, 'rss-import')

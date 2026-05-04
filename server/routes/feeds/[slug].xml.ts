@@ -1,5 +1,6 @@
 import { defineEventHandler, setHeader, createError } from 'h3'
 import getDb from '../../db/index'
+import { computePodcastGuid } from '../../utils/podcast-guid'
 
 interface Podcast {
   id: number
@@ -15,6 +16,7 @@ interface Podcast {
   explicit: string | null
   website: string | null
   audio_tracking_prefix: string | null
+  guid: string | null
 }
 
 interface Episode {
@@ -29,6 +31,7 @@ interface Episode {
   audio_duration_seconds: number | null
   image_url: string | null
   published_at: string | null
+  guid: string | null
 }
 
 function escapeXml(str: string): string {
@@ -71,7 +74,7 @@ export default defineEventHandler((event) => {
 
   const podcast = db.prepare(`
     SELECT id, slug, title, description, author, email, image_url, language,
-           copyright, category, explicit, website, audio_tracking_prefix
+           copyright, category, explicit, website, audio_tracking_prefix, guid
     FROM podcasts WHERE slug = ? AND status = 'active'
   `).get(slug) as Podcast | undefined
 
@@ -79,10 +82,21 @@ export default defineEventHandler((event) => {
     throw createError({ statusCode: 404, statusMessage: 'Podcast not found' })
   }
 
+  // Lazily assign a stable Podcasting 2.0 channel GUID on first feed render.
+  // Derived from the feed URL per spec, then persisted so it survives any
+  // future URL change.
+  let podcastGuid = podcast.guid
+  if (!podcastGuid) {
+    const siteUrl = (useRuntimeConfig().public.siteUrl as string || '').replace(/\/+$/, '')
+    const feedUrl = `${siteUrl}/feeds/${podcast.slug}.xml`
+    podcastGuid = computePodcastGuid(feedUrl)
+    db.prepare('UPDATE podcasts SET guid = ? WHERE id = ?').run(podcastGuid, podcast.id)
+  }
+
   const episodes = db.prepare(`
     SELECT id, title, slug, episode_number, season_number,
            description, audio_url, audio_size_bytes,
-           audio_duration_seconds, image_url, published_at
+           audio_duration_seconds, image_url, published_at, guid
     FROM episodes
     WHERE podcast_id = ? AND status = 'published' AND published_at IS NOT NULL
     ORDER BY published_at DESC
@@ -99,6 +113,22 @@ export default defineEventHandler((event) => {
   const showExplicit = podcast.explicit || 'false'
   const websiteBase = (podcast.website || '').replace(/\/+$/, '')
   const audioTrackingPrefix = podcast.audio_tracking_prefix || ''
+
+  // Lazily lock in a stable per-episode GUID. Using the episode URL keeps
+  // backwards compatibility with what we previously emitted, so existing
+  // subscribers don't see every episode as "new". Once persisted, future
+  // slug or website changes won't churn the GUID.
+  const episodesNeedingGuid = episodes.filter((ep) => !ep.guid)
+  if (episodesNeedingGuid.length > 0) {
+    const updateGuid = db.prepare('UPDATE episodes SET guid = ? WHERE id = ?')
+    db.transaction(() => {
+      for (const ep of episodesNeedingGuid) {
+        const epUrl = websiteBase ? `${websiteBase}/episodes/${ep.slug}` : `/episodes/${ep.slug}`
+        ep.guid = epUrl
+        updateGuid.run(epUrl, ep.id)
+      }
+    })()
+  }
 
   const itemsXml = episodes.map((ep) => {
     const episodeUrl = websiteBase ? `${websiteBase}/episodes/${ep.slug}` : `/episodes/${ep.slug}`
@@ -122,7 +152,7 @@ export default defineEventHandler((event) => {
       xml += `      <enclosure url="${escapeXml(feedAudioUrl)}" length="${audioSize}" type="audio/mpeg"/>\n`
     }
 
-    xml += `      <guid isPermaLink="false">${escapeXml(episodeUrl)}</guid>\n`
+    xml += `      <guid isPermaLink="false">${escapeXml(ep.guid || episodeUrl)}</guid>\n`
     xml += `      <itunes:summary>${cdata(description)}</itunes:summary>\n`
 
     if (ep.audio_duration_seconds) {
@@ -150,12 +180,14 @@ export default defineEventHandler((event) => {
   const rss = `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0"
   xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"
-  xmlns:content="http://purl.org/rss/1.0/modules/content/">
+  xmlns:content="http://purl.org/rss/1.0/modules/content/"
+  xmlns:podcast="https://podcastindex.org/namespace/1.0">
   <channel>
     <title>${cdata(showTitle)}</title>
     <link>${escapeXml(channelLink)}</link>
     <description>${cdata(showDescription)}</description>
     <language>${escapeXml(showLanguage)}</language>
+    <podcast:guid>${escapeXml(podcastGuid)}</podcast:guid>
     ${showCopyright ? `<copyright>${cdata(showCopyright)}</copyright>` : ''}
     <itunes:author>${cdata(showAuthor)}</itunes:author>
     <itunes:owner>

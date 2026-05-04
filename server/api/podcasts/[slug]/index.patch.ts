@@ -11,10 +11,13 @@ const FEED_VISIBLE_FIELDS = new Set([
 ])
 
 const UPDATABLE = [
+  'slug',
   'title', 'description', 'author', 'email', 'image_url', 'language',
   'copyright', 'category', 'explicit', 'website', 'audio_tracking_prefix',
   'storage_adapter', 'github_owner', 'github_repo', 'github_event_type',
 ]
+
+const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 
 /**
  * PATCH /api/podcasts/[slug]
@@ -33,6 +36,23 @@ export default defineEventHandler(async (event) => {
   }
 
   const db = getDb()
+
+  if ('slug' in body) {
+    const newSlug = typeof body.slug === 'string' ? body.slug.trim() : ''
+    if (!newSlug || !SLUG_RE.test(newSlug)) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'slug must be lowercase letters, digits, and hyphens (no leading/trailing hyphen)',
+      })
+    }
+    if (newSlug !== slug) {
+      const taken = db.prepare('SELECT 1 FROM podcasts WHERE slug = ? AND id != ?').get(newSlug, podcastId)
+      if (taken) {
+        throw createError({ statusCode: 409, statusMessage: `Podcast slug "${newSlug}" already exists` })
+      }
+    }
+    body.slug = newSlug
+  }
 
   const updates: string[] = []
   const values: Record<string, unknown> = { id: podcastId }

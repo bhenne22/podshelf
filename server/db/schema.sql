@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS podcasts (
   github_auto_trigger      INTEGER NOT NULL DEFAULT 0,
   status                   TEXT NOT NULL DEFAULT 'active',
   deleted_at               TEXT,
+  guid                     TEXT,
   created_at               TEXT DEFAULT (datetime('now')),
   updated_at               TEXT DEFAULT (datetime('now'))
 );
@@ -85,6 +86,7 @@ CREATE TABLE IF NOT EXISTS episodes (
   status                  TEXT DEFAULT 'draft',
   tags                    TEXT,
   transcript_path         TEXT,
+  guid                    TEXT,
   created_at              TEXT DEFAULT (datetime('now')),
   updated_at              TEXT DEFAULT (datetime('now')),
   UNIQUE (podcast_id, slug)

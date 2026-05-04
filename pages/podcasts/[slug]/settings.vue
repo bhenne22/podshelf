@@ -19,6 +19,23 @@
           </div>
 
           <div class="form-group">
+            <label for="slug">Slug <span class="required">*</span></label>
+            <input id="slug" v-model="form.slug" type="text" required placeholder="my-awesome-podcast"
+              :class="{ 'input-invalid': form.slug && !slugValid }" autocomplete="off" />
+            <p v-if="form.slug && !slugValid" class="probe-error">
+              Use lowercase letters, digits, and hyphens only (e.g. <code>my-show</code>).
+            </p>
+            <p v-else-if="slugChanged" class="slug-warning">
+              <strong>Heads-up:</strong> changing the slug will break existing RSS subscribers and
+              bookmarks. The feed URL becomes <code>/feeds/{{ form.slug.trim() }}.xml</code> and the
+              old URL will return 404. Only safe if no one is subscribed yet.
+            </p>
+            <p v-else class="hint">
+              Used in the public RSS feed URL (<code>/feeds/{{ originalSlug }}.xml</code>) and admin links.
+            </p>
+          </div>
+
+          <div class="form-group">
             <label for="description">Description</label>
             <textarea id="description" v-model="form.description" rows="4"
               placeholder="A brief description of your show for podcast directories and your RSS feed."
@@ -192,6 +209,7 @@ const route = useRoute()
 const podcastSlug = route.params.slug as string
 
 interface PodcastRow {
+  slug: string
   title: string
   description: string | null
   author: string | null
@@ -207,9 +225,12 @@ interface PodcastRow {
   deleted_at: string | null
 }
 
+const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
+
 const { data: initial, pending } = await useFetch<PodcastRow>(`/api/podcasts/${podcastSlug}`)
 
 const form = reactive({
+  slug: podcastSlug,
   title: '',
   description: '',
   author: '',
@@ -222,6 +243,10 @@ const form = reactive({
   website: '',
   audio_tracking_prefix: '',
 })
+
+const originalSlug = ref(podcastSlug)
+const slugChanged = computed(() => form.slug.trim() !== originalSlug.value)
+const slugValid = computed(() => SLUG_RE.test(form.slug.trim()))
 
 const saving = ref(false)
 const justSaved = ref(false)
@@ -287,6 +312,8 @@ function onArtworkPicked(payload: { url: string; name: string }) {
 
 watch(initial, (p) => {
   if (!p) return
+  form.slug = p.slug || podcastSlug
+  originalSlug.value = p.slug || podcastSlug
   form.title = p.title || ''
   form.description = p.description || ''
   form.author = p.author || ''
@@ -301,20 +328,41 @@ watch(initial, (p) => {
 }, { immediate: true })
 
 async function saveSettings() {
-  saving.value = true
   errorMsg.value = ''
   successMsg.value = ''
 
+  const trimmedSlug = form.slug.trim()
+  if (!slugValid.value) {
+    errorMsg.value = 'Slug must be lowercase letters, digits, and hyphens (no leading/trailing hyphen).'
+    return
+  }
+
+  if (slugChanged.value) {
+    const ok = window.confirm(
+      `Change slug from "${originalSlug.value}" to "${trimmedSlug}"?\n\n` +
+      'Existing RSS subscribers will stop receiving episodes — apps fetch the old feed URL ' +
+      `(/feeds/${originalSlug.value}.xml) which will return 404. Bookmarks and links to the ` +
+      'admin pages will also break. Only do this if no one is subscribed yet.'
+    )
+    if (!ok) return
+  }
+
+  saving.value = true
   try {
     await $fetch(`/api/podcasts/${podcastSlug}`, {
       method: 'PATCH',
-      body: { ...form },
+      body: { ...form, slug: trimmedSlug },
     })
+    if (slugChanged.value) {
+      await navigateTo(`/podcasts/${trimmedSlug}/settings`)
+      return
+    }
     successMsg.value = 'Settings saved successfully.'
     justSaved.value = true
     setTimeout(() => { justSaved.value = false }, 3500)
   } catch (err: unknown) {
-    errorMsg.value = err instanceof Error ? err.message : 'Failed to save settings'
+    errorMsg.value = (err as { data?: { statusMessage?: string } })?.data?.statusMessage
+      || (err instanceof Error ? err.message : 'Failed to save settings')
   } finally {
     saving.value = false
   }
@@ -473,6 +521,25 @@ textarea { resize: vertical; line-height: 1.6; }
   border-radius: 6px;
   font-size: 0.8rem;
   margin-top: 0.5rem;
+}
+.input-invalid {
+  border-color: #fc8181 !important;
+}
+.slug-warning {
+  margin-top: 0.5rem;
+  padding: 0.625rem 0.75rem;
+  background: #fffaf0;
+  border: 1px solid #fbd38d;
+  color: #744210;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+.slug-warning code {
+  background: rgba(0, 0, 0, 0.06);
+  padding: 0.05em 0.3em;
+  border-radius: 3px;
+  font-size: 0.9em;
 }
 
 .form-actions {
