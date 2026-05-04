@@ -31,6 +31,7 @@ User-facing routes (login required):
 - `/login` — password login
 - `/` — list of podcasts the user can access (the dashboard)
 - `/api-keys` — per-user API key management
+- `/docs` — interactive API reference (Swagger UI loading `public/openapi.yaml`)
 - `/podcasts/[slug]` — per-podcast dashboard
 - `/podcasts/[slug]/episodes` — episode list (with season + date-range filters and Overall # / Season # / Ep # columns)
 - `/podcasts/[slug]/episodes/new`, `/podcasts/[slug]/episodes/[id]` — episode CRUD (transcript + chapters file/textarea, per-episode RSS overrides, people attachments)

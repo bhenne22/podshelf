@@ -7,6 +7,13 @@ owning user has access to.
 Base URL: whatever you've set as `SITE_URL` (defaults to `http://localhost:3000`
 in dev).
 
+> **Interactive reference:** an OpenAPI 3 spec lives at `public/openapi.yaml`
+> and is rendered as Swagger UI at `/docs` on the running instance. The
+> "Try it out" button there uses your API key directly against the same
+> origin you're viewing the docs on. This Markdown file remains the
+> human-readable narrative; the OpenAPI spec is the machine-readable
+> reference. Keep both in sync when adding endpoints.
+
 ## Authentication
 
 All mutation endpoints — and most read endpoints — require authentication via
