@@ -2,6 +2,7 @@ import { defineEventHandler, readBody, getRouterParam, createError } from 'h3'
 import { requirePodcastAccess } from '../../../../utils/auth'
 import { validateEpisodeFields } from '../../../../utils/validate'
 import { maybeAutoTrigger } from '../../../../utils/github'
+import { bumpFeedLastModified } from '../../../../utils/feed-cache'
 import getDb from '../../../../db/index'
 
 const UPDATABLE = [
@@ -54,6 +55,7 @@ export default defineEventHandler(async (event) => {
   // Fire if the episode is or was published — covers status flips and edits
   // to live episodes; ignores draft-only edits.
   if (existing.status === 'published' || updated.status === 'published') {
+    bumpFeedLastModified(podcastId)
     maybeAutoTrigger(podcastId, 'episode-update')
   }
 

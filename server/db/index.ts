@@ -40,6 +40,11 @@ CREATE TABLE IF NOT EXISTS podcasts (
   guid                     TEXT,
   itunes_type              TEXT NOT NULL DEFAULT 'episodic',
   podcast_locked           TEXT NOT NULL DEFAULT 'no',
+  itunes_complete          TEXT NOT NULL DEFAULT 'no',
+  itunes_block             TEXT NOT NULL DEFAULT 'no',
+  funding_url              TEXT,
+  funding_label            TEXT,
+  feed_last_modified       TEXT NOT NULL DEFAULT (datetime('now')),
   created_at               TEXT DEFAULT (datetime('now')),
   updated_at               TEXT DEFAULT (datetime('now'))
 );
@@ -172,6 +177,24 @@ function applyMigrations(db: Database.Database) {
   }
   if (!podcastCols.includes('podcast_locked')) {
     db.exec("ALTER TABLE podcasts ADD COLUMN podcast_locked TEXT NOT NULL DEFAULT 'no'")
+  }
+  if (!podcastCols.includes('itunes_complete')) {
+    db.exec("ALTER TABLE podcasts ADD COLUMN itunes_complete TEXT NOT NULL DEFAULT 'no'")
+  }
+  if (!podcastCols.includes('itunes_block')) {
+    db.exec("ALTER TABLE podcasts ADD COLUMN itunes_block TEXT NOT NULL DEFAULT 'no'")
+  }
+  if (!podcastCols.includes('funding_url')) {
+    db.exec('ALTER TABLE podcasts ADD COLUMN funding_url TEXT')
+  }
+  if (!podcastCols.includes('funding_label')) {
+    db.exec('ALTER TABLE podcasts ADD COLUMN funding_label TEXT')
+  }
+  if (!podcastCols.includes('feed_last_modified')) {
+    // SQLite ALTER TABLE ADD COLUMN can't take a non-constant default on
+    // NOT NULL, so add nullable and backfill in a separate statement.
+    db.exec('ALTER TABLE podcasts ADD COLUMN feed_last_modified TEXT')
+    db.exec("UPDATE podcasts SET feed_last_modified = COALESCE(updated_at, datetime('now')) WHERE feed_last_modified IS NULL")
   }
 
   const episodeCols = cols('episodes')

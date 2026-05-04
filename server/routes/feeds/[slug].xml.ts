@@ -1,4 +1,4 @@
-import { defineEventHandler, setHeader, createError } from 'h3'
+import { defineEventHandler, setHeader, getHeader, setResponseStatus, createError } from 'h3'
 import getDb from '../../db/index'
 import { computePodcastGuid } from '../../utils/podcast-guid'
 
@@ -19,6 +19,11 @@ interface Podcast {
   guid: string | null
   itunes_type: string | null
   podcast_locked: string | null
+  itunes_complete: string | null
+  itunes_block: string | null
+  funding_url: string | null
+  funding_label: string | null
+  feed_last_modified: string | null
 }
 
 interface Episode {
@@ -78,12 +83,28 @@ export default defineEventHandler((event) => {
   const podcast = db.prepare(`
     SELECT id, slug, title, description, author, email, image_url, language,
            copyright, category, explicit, website, audio_tracking_prefix, guid,
-           itunes_type, podcast_locked
+           itunes_type, podcast_locked, itunes_complete, itunes_block,
+           funding_url, funding_label, feed_last_modified
     FROM podcasts WHERE slug = ? AND status = 'active'
   `).get(slug) as Podcast | undefined
 
   if (!podcast) {
     throw createError({ statusCode: 404, statusMessage: 'Podcast not found' })
+  }
+
+  // Conditional GET: most podcast app polls return identical XML, so honor
+  // If-Modified-Since with a 304 to save bandwidth. Compare at second
+  // precision since HTTP-date doesn't carry sub-second.
+  const lastModifiedDate = new Date(podcast.feed_last_modified || Date.now())
+  setHeader(event, 'Last-Modified', lastModifiedDate.toUTCString())
+  const ifModifiedSince = getHeader(event, 'if-modified-since')
+  if (ifModifiedSince) {
+    const since = new Date(ifModifiedSince)
+    if (!isNaN(since.getTime()) &&
+        Math.floor(lastModifiedDate.getTime() / 1000) <= Math.floor(since.getTime() / 1000)) {
+      setResponseStatus(event, 304)
+      return null
+    }
   }
 
   const siteUrl = (useRuntimeConfig().public.siteUrl as string || '').replace(/\/+$/, '')
@@ -120,6 +141,10 @@ export default defineEventHandler((event) => {
   const audioTrackingPrefix = podcast.audio_tracking_prefix || ''
   const itunesType = podcast.itunes_type === 'serial' ? 'serial' : 'episodic'
   const podcastLocked = podcast.podcast_locked === 'yes' ? 'yes' : 'no'
+  const itunesComplete = podcast.itunes_complete === 'yes'
+  const itunesBlock = podcast.itunes_block === 'yes'
+  const fundingUrl = (podcast.funding_url || '').trim()
+  const fundingLabel = (podcast.funding_label || '').trim() || 'Support the show'
   const lastBuildDate = new Date().toUTCString()
 
   // Lazily lock in a stable per-episode GUID. Using the episode URL keeps
@@ -201,11 +226,16 @@ export default defineEventHandler((event) => {
     <description>${cdata(showDescription)}</description>
     <language>${escapeXml(showLanguage)}</language>
     <lastBuildDate>${lastBuildDate}</lastBuildDate>
+    <generator>Podshelf</generator>
     <podcast:guid>${escapeXml(podcastGuid)}</podcast:guid>
+    <podcast:medium>podcast</podcast:medium>
     <podcast:locked>${podcastLocked}</podcast:locked>
+    ${fundingUrl ? `<podcast:funding url="${escapeXml(fundingUrl)}">${cdata(fundingLabel)}</podcast:funding>` : ''}
     ${showCopyright ? `<copyright>${cdata(showCopyright)}</copyright>` : ''}
     <itunes:author>${cdata(showAuthor)}</itunes:author>
     <itunes:type>${itunesType}</itunes:type>
+    ${itunesComplete ? '<itunes:complete>yes</itunes:complete>' : ''}
+    ${itunesBlock ? '<itunes:block>yes</itunes:block>' : ''}
     <itunes:owner>
       <itunes:name>${cdata(showAuthor)}</itunes:name>
       <itunes:email>${escapeXml(showEmail)}</itunes:email>

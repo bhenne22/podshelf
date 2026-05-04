@@ -160,6 +160,40 @@
               placeholder="https://media.blubrry.com/1467354/" />
             <p class="hint">Prepended to episode audio URLs in the RSS feed only (e.g. Blubrry, Podtrac).</p>
           </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="itunes_complete">Show Complete</label>
+              <select id="itunes_complete" v-model="form.itunes_complete">
+                <option value="no">No (still publishing)</option>
+                <option value="yes">Yes (no more episodes coming)</option>
+              </select>
+              <p class="hint">Sets <code>itunes:complete</code>. For limited series — Apple stops polling for new episodes when set.</p>
+            </div>
+            <div class="form-group">
+              <label for="itunes_block">Hide from Directories</label>
+              <select id="itunes_block" v-model="form.itunes_block">
+                <option value="no">No (visible in Apple/Spotify)</option>
+                <option value="yes">Yes (private feed)</option>
+              </select>
+              <p class="hint">Sets <code>itunes:block</code>. Use for test feeds or private podcasts you don't want indexed.</p>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group flex-2">
+              <label for="funding_url">Support / Funding URL</label>
+              <input id="funding_url" v-model="form.funding_url" type="url"
+                placeholder="https://patreon.com/yourshow" />
+              <p class="hint">Optional. Shown as a "Support the Show" button in modern apps (Fountain, Castamatic, Curio).</p>
+            </div>
+            <div class="form-group">
+              <label for="funding_label">Button Label</label>
+              <input id="funding_label" v-model="form.funding_label" type="text"
+                placeholder="Support on Patreon" />
+              <p class="hint">Defaults to "Support the show" if blank.</p>
+            </div>
+          </div>
         </div>
 
         <div class="form-actions">
@@ -242,6 +276,10 @@ interface PodcastRow {
   audio_tracking_prefix: string | null
   itunes_type: string | null
   podcast_locked: string | null
+  itunes_complete: string | null
+  itunes_block: string | null
+  funding_url: string | null
+  funding_label: string | null
   status: string
   deleted_at: string | null
 }
@@ -265,6 +303,10 @@ const form = reactive({
   audio_tracking_prefix: '',
   itunes_type: 'episodic',
   podcast_locked: 'no',
+  itunes_complete: 'no',
+  itunes_block: 'no',
+  funding_url: '',
+  funding_label: '',
 })
 
 const originalSlug = ref(podcastSlug)
@@ -350,6 +392,10 @@ watch(initial, (p) => {
   form.audio_tracking_prefix = p.audio_tracking_prefix || ''
   form.itunes_type = p.itunes_type || 'episodic'
   form.podcast_locked = p.podcast_locked || 'no'
+  form.itunes_complete = p.itunes_complete || 'no'
+  form.itunes_block = p.itunes_block || 'no'
+  form.funding_url = p.funding_url || ''
+  form.funding_label = p.funding_label || ''
 }, { immediate: true })
 
 async function saveSettings() {

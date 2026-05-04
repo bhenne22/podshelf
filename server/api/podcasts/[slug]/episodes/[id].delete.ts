@@ -1,6 +1,7 @@
 import { defineEventHandler, getRouterParam, createError, setResponseStatus } from 'h3'
 import { requirePodcastAccess } from '../../../../utils/auth'
 import { maybeAutoTrigger } from '../../../../utils/github'
+import { bumpFeedLastModified } from '../../../../utils/feed-cache'
 import getDb from '../../../../db/index'
 
 /**
@@ -25,6 +26,7 @@ export default defineEventHandler((event) => {
   db.prepare('DELETE FROM episodes WHERE id = ?').run(id)
 
   if (existing.status === 'published') {
+    bumpFeedLastModified(podcastId)
     maybeAutoTrigger(podcastId, 'episode-delete')
   }
 

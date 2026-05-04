@@ -2,6 +2,7 @@ import { defineEventHandler, readBody, getRouterParam, createError } from 'h3'
 import { requirePodcastAccess } from '../../../../utils/auth'
 import { validateEpisodeFields } from '../../../../utils/validate'
 import { maybeAutoTrigger } from '../../../../utils/github'
+import { bumpFeedLastModified } from '../../../../utils/feed-cache'
 import getDb from '../../../../db/index'
 
 function slugify(text: string): string {
@@ -81,6 +82,7 @@ export default defineEventHandler(async (event) => {
 
   // Only kick a rebuild if this episode lands in the published feed.
   if (episode.status === 'published') {
+    bumpFeedLastModified(podcastId)
     maybeAutoTrigger(podcastId, 'episode-create')
   }
 

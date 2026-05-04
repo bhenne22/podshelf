@@ -1,6 +1,7 @@
 import { defineEventHandler, readBody, getRouterParam, createError } from 'h3'
 import { requirePodcastAccess } from '../../../utils/auth'
 import { maybeAutoTrigger } from '../../../utils/github'
+import { bumpFeedLastModified } from '../../../utils/feed-cache'
 import getDb from '../../../db/index'
 
 // Fields that show up in the public RSS feed; an edit to any of these is
@@ -8,14 +9,16 @@ import getDb from '../../../db/index'
 const FEED_VISIBLE_FIELDS = new Set([
   'title', 'description', 'author', 'email', 'image_url', 'language',
   'copyright', 'category', 'explicit', 'website', 'audio_tracking_prefix',
-  'itunes_type', 'podcast_locked',
+  'itunes_type', 'podcast_locked', 'itunes_complete', 'itunes_block',
+  'funding_url', 'funding_label',
 ])
 
 const UPDATABLE = [
   'slug',
   'title', 'description', 'author', 'email', 'image_url', 'language',
   'copyright', 'category', 'explicit', 'website', 'audio_tracking_prefix',
-  'itunes_type', 'podcast_locked',
+  'itunes_type', 'podcast_locked', 'itunes_complete', 'itunes_block',
+  'funding_url', 'funding_label',
   'storage_adapter', 'github_owner', 'github_repo', 'github_event_type',
 ]
 
@@ -74,6 +77,7 @@ export default defineEventHandler(async (event) => {
 
   const touchedFeedField = Object.keys(body).some((k) => FEED_VISIBLE_FIELDS.has(k))
   if (touchedFeedField) {
+    bumpFeedLastModified(podcastId)
     maybeAutoTrigger(podcastId, 'podcast-settings-update')
   }
 
@@ -81,7 +85,8 @@ export default defineEventHandler(async (event) => {
     SELECT
       id, slug, title, description, author, email, image_url, language,
       copyright, category, explicit, website, audio_tracking_prefix,
-      itunes_type, podcast_locked,
+      itunes_type, podcast_locked, itunes_complete, itunes_block,
+      funding_url, funding_label,
       storage_adapter, github_owner, github_repo, github_event_type,
       created_at, updated_at
     FROM podcasts WHERE id = ?

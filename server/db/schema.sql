@@ -38,6 +38,11 @@ CREATE TABLE IF NOT EXISTS podcasts (
   guid                     TEXT,
   itunes_type              TEXT NOT NULL DEFAULT 'episodic',
   podcast_locked           TEXT NOT NULL DEFAULT 'no',
+  itunes_complete          TEXT NOT NULL DEFAULT 'no',
+  itunes_block             TEXT NOT NULL DEFAULT 'no',
+  funding_url              TEXT,
+  funding_label            TEXT,
+  feed_last_modified       TEXT NOT NULL DEFAULT (datetime('now')),
   created_at               TEXT DEFAULT (datetime('now')),
   updated_at               TEXT DEFAULT (datetime('now'))
 );

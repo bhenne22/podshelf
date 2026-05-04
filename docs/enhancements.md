@@ -83,12 +83,30 @@ feeds first-class in Pocket Casts, Fountain, Castamatic, etc.
   empty or still at their schema default, so any pre-import edits the user
   made win. Channel `<podcast:guid>` continues to overwrite (subscriber
   continuity is the entire point).
+- ~~**Feed quality v1 polish.** `<generator>`, `<podcast:medium>`,
+  `<itunes:complete>`, `<itunes:block>`, `<podcast:funding>`, plus HTTP
+  conditional GET (`Last-Modified` / `If-Modified-Since` → 304 Not
+  Modified).~~ Shipped: new `itunes_complete`, `itunes_block`,
+  `funding_url`, `funding_label`, `feed_last_modified` columns; Settings
+  UI controls for the toggles + funding link; feed handler honors
+  conditional GET. The complete current/planned/won't-support inventory
+  lives in `docs/rss-feed-support.md`.
 - **`<podcast:transcript>`** per episode — the `transcript_path` column
   already exists in the schema; just plumb it through the episode form and
   the feed.
 - **`<podcast:chapters>`** — chapter list with timestamps. Probably a
   separate "chapters" textarea on the episode form that gets rendered as a
   sidecar JSON file at a stable URL.
+- **Smaller per-episode tags.** `<itunes:title>` (clean title without
+  `S2E22:` prefix), per-episode `<itunes:author>` (override channel for
+  guests), per-episode `<itunes:explicit>`, `<podcast:season>` /
+  `<podcast:episode display>`. None individually compelling; bundle them
+  if a real need shows up.
+- **`<podcast:txt purpose="verify">`** — verification tokens for Apple
+  Podcasts Connect / Spotify for Podcasters. Free-form text field per
+  podcast, only emitted when set. Add when claiming a real listing.
+- **`<podcast:person>`** — hosts/guests with photos + URLs. Modern apps
+  render avatars. Needs a people table or per-episode JSON. Bigger lift.
 
 ## Migration tools
 

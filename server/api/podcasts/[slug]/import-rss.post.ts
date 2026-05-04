@@ -2,6 +2,7 @@ import { defineEventHandler, readBody, getRouterParam, createError } from 'h3'
 import { requirePodcastAccess } from '../../../utils/auth'
 import { parsePodcastFeed } from '../../../utils/rss-parser'
 import { maybeAutoTrigger } from '../../../utils/github'
+import { bumpFeedLastModified } from '../../../utils/feed-cache'
 import getDb from '../../../db/index'
 
 function slugify(text: string): string {
@@ -186,6 +187,9 @@ export default defineEventHandler(async (event) => {
     db.prepare(`UPDATE podcasts SET ${setClauses.join(', ')}, updated_at = datetime('now') WHERE id = @id`).run(setValues)
   }
 
+  if (imported > 0 || setClauses.length > 0 || feed.podcast_guid) {
+    bumpFeedLastModified(podcastId)
+  }
   if (imported > 0) {
     maybeAutoTrigger(podcastId, 'rss-import')
   }
