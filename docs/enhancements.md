@@ -97,16 +97,13 @@ feeds first-class in Pocket Casts, Fountain, Castamatic, etc.
 - **`<podcast:chapters>`** — chapter list with timestamps. Probably a
   separate "chapters" textarea on the episode form that gets rendered as a
   sidecar JSON file at a stable URL.
-- **Smaller per-episode tags.** `<itunes:title>` (clean title without
-  `S2E22:` prefix), per-episode `<itunes:author>` (override channel for
-  guests), per-episode `<itunes:explicit>`, `<podcast:season>` /
-  `<podcast:episode display>`. None individually compelling; bundle them
-  if a real need shows up.
-- **`<podcast:txt purpose="verify">`** — verification tokens for Apple
-  Podcasts Connect / Spotify for Podcasters. Free-form text field per
-  podcast, only emitted when set. Add when claiming a real listing.
-- **`<podcast:person>`** — hosts/guests with photos + URLs. Modern apps
-  render avatars. Needs a people table or per-episode JSON. Bigger lift.
+- **Smaller feed additions.** Per-episode `<itunes:title>` /
+  `<itunes:author>` / `<itunes:explicit>`, `<podcast:season>` /
+  `<podcast:episode display>`, `<podcast:txt purpose="verify">`,
+  `<podcast:person>`, `<podcast:license>`. None individually compelling
+  yet; the full table with effort + rationale lives in
+  `docs/rss-feed-support.md` under "Smaller additions worth considering
+  later".
 
 ## Migration tools
 
