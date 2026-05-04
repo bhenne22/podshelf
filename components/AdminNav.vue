@@ -12,18 +12,38 @@
     </div>
     <ul class="nav-links" :class="{ open: menuOpen }">
       <template v-if="podcastSlug">
+        <!-- Primary: stuff you touch most often once a podcast is up -->
         <li><NuxtLink :to="`/podcasts/${podcastSlug}/episodes`" active-class="active">Episodes</NuxtLink></li>
         <li><NuxtLink :to="`/podcasts/${podcastSlug}/people`" active-class="active">People</NuxtLink></li>
-        <li><NuxtLink :to="`/podcasts/${podcastSlug}/settings`" active-class="active">Settings</NuxtLink></li>
-        <li><NuxtLink :to="`/podcasts/${podcastSlug}/storage`" active-class="active">Storage</NuxtLink></li>
         <li><NuxtLink :to="`/podcasts/${podcastSlug}/files`" active-class="active">Files</NuxtLink></li>
-        <li><NuxtLink :to="`/podcasts/${podcastSlug}/build`" active-class="active">Build</NuxtLink></li>
-        <li><NuxtLink :to="`/podcasts/${podcastSlug}/import-rss`" active-class="active">Import / Export</NuxtLink></li>
-        <li><NuxtLink :to="`/podcasts/${podcastSlug}/members`" active-class="active">Members</NuxtLink></li>
-        <li><NuxtLink :to="`/podcasts/${podcastSlug}/audit`" active-class="active">Audit Log</NuxtLink></li>
+        <li><NuxtLink :to="`/podcasts/${podcastSlug}/settings`" active-class="active">Settings</NuxtLink></li>
+
+        <!-- More: rarely-touched setup + admin actions; dropdown on desktop,
+             flat list with a section label inside the mobile drawer. -->
+        <li class="more-wrap" ref="moreRef" :class="{ 'more-open': moreOpen, 'more-active': isInMoreSection }">
+          <button
+            type="button"
+            class="more-trigger"
+            :aria-expanded="moreOpen"
+            aria-haspopup="true"
+            @click="moreOpen = !moreOpen"
+          >
+            More <span class="chev">▾</span>
+          </button>
+          <ul class="more-panel">
+            <li class="more-mobile-label">More</li>
+            <li><NuxtLink :to="`/podcasts/${podcastSlug}/storage`" active-class="active">Storage</NuxtLink></li>
+            <li><NuxtLink :to="`/podcasts/${podcastSlug}/build`" active-class="active">Build</NuxtLink></li>
+            <li><NuxtLink :to="`/podcasts/${podcastSlug}/import-rss`" active-class="active">Import / Export</NuxtLink></li>
+            <li><NuxtLink :to="`/podcasts/${podcastSlug}/members`" active-class="active">Members</NuxtLink></li>
+            <li><NuxtLink :to="`/podcasts/${podcastSlug}/audit`" active-class="active">Audit Log</NuxtLink></li>
+            <li class="divider" />
+            <li><a :href="`/feeds/${podcastSlug}.xml`" target="_blank" rel="noopener">RSS Feed ↗</a></li>
+          </ul>
+        </li>
+
         <li class="divider" />
         <li><NuxtLink to="/">All podcasts</NuxtLink></li>
-        <li><a :href="`/feeds/${podcastSlug}.xml`" target="_blank" rel="noopener">RSS Feed ↗</a></li>
       </template>
       <template v-else>
         <li><NuxtLink to="/" exact-active-class="active">Podcasts</NuxtLink></li>
@@ -65,18 +85,51 @@ if (props.podcastSlug) {
 }
 
 const menuOpen = ref(false)
+const moreOpen = ref(false)
+const moreRef = ref<HTMLElement | null>(null)
 const route = useRoute()
 
-// Auto-close on navigation so the drawer doesn't linger after a tap.
+// Pages tucked into the "More ▾" dropdown — when the current route is one
+// of these, the trigger gets the active style so the user can see where
+// they are even though the link isn't directly visible.
+const MORE_SEGMENTS = ['storage', 'build', 'import-rss', 'members', 'audit']
+const isInMoreSection = computed(() => {
+  if (!props.podcastSlug) return false
+  const base = `/podcasts/${props.podcastSlug}/`
+  return MORE_SEGMENTS.some((seg) => route.path.startsWith(base + seg))
+})
+
+// Auto-close on navigation so neither the drawer nor the dropdown lingers
+// after a tap.
 watch(() => route.fullPath, () => {
   menuOpen.value = false
+  moreOpen.value = false
 })
 
 function onKeydown(e: KeyboardEvent) {
-  if (e.key === 'Escape' && menuOpen.value) menuOpen.value = false
+  if (e.key !== 'Escape') return
+  if (moreOpen.value) moreOpen.value = false
+  else if (menuOpen.value) menuOpen.value = false
 }
-onMounted(() => window.addEventListener('keydown', onKeydown))
-onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
+
+// Click outside the dropdown closes it. The drawer/hamburger has its own
+// toggle so we don't need this for menuOpen.
+function onDocClick(e: MouseEvent) {
+  if (!moreOpen.value) return
+  const target = e.target as Node | null
+  if (target && moreRef.value && !moreRef.value.contains(target)) {
+    moreOpen.value = false
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', onKeydown)
+  document.addEventListener('click', onDocClick)
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKeydown)
+  document.removeEventListener('click', onDocClick)
+})
 
 async function logout() {
   await $fetch('/api/auth/logout', { method: 'POST' })
@@ -160,6 +213,68 @@ async function logout() {
   background: #e2e8f0;
   margin: 0 0.5rem;
 }
+
+/* "More" dropdown — desktop default. */
+.more-wrap {
+  position: relative;
+}
+.more-trigger {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.375rem 0.75rem;
+  background: transparent;
+  border: none;
+  color: #4a5568;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.more-trigger:hover { background: #f7fafc; color: #1a202c; }
+.more-wrap.more-active .more-trigger,
+.more-wrap.more-open .more-trigger {
+  background: #ebf4ff;
+  color: #4c51bf;
+  font-weight: 500;
+}
+.more-trigger .chev {
+  font-size: 0.7rem;
+  line-height: 1;
+  transition: transform 0.15s;
+}
+.more-wrap.more-open .more-trigger .chev { transform: rotate(180deg); }
+
+.more-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 200px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 0.375rem;
+  list-style: none;
+  margin: 0;
+  display: none;
+  flex-direction: column;
+  gap: 0.125rem;
+  box-shadow: 0 8px 24px -8px rgba(0, 0, 0, 0.15);
+  z-index: 110;
+}
+.more-wrap.more-open .more-panel { display: flex; }
+.more-panel a {
+  width: 100%;
+  white-space: nowrap;
+}
+.more-panel .divider {
+  width: auto;
+  height: 1px;
+  margin: 0.25rem 0.25rem;
+  background: #f0f4f8;
+}
+.more-mobile-label { display: none; }
 
 .logout-btn {
   background: transparent;
@@ -257,5 +372,30 @@ async function logout() {
     background: #f0f4f8;
     margin: 0.25rem 0;
   }
+
+  /* Mobile: kill the dropdown, render More items inline with a label. */
+  .more-trigger { display: none; }
+  .more-wrap { width: 100%; }
+  .more-panel {
+    position: static;
+    display: flex !important;
+    flex-direction: column;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    padding: 0;
+    min-width: 0;
+    gap: 0;
+  }
+  .more-mobile-label {
+    display: block;
+    padding: 0.625rem 1.25rem 0.25rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: #a0aec0;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .more-panel .divider { margin: 0.25rem 0; }
 }
 </style>
