@@ -8,12 +8,14 @@ import getDb from '../../../db/index'
 const FEED_VISIBLE_FIELDS = new Set([
   'title', 'description', 'author', 'email', 'image_url', 'language',
   'copyright', 'category', 'explicit', 'website', 'audio_tracking_prefix',
+  'itunes_type', 'podcast_locked',
 ])
 
 const UPDATABLE = [
   'slug',
   'title', 'description', 'author', 'email', 'image_url', 'language',
   'copyright', 'category', 'explicit', 'website', 'audio_tracking_prefix',
+  'itunes_type', 'podcast_locked',
   'storage_adapter', 'github_owner', 'github_repo', 'github_event_type',
 ]
 
@@ -79,6 +81,7 @@ export default defineEventHandler(async (event) => {
     SELECT
       id, slug, title, description, author, email, image_url, language,
       copyright, category, explicit, website, audio_tracking_prefix,
+      itunes_type, podcast_locked,
       storage_adapter, github_owner, github_repo, github_event_type,
       created_at, updated_at
     FROM podcasts WHERE id = ?

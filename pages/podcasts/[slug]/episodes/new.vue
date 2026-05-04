@@ -33,6 +33,14 @@
               <label for="season_number">Season #</label>
               <input id="season_number" v-model.number="form.season_number" type="number" min="1" placeholder="e.g. 2" />
             </div>
+            <div class="form-group">
+              <label for="episode_type">Type</label>
+              <select id="episode_type" v-model="form.episode_type">
+                <option value="full">Full</option>
+                <option value="trailer">Trailer</option>
+                <option value="bonus">Bonus</option>
+              </select>
+            </div>
           </div>
 
           <div class="form-group">
@@ -277,6 +285,7 @@ const form = reactive({
   status: 'draft',
   tags: '',
   transcript_path: '',
+  episode_type: 'full',
 })
 
 const saving = ref(false)

@@ -58,6 +58,14 @@
                 <label for="season_number">Season #</label>
                 <input id="season_number" v-model.number="form.season_number" type="number" min="1" />
               </div>
+              <div class="form-group">
+                <label for="episode_type">Type</label>
+                <select id="episode_type" v-model="form.episode_type">
+                  <option value="full">Full</option>
+                  <option value="trailer">Trailer</option>
+                  <option value="bonus">Bonus</option>
+                </select>
+              </div>
             </div>
 
             <div class="form-group">
@@ -267,6 +275,7 @@ interface EpisodeForm {
   status: string
   tags: string
   transcript_path: string
+  episode_type: string
 }
 
 const form = reactive<EpisodeForm>({
@@ -285,6 +294,7 @@ const form = reactive<EpisodeForm>({
   status: 'draft',
   tags: '',
   transcript_path: '',
+  episode_type: 'full',
 })
 
 const artworkUploading = ref(false)
@@ -315,6 +325,7 @@ onMounted(async () => {
       status: ep.status,
       tags: ep.tags || '',
       transcript_path: ep.transcript_path || '',
+      episode_type: ep.episode_type || 'full',
     })
   } catch (err: unknown) {
     loadError.value = err instanceof Error ? err.message : 'Failed to load episode'

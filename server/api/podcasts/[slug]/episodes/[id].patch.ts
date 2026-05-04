@@ -8,7 +8,7 @@ const UPDATABLE = [
   'title', 'slug', 'episode_number', 'season_number',
   'description', 'audio_url', 'audio_filename', 'audio_size_bytes',
   'audio_duration_seconds', 'image_url', 'image_filename',
-  'published_at', 'status', 'tags', 'transcript_path',
+  'published_at', 'status', 'tags', 'transcript_path', 'episode_type',
 ]
 
 /**

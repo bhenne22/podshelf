@@ -135,6 +135,25 @@
             </div>
           </div>
 
+          <div class="form-row">
+            <div class="form-group">
+              <label for="itunes_type">Show Type</label>
+              <select id="itunes_type" v-model="form.itunes_type">
+                <option value="episodic">Episodic (newest first)</option>
+                <option value="serial">Serial (listen in order)</option>
+              </select>
+              <p class="hint">Sets the iTunes <code>itunes:type</code> tag — controls play order in podcast apps.</p>
+            </div>
+            <div class="form-group">
+              <label for="podcast_locked">Feed Locked</label>
+              <select id="podcast_locked" v-model="form.podcast_locked">
+                <option value="no">No (transferable)</option>
+                <option value="yes">Yes (locked to this host)</option>
+              </select>
+              <p class="hint">Podcasting 2.0 <code>podcast:locked</code> — signals to other hosts whether subscribers can move with the feed.</p>
+            </div>
+          </div>
+
           <div class="form-group">
             <label for="audio_tracking_prefix">Audio Tracking Prefix</label>
             <input id="audio_tracking_prefix" v-model="form.audio_tracking_prefix" type="text"
@@ -221,6 +240,8 @@ interface PodcastRow {
   explicit: string | null
   website: string | null
   audio_tracking_prefix: string | null
+  itunes_type: string | null
+  podcast_locked: string | null
   status: string
   deleted_at: string | null
 }
@@ -242,6 +263,8 @@ const form = reactive({
   explicit: 'false',
   website: '',
   audio_tracking_prefix: '',
+  itunes_type: 'episodic',
+  podcast_locked: 'no',
 })
 
 const originalSlug = ref(podcastSlug)
@@ -325,6 +348,8 @@ watch(initial, (p) => {
   form.explicit = p.explicit || 'false'
   form.website = p.website || ''
   form.audio_tracking_prefix = p.audio_tracking_prefix || ''
+  form.itunes_type = p.itunes_type || 'episodic'
+  form.podcast_locked = p.podcast_locked || 'no'
 }, { immediate: true })
 
 async function saveSettings() {

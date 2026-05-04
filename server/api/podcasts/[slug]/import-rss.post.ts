@@ -92,11 +92,11 @@ export default defineEventHandler(async (event) => {
     INSERT INTO episodes (
       podcast_id, title, slug, episode_number, season_number,
       description, audio_url, audio_size_bytes, audio_duration_seconds,
-      published_at, status, tags, guid
+      published_at, status, tags, guid, episode_type
     ) VALUES (
       @podcast_id, @title, @slug, @episode_number, @season_number,
       @description, @audio_url, @audio_size_bytes, @audio_duration_seconds,
-      @published_at, 'published', NULL, @guid
+      @published_at, 'published', NULL, @guid, @episode_type
     )
   `)
 
@@ -121,6 +121,7 @@ export default defineEventHandler(async (event) => {
         audio_duration_seconds: item.audio_duration_seconds,
         published_at: item.pubDate,
         guid: item.guid,
+        episode_type: item.episode_type || 'full',
       })
       imported++
     }
@@ -137,6 +138,54 @@ export default defineEventHandler(async (event) => {
     db.prepare('UPDATE podcasts SET guid = ? WHERE id = ?').run(feed.podcast_guid, podcastId)
   }
 
+  // Backfill channel metadata from the source — but only into fields the
+  // user hasn't already filled in. Anything they typed before importing
+  // wins. Defaults like 'episodic' / 'no' / 'Society & Culture' don't
+  // count as "filled" — we want the source values to override the seed
+  // defaults but leave intentional edits alone.
+  const SCHEMA_DEFAULTS: Record<string, string> = {
+    itunes_type: 'episodic',
+    podcast_locked: 'no',
+    category: 'Society & Culture',
+    language: 'en',
+    explicit: 'false',
+  }
+  const backfillable: Array<keyof typeof SCHEMA_DEFAULTS | 'description' | 'author' | 'image_url' | 'copyright'> = [
+    'description', 'author', 'image_url', 'language',
+    'copyright', 'category', 'explicit', 'itunes_type', 'podcast_locked',
+  ]
+  const sourceValues: Record<string, string | null> = {
+    description: feed.description,
+    author: feed.author,
+    image_url: feed.image_url,
+    language: feed.language,
+    copyright: feed.copyright,
+    category: feed.category,
+    explicit: feed.explicit,
+    itunes_type: feed.itunes_type,
+    podcast_locked: feed.podcast_locked,
+  }
+  const current = db.prepare(`
+    SELECT description, author, image_url, language, copyright, category,
+           explicit, itunes_type, podcast_locked
+    FROM podcasts WHERE id = ?
+  `).get(podcastId) as Record<string, string | null>
+
+  const setClauses: string[] = []
+  const setValues: Record<string, unknown> = { id: podcastId }
+  for (const field of backfillable) {
+    const sourceVal = sourceValues[field]
+    const currentVal = current[field]
+    const isEmpty = currentVal === null || currentVal === '' || currentVal === SCHEMA_DEFAULTS[field as string]
+    if (sourceVal && isEmpty) {
+      setClauses.push(`${field} = @${field}`)
+      setValues[field] = sourceVal
+    }
+  }
+  if (setClauses.length > 0) {
+    db.prepare(`UPDATE podcasts SET ${setClauses.join(', ')}, updated_at = datetime('now') WHERE id = @id`).run(setValues)
+  }
+
   if (imported > 0) {
     maybeAutoTrigger(podcastId, 'rss-import')
   }
@@ -146,5 +195,6 @@ export default defineEventHandler(async (event) => {
     total_items: feed.items.length,
     imported,
     skipped,
+    settings_backfilled: setClauses.map((c) => c.split(' = ')[0]),
   }
 })

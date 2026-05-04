@@ -50,12 +50,12 @@ export default defineEventHandler(async (event) => {
       podcast_id, title, slug, episode_number, season_number,
       description, audio_url, audio_filename, audio_size_bytes,
       audio_duration_seconds, image_url, image_filename,
-      published_at, status, tags, transcript_path
+      published_at, status, tags, transcript_path, episode_type
     ) VALUES (
       @podcast_id, @title, @slug, @episode_number, @season_number,
       @description, @audio_url, @audio_filename, @audio_size_bytes,
       @audio_duration_seconds, @image_url, @image_filename,
-      @published_at, @status, @tags, @transcript_path
+      @published_at, @status, @tags, @transcript_path, @episode_type
     )
   `).run({
     podcast_id: podcastId,
@@ -74,6 +74,7 @@ export default defineEventHandler(async (event) => {
     status: body.status ?? 'draft',
     tags: body.tags ?? null,
     transcript_path: body.transcript_path ?? null,
+    episode_type: body.episode_type ?? 'full',
   })
 
   const episode = db.prepare('SELECT * FROM episodes WHERE id = ?').get(result.lastInsertRowid) as { status: string }

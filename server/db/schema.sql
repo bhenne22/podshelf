@@ -36,6 +36,8 @@ CREATE TABLE IF NOT EXISTS podcasts (
   status                   TEXT NOT NULL DEFAULT 'active',
   deleted_at               TEXT,
   guid                     TEXT,
+  itunes_type              TEXT NOT NULL DEFAULT 'episodic',
+  podcast_locked           TEXT NOT NULL DEFAULT 'no',
   created_at               TEXT DEFAULT (datetime('now')),
   updated_at               TEXT DEFAULT (datetime('now'))
 );
@@ -87,6 +89,7 @@ CREATE TABLE IF NOT EXISTS episodes (
   tags                    TEXT,
   transcript_path         TEXT,
   guid                    TEXT,
+  episode_type            TEXT NOT NULL DEFAULT 'full',
   created_at              TEXT DEFAULT (datetime('now')),
   updated_at              TEXT DEFAULT (datetime('now')),
   UNIQUE (podcast_id, slug)

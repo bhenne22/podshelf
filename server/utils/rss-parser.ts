@@ -10,10 +10,20 @@ export interface ParsedItem {
   episode_number: number | null
   season_number: number | null
   guid: string | null
+  episode_type: string | null
 }
 
 export interface ParsedFeed {
   title: string | null
+  description: string | null
+  language: string | null
+  copyright: string | null
+  author: string | null
+  image_url: string | null
+  category: string | null
+  explicit: string | null
+  itunes_type: string | null
+  podcast_locked: string | null
   podcast_guid: string | null
   items: ParsedItem[]
 }
@@ -105,6 +115,7 @@ export function parsePodcastFeed(xml: string): ParsedFeed {
     const audio_url = enclosure?.['@_url'] || null
     const audio_size_bytes = enclosure?.['@_length'] ? parseInt(enclosure['@_length'], 10) : null
 
+    const epType = (asString(item['itunes:episodeType']) || '').toLowerCase()
     items.push({
       title,
       description: asString(item['content:encoded']) || asString(item.description),
@@ -115,11 +126,45 @@ export function parsePodcastFeed(xml: string): ParsedFeed {
       episode_number: asNumber(item['itunes:episode']),
       season_number: asNumber(item['itunes:season']),
       guid: asString(item.guid),
+      episode_type: ['full', 'trailer', 'bonus'].includes(epType) ? epType : null,
     })
   }
 
+  // <itunes:image href="..."/> — value is on the @_href attribute, not text.
+  const imageNode = channel['itunes:image'] as { '@_href'?: string } | undefined
+  const itunesImage = imageNode?.['@_href'] || asString((channel.image as { url?: unknown })?.url) || null
+
+  // <itunes:category text="Sports"> may contain nested <itunes:category text="Running"/>.
+  // Take the parent's text only — schema is single-category for now.
+  const catNode = channel['itunes:category'] as { '@_text'?: string } | { '@_text'?: string }[] | undefined
+  const firstCat = Array.isArray(catNode) ? catNode[0] : catNode
+  const itunesCategory = firstCat?.['@_text'] || null
+
+  // Normalize <podcast:locked> — spec says yes/no but publishers commonly use True/False.
+  const lockedRaw = (asString(channel['podcast:locked']) || '').trim().toLowerCase()
+  const podcastLocked = ['yes', 'true', '1'].includes(lockedRaw) ? 'yes' : lockedRaw ? 'no' : null
+
+  // Normalize <itunes:explicit> — yes/no/true/false → 'true'/'false' to match our schema.
+  const explicitRaw = (asString(channel['itunes:explicit']) || '').trim().toLowerCase()
+  const explicit = ['yes', 'true', '1'].includes(explicitRaw)
+    ? 'true'
+    : ['no', 'false', '0', 'clean'].includes(explicitRaw)
+      ? 'false'
+      : null
+
+  const itunesType = (asString(channel['itunes:type']) || '').toLowerCase()
+
   return {
     title: asString(channel.title),
+    description: asString(channel.description),
+    language: asString(channel.language),
+    copyright: asString(channel.copyright),
+    author: asString(channel['itunes:author']),
+    image_url: itunesImage,
+    category: itunesCategory,
+    explicit,
+    itunes_type: itunesType === 'serial' ? 'serial' : itunesType === 'episodic' ? 'episodic' : null,
+    podcast_locked: podcastLocked,
     podcast_guid: asString(channel['podcast:guid']),
     items,
   }

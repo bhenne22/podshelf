@@ -67,6 +67,22 @@ feeds first-class in Pocket Casts, Fountain, Castamatic, etc.
   both the source feed's channel `<podcast:guid>` and per-item `<guid>`
   values, so migrating an existing podcast onto Podshelf doesn't churn
   subscribers.
+- ~~**Channel-level feed elements.** `<atom:link rel="self">`, `<itunes:type>`,
+  `<podcast:locked>`, `<lastBuildDate>`.~~ Shipped: feed root now declares
+  the `xmlns:atom` namespace and emits all four. New `podcasts.itunes_type`
+  (episodic/serial) and `podcasts.podcast_locked` (yes/no) columns with
+  Settings UI controls.
+- ~~**Per-episode `<itunes:episodeType>`.**~~ Shipped: new
+  `episodes.episode_type` column (full/trailer/bonus, default `full`),
+  validated in the create / patch endpoints, exposed in both episode forms,
+  captured by the RSS importer, and emitted in the feed.
+- ~~**RSS importer pulls channel metadata.**~~ Shipped: importer now
+  backfills `description`, `author`, `image_url`, `language`, `copyright`,
+  `category`, `explicit`, `itunes_type`, `podcast_locked` from the source
+  channel into the podcast row — but only into fields that are currently
+  empty or still at their schema default, so any pre-import edits the user
+  made win. Channel `<podcast:guid>` continues to overwrite (subscriber
+  continuity is the entire point).
 - **`<podcast:transcript>`** per episode — the `transcript_path` column
   already exists in the schema; just plumb it through the episode form and
   the feed.

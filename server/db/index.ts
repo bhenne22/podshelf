@@ -38,6 +38,8 @@ CREATE TABLE IF NOT EXISTS podcasts (
   status                   TEXT NOT NULL DEFAULT 'active',
   deleted_at               TEXT,
   guid                     TEXT,
+  itunes_type              TEXT NOT NULL DEFAULT 'episodic',
+  podcast_locked           TEXT NOT NULL DEFAULT 'no',
   created_at               TEXT DEFAULT (datetime('now')),
   updated_at               TEXT DEFAULT (datetime('now'))
 );
@@ -86,6 +88,7 @@ CREATE TABLE IF NOT EXISTS episodes (
   tags                    TEXT,
   transcript_path         TEXT,
   guid                    TEXT,
+  episode_type            TEXT NOT NULL DEFAULT 'full',
   created_at              TEXT DEFAULT (datetime('now')),
   updated_at              TEXT DEFAULT (datetime('now')),
   UNIQUE (podcast_id, slug)
@@ -164,6 +167,12 @@ function applyMigrations(db: Database.Database) {
   if (!podcastCols.includes('guid')) {
     db.exec('ALTER TABLE podcasts ADD COLUMN guid TEXT')
   }
+  if (!podcastCols.includes('itunes_type')) {
+    db.exec("ALTER TABLE podcasts ADD COLUMN itunes_type TEXT NOT NULL DEFAULT 'episodic'")
+  }
+  if (!podcastCols.includes('podcast_locked')) {
+    db.exec("ALTER TABLE podcasts ADD COLUMN podcast_locked TEXT NOT NULL DEFAULT 'no'")
+  }
 
   const episodeCols = cols('episodes')
   if (!episodeCols.includes('image_url')) {
@@ -174,6 +183,9 @@ function applyMigrations(db: Database.Database) {
   }
   if (!episodeCols.includes('guid')) {
     db.exec('ALTER TABLE episodes ADD COLUMN guid TEXT')
+  }
+  if (!episodeCols.includes('episode_type')) {
+    db.exec("ALTER TABLE episodes ADD COLUMN episode_type TEXT NOT NULL DEFAULT 'full'")
   }
 }
 

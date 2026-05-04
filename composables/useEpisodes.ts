@@ -16,6 +16,7 @@ export interface Episode {
   status: string
   tags: string | null
   transcript_path: string | null
+  episode_type: string
   created_at: string
   updated_at: string
 }

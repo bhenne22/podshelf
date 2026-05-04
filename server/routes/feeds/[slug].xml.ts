@@ -17,6 +17,8 @@ interface Podcast {
   website: string | null
   audio_tracking_prefix: string | null
   guid: string | null
+  itunes_type: string | null
+  podcast_locked: string | null
 }
 
 interface Episode {
@@ -32,6 +34,7 @@ interface Episode {
   image_url: string | null
   published_at: string | null
   guid: string | null
+  episode_type: string | null
 }
 
 function escapeXml(str: string): string {
@@ -74,7 +77,8 @@ export default defineEventHandler((event) => {
 
   const podcast = db.prepare(`
     SELECT id, slug, title, description, author, email, image_url, language,
-           copyright, category, explicit, website, audio_tracking_prefix, guid
+           copyright, category, explicit, website, audio_tracking_prefix, guid,
+           itunes_type, podcast_locked
     FROM podcasts WHERE slug = ? AND status = 'active'
   `).get(slug) as Podcast | undefined
 
@@ -82,21 +86,22 @@ export default defineEventHandler((event) => {
     throw createError({ statusCode: 404, statusMessage: 'Podcast not found' })
   }
 
+  const siteUrl = (useRuntimeConfig().public.siteUrl as string || '').replace(/\/+$/, '')
+  const selfFeedUrl = `${siteUrl}/feeds/${podcast.slug}.xml`
+
   // Lazily assign a stable Podcasting 2.0 channel GUID on first feed render.
   // Derived from the feed URL per spec, then persisted so it survives any
   // future URL change.
   let podcastGuid = podcast.guid
   if (!podcastGuid) {
-    const siteUrl = (useRuntimeConfig().public.siteUrl as string || '').replace(/\/+$/, '')
-    const feedUrl = `${siteUrl}/feeds/${podcast.slug}.xml`
-    podcastGuid = computePodcastGuid(feedUrl)
+    podcastGuid = computePodcastGuid(selfFeedUrl)
     db.prepare('UPDATE podcasts SET guid = ? WHERE id = ?').run(podcastGuid, podcast.id)
   }
 
   const episodes = db.prepare(`
     SELECT id, title, slug, episode_number, season_number,
            description, audio_url, audio_size_bytes,
-           audio_duration_seconds, image_url, published_at, guid
+           audio_duration_seconds, image_url, published_at, guid, episode_type
     FROM episodes
     WHERE podcast_id = ? AND status = 'published' AND published_at IS NOT NULL
     ORDER BY published_at DESC
@@ -113,6 +118,9 @@ export default defineEventHandler((event) => {
   const showExplicit = podcast.explicit || 'false'
   const websiteBase = (podcast.website || '').replace(/\/+$/, '')
   const audioTrackingPrefix = podcast.audio_tracking_prefix || ''
+  const itunesType = podcast.itunes_type === 'serial' ? 'serial' : 'episodic'
+  const podcastLocked = podcast.podcast_locked === 'yes' ? 'yes' : 'no'
+  const lastBuildDate = new Date().toUTCString()
 
   // Lazily lock in a stable per-episode GUID. Using the episode URL keeps
   // backwards compatibility with what we previously emitted, so existing
@@ -167,6 +175,9 @@ export default defineEventHandler((event) => {
       xml += `      <itunes:season>${ep.season_number}</itunes:season>\n`
     }
 
+    const epType = ep.episode_type === 'trailer' || ep.episode_type === 'bonus' ? ep.episode_type : 'full'
+    xml += `      <itunes:episodeType>${epType}</itunes:episodeType>\n`
+
     if (ep.image_url) {
       xml += `      <itunes:image href="${escapeXml(ep.image_url)}"/>\n`
     }
@@ -181,15 +192,20 @@ export default defineEventHandler((event) => {
 <rss version="2.0"
   xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"
   xmlns:content="http://purl.org/rss/1.0/modules/content/"
+  xmlns:atom="http://www.w3.org/2005/Atom"
   xmlns:podcast="https://podcastindex.org/namespace/1.0">
   <channel>
     <title>${cdata(showTitle)}</title>
     <link>${escapeXml(channelLink)}</link>
+    <atom:link href="${escapeXml(selfFeedUrl)}" rel="self" type="application/rss+xml"/>
     <description>${cdata(showDescription)}</description>
     <language>${escapeXml(showLanguage)}</language>
+    <lastBuildDate>${lastBuildDate}</lastBuildDate>
     <podcast:guid>${escapeXml(podcastGuid)}</podcast:guid>
+    <podcast:locked>${podcastLocked}</podcast:locked>
     ${showCopyright ? `<copyright>${cdata(showCopyright)}</copyright>` : ''}
     <itunes:author>${cdata(showAuthor)}</itunes:author>
+    <itunes:type>${itunesType}</itunes:type>
     <itunes:owner>
       <itunes:name>${cdata(showAuthor)}</itunes:name>
       <itunes:email>${escapeXml(showEmail)}</itunes:email>

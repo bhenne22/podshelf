@@ -1,6 +1,7 @@
 import { createError } from 'h3'
 
 const VALID_STATUSES = ['draft', 'published']
+const VALID_EPISODE_TYPES = ['full', 'trailer', 'bonus']
 
 export function validateEpisodeFields(body: Record<string, unknown>) {
   if (body.episode_number != null) {
@@ -19,6 +20,10 @@ export function validateEpisodeFields(body: Record<string, unknown>) {
 
   if (body.status != null && !VALID_STATUSES.includes(body.status as string)) {
     throw createError({ statusCode: 400, statusMessage: `status must be one of: ${VALID_STATUSES.join(', ')}` })
+  }
+
+  if (body.episode_type != null && !VALID_EPISODE_TYPES.includes(body.episode_type as string)) {
+    throw createError({ statusCode: 400, statusMessage: `episode_type must be one of: ${VALID_EPISODE_TYPES.join(', ')}` })
   }
 
   if (body.published_at != null && body.published_at !== '') {
