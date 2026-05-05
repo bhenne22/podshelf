@@ -232,9 +232,197 @@ sudo -u podshelf /usr/local/bin/podshelf-backup.sh
 ls -lh /var/backups/podshelf/
 ```
 
-**Off-host copy:** the backups still live on the same Linode. For real
-durability, add a second cron line that rsyncs `/var/backups/podshelf/` to a
-different host (your Mac mini, B2, S3, wherever).
+**Off-host copy:** the backups still live on the same Linode. Phase G below
+pulls them (and the rest of the system config) to a separate machine.
+
+---
+
+## Phase G — Off-host backup pull (Synology over Tailscale)
+
+The Linode-local nightly dumps from Phase F survive a corrupted database but
+not a lost VM. This phase has a separate machine **pull** the dumps over
+Tailscale, so a compromise of the Linode can't reach back and wipe history
+on the destination.
+
+The example here uses a Synology DS923+ on DSM 7.2; the same shape works
+for any Linux box with rsync — the only Synology-specific bits are DSM Task
+Scheduler and Snapshot Replication.
+
+**What we back up beyond the SQLite dumps:**
+- `/etc/nginx/conf.d/` + `nginx.conf` — every site's reverse-proxy config
+- `/etc/letsencrypt/` — ACME account key + renewal config
+- `/opt/podshelf/.env` — contains `PODSHELF_ENCRYPTION_KEY`. Without this
+  the SQLite backup is junk; encrypted storage credentials can't be
+  decrypted. **This is the single most critical file in the backup set.**
+
+### G.1 — Linode: stage the system config nightly
+
+Debian/Ubuntu already ships a system `backup` user (UID 34, home
+`/var/backups`). We reuse it; no `adduser` needed. Verify:
+
+```bash
+getent passwd backup
+# backup:x:34:34:backup:/var/backups:/usr/sbin/nologin
+```
+
+The default `nologin` shell will break rsync over SSH ("protocol version
+mismatch — is your shell clean?") because nologin prints a refusal banner
+that corrupts the rsync stream. Switch to `/bin/sh`; the forced command +
+`restrict` options in `authorized_keys` are what actually sandbox the user,
+not the shell.
+
+```bash
+sudo usermod -s /bin/sh backup
+```
+
+Let the `backup` group read the existing podshelf dumps (the
+`g+s` keeps new files inheriting the group):
+
+```bash
+sudo chgrp -R backup /var/backups/podshelf
+sudo chmod -R g+rX,o-rwx /var/backups/podshelf
+sudo chmod g+s /var/backups/podshelf
+```
+
+Install the staging script and its nightly cron (lives in the repo at
+`scripts/linode-config-snapshot.sh` — runs `git pull` first if needed):
+
+```bash
+sudo install -m 0755 -o root -g root \
+  /opt/podshelf/scripts/linode-config-snapshot.sh \
+  /usr/local/bin/linode-config-snapshot.sh
+
+echo '19 3 * * * root /usr/local/bin/linode-config-snapshot.sh >/dev/null 2>&1' \
+  | sudo tee /etc/cron.d/linode-config-snapshot
+
+# Run it once to verify
+sudo /usr/local/bin/linode-config-snapshot.sh
+sudo ls -la /var/backups/linode-config/
+```
+
+The cron runs at 03:19, two minutes after the Phase F podshelf-backup.sh
+cron, so the same night's `.db.gz` is in place when the staging fires.
+
+### G.2 — Linode: install the puller's SSH key with an rrsync sandbox
+
+Generate the keypair on the **destination** machine (Synology, here):
+
+```bash
+# On the Synology
+sudo -i
+mkdir -p /root/.ssh && chmod 700 /root/.ssh
+ssh-keygen -t ed25519 -f /root/.ssh/linode-backup -N "" -C "synology-backup-pull"
+cat /root/.ssh/linode-backup.pub
+```
+
+Back on the Linode, install the public key in `/var/backups/.ssh/` (the
+`backup` user's home) with an `rrsync` forced command that chroots reads to
+`/var/backups`:
+
+```bash
+sudo install -d -m 0700 -o backup -g backup /var/backups/.ssh
+
+# Confirm rrsync's path; on Ubuntu 24.04 it's /usr/bin/rrsync (shipped with
+# the rsync package, despite earlier rumors that it was dropped).
+which rrsync || dpkg -L rsync | grep rrsync
+
+sudo tee /var/backups/.ssh/authorized_keys >/dev/null <<'EOF'
+command="/usr/bin/rrsync -ro /var/backups",no-port-forwarding,no-X11-forwarding,no-agent-forwarding,no-pty,restrict <PASTE_PUBKEY_HERE>
+EOF
+sudo chown backup:backup /var/backups/.ssh/authorized_keys
+sudo chmod 600 /var/backups/.ssh/authorized_keys
+```
+
+Replace `<PASTE_PUBKEY_HERE>` with the line you copied from the Synology.
+The `restrict` keyword denies port forwarding, agent forwarding, X11, etc.
+by default; the explicit `no-…` options are belt-and-suspenders for older
+sshd versions.
+
+### G.3 — Synology: pull script + DSM Task Scheduler
+
+DSM doesn't wire Tailscale's MagicDNS into the system resolver — `nslookup
+linode-reverse-proxy.tail-XXXX.ts.net` returns `NXDOMAIN` because DSM
+queries the LAN router. **Use the Tailscale IP directly**, found via
+`tailscale status | grep <linode-name>`. Tailscale IPs are stable per-node
+across reboots and reinstalls; they only change if you delete and re-auth
+the machine.
+
+```bash
+# On the Synology, as root (sudo -i first; sudo cat > /file doesn't work
+# because the redirect runs unprivileged)
+mkdir -p /volume1/Backups/linode/{podshelf,config}
+mkdir -p /volume1/Backups/logs
+
+cat > /usr/local/bin/linode-pull.sh <<'EOF'
+#!/bin/sh
+set -eu
+TS_HOST="100.x.y.z"            # Tailscale IP of the Linode
+KEY=/root/.ssh/linode-backup
+LOG=/volume1/Backups/logs/linode-pull-$(date -u +%Y%m%d).log
+DEST=/volume1/Backups/linode
+
+exec >>"$LOG" 2>&1
+echo "=== $(date -u +%FT%TZ) starting pull ==="
+
+# rrsync is chrooted to /var/backups, so source paths are relative to that.
+rsync -avz --delete -e "ssh -i $KEY -o StrictHostKeyChecking=accept-new" \
+  "backup@$TS_HOST:podshelf/"      "$DEST/podshelf/"
+
+rsync -avz --delete -e "ssh -i $KEY" \
+  "backup@$TS_HOST:linode-config/" "$DEST/config/"
+
+echo "=== $(date -u +%FT%TZ) done ==="
+EOF
+chmod +x /usr/local/bin/linode-pull.sh
+
+# Test
+/usr/local/bin/linode-pull.sh
+tail /volume1/Backups/logs/linode-pull-*.log
+ls -lh /volume1/Backups/linode/podshelf/ /volume1/Backups/linode/config/
+```
+
+> Watch out for `/volume1/Backups` (capital B) — Linux paths are case-sensitive.
+
+In DSM UI: **Control Panel → Task Scheduler → Create → Scheduled Task →
+User-defined script**. Set User to `root`, schedule daily at 04:30 (after
+the Linode's 03:17 podshelf dump and 03:19 config snapshot), command
+`/usr/local/bin/linode-pull.sh`. Under Notifications, enable "Send run
+details by email" → "Only when the script terminates abnormally" so you
+only get pinged on failures.
+
+### G.4 — Versioning: Snapshot Replication on the destination
+
+A single mirror only protects against host loss, not "I corrupted the DB
+last night and the bad backup overwrote the good one." Enable
+**Snapshot Replication** on the `Backups` shared folder (DSM →
+Snapshot Replication → Snapshots → Settings) — daily snapshots, retain
+something like 7 daily + 4 weekly + 6 monthly. That's your point-in-time
+recovery.
+
+### G.5 — Disaster recovery rehearsal
+
+Worth knowing the restore path before you need it:
+
+1. Provision a fresh Ubuntu host (anywhere — new Linode, Mac mini VM).
+2. Run Phases A–E from this doc to install Node, the app, and systemd.
+3. Restore `linode-config/podshelf/.env` to `/opt/podshelf/.env` (mode 600,
+   owned by podshelf). **Without the original `PODSHELF_ENCRYPTION_KEY`
+   here the SQLite backup can't decrypt storage credentials.**
+4. Pick the most recent `podshelf/podshelf-YYYYMMDD-HHMMSS.db.gz`,
+   `gunzip` it, drop into `/opt/podshelf/data/podshelf.db`, chown
+   `podshelf:podshelf`.
+5. Restore `linode-config/letsencrypt/` to `/etc/letsencrypt/` and
+   `linode-config/nginx/` to `/etc/nginx/`. `nginx -t && systemctl reload nginx`.
+6. `systemctl start podshelf`. Sign in. Whole rebuild ≈ 15 minutes.
+
+### G.6 — Troubleshooting
+
+| Symptom | Cause / fix |
+|---|---|
+| `Could not resolve hostname linode-reverse-proxy` on Synology | MagicDNS isn't in DSM's resolver; use the Tailscale IP. |
+| `protocol version mismatch -- is your shell clean?` | Remote user's login shell is printing output. Almost always `/usr/sbin/nologin`. Switch to `/bin/sh`. |
+| `Permission denied` writing the script with `sudo cat > /file` | Redirect runs unprivileged before sudo elevates. Use `sudo -i` then heredoc, or `sudo tee /file <<'EOF' … EOF`. |
+| Pull succeeds but `podshelf/` directory is empty on Synology | `backup` group can't read `/var/backups/podshelf/`. Re-run the chgrp/chmod from G.1. |
 
 ---
 
