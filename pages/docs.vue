@@ -39,9 +39,15 @@ interface Me { id: number; email: string; is_admin: boolean }
 
 // Public page — anonymous visitors get a 401 from /api/me, which we swallow
 // so SSR doesn't blow up. Authed visitors see the normal AdminNav.
-const { data: me } = await useFetch<Me | null>('/api/me', {
+// Note: with ignoreResponseError, useFetch leaves the 401 error body in
+// `data` (truthy), so coerce to null on anything that isn't a real Me.
+const { data: rawMe } = await useFetch<Me | null>('/api/me', {
   default: () => null,
   ignoreResponseError: true,
+})
+const me = computed(() => {
+  const v = rawMe.value as Me | { statusCode?: number } | null
+  return v && typeof (v as Me).id === 'number' ? (v as Me) : null
 })
 
 type SwaggerUIInit = (config: Record<string, unknown>) => unknown
