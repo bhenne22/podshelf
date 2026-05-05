@@ -270,6 +270,16 @@ journalctl -u podshelf -n 30 --no-pager   # verify clean start
 The DB migration runner adds new columns automatically on startup, so most
 upgrades don't need any manual schema work.
 
+> **Always prefix `git`, `npm`, etc. with `sudo -u podshelf` when in
+> `/opt/podshelf`.** If you ever run those as root, the new files end up
+> owned by root and the next `sudo -u podshelf npm ci` fails with `EACCES
+> rmdir node_modules/...` because the podshelf user can't delete root-owned
+> directories. We've hit this three times. Fix:
+> ```bash
+> sudo chown -R podshelf:podshelf /opt/podshelf
+> ```
+> Then re-run the deploy.
+
 ### Rotate `NUXT_SECRET_KEY`
 
 Edit `/opt/podshelf/.env`, replace the key, `systemctl restart podshelf`. All
