@@ -1,16 +1,25 @@
 <template>
   <div class="docs-page">
-    <AdminNav />
+    <AdminNav v-if="me" />
+    <nav v-else class="public-nav">
+      <NuxtLink to="/" class="brand">Podshelf</NuxtLink>
+      <NuxtLink to="/login" class="signin">Sign in</NuxtLink>
+    </nav>
     <div class="container">
       <div class="page-header">
         <h1>API Docs</h1>
-        <NuxtLink to="/api-keys" class="btn-back">Manage API keys →</NuxtLink>
+        <NuxtLink v-if="me" to="/api-keys" class="btn-back">Manage API keys →</NuxtLink>
       </div>
       <p class="intro">
         Interactive reference for the Podshelf API. Click <strong>Authorize</strong>
         and paste your API key to use <em>Try it out</em> against this instance.
-        Generate a key at <NuxtLink to="/api-keys">/api-keys</NuxtLink> if you
-        don't have one yet.
+        <template v-if="me">
+          Generate a key at <NuxtLink to="/api-keys">/api-keys</NuxtLink> if you
+          don't have one yet.
+        </template>
+        <template v-else>
+          <NuxtLink to="/login">Sign in</NuxtLink> to generate a key.
+        </template>
       </p>
 
       <ClientOnly>
@@ -24,9 +33,16 @@
 </template>
 
 <script setup lang="ts">
-definePageMeta({ middleware: 'auth' })
-
 useHead({ title: 'API Docs — Podshelf' })
+
+interface Me { id: number; email: string; is_admin: boolean }
+
+// Public page — anonymous visitors get a 401 from /api/me, which we swallow
+// so SSR doesn't blow up. Authed visitors see the normal AdminNav.
+const { data: me } = await useFetch<Me | null>('/api/me', {
+  default: () => null,
+  ignoreResponseError: true,
+})
 
 type SwaggerUIInit = (config: Record<string, unknown>) => unknown
 
@@ -56,6 +72,37 @@ onMounted(async () => {
   min-height: 100vh;
   background: #f7fafc;
   font-family: system-ui, sans-serif;
+}
+
+.public-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: white;
+  border-bottom: 1px solid #e2e8f0;
+  padding: 0 1.5rem;
+  height: 56px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+.public-nav .brand {
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: #667eea;
+  text-decoration: none;
+  letter-spacing: -0.02em;
+}
+.public-nav .signin {
+  font-size: 0.9rem;
+  color: #4a5568;
+  text-decoration: none;
+  padding: 0.375rem 0.75rem;
+  border-radius: 6px;
+}
+.public-nav .signin:hover {
+  background: #f7fafc;
+  color: #1a202c;
 }
 
 .container {

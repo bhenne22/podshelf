@@ -51,6 +51,14 @@ export default defineEventHandler(async (event) => {
   const desiredStatus = body.status ?? 'draft'
   const effectiveStatus = coerceScheduledStatus(desiredStatus, body.published_at) ?? 'draft'
 
+  // A published episode must have a publish date — otherwise it shows up in
+  // the feed with no <pubDate>, which clients sort to the bottom or hide.
+  // Default to now() when the caller publishes without specifying a date.
+  let publishedAt = body.published_at ?? null
+  if (effectiveStatus === 'published' && !publishedAt) {
+    publishedAt = new Date().toISOString()
+  }
+
   const result = db.prepare(`
     INSERT INTO episodes (
       podcast_id, title, slug, episode_number, season_number,
@@ -82,7 +90,7 @@ export default defineEventHandler(async (event) => {
     audio_duration_seconds: body.audio_duration_seconds ?? null,
     image_url: body.image_url ?? null,
     image_filename: body.image_filename ?? null,
-    published_at: body.published_at ?? null,
+    published_at: publishedAt,
     status: effectiveStatus,
     tags: body.tags ?? null,
     transcript_path: body.transcript_path ?? null,

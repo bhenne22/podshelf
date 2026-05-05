@@ -48,6 +48,12 @@ export default defineEventHandler(async (event) => {
   if (body.status === 'published') {
     const incomingPubDate = 'published_at' in body ? body.published_at : beforeRow.published_at
     body.status = coerceScheduledStatus('published', incomingPubDate as string | null | undefined)
+
+    // A published episode must have a publish date — fill in now() if the
+    // caller is publishing without specifying one and the row had none.
+    if (body.status === 'published' && !incomingPubDate) {
+      body.published_at = new Date().toISOString()
+    }
   }
 
   const updates: string[] = []
