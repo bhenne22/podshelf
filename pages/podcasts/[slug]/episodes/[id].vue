@@ -100,11 +100,6 @@
               <label for="description">Show Notes / Description</label>
               <RichTextEditor v-model="form.description" :rows="12" />
             </div>
-
-            <div class="form-group">
-              <label for="tags">Tags</label>
-              <input id="tags" v-model="form.tags" type="text" placeholder="comma-separated" />
-            </div>
           </div>
 
           <div class="form-section">
@@ -485,7 +480,6 @@ interface EpisodeForm {
   image_filename: string
   published_at: string
   status: string
-  tags: string
   transcript_path: string
   transcript_type: string
   chapters_url: string
@@ -513,7 +507,6 @@ const form = reactive<EpisodeForm>({
   image_filename: '',
   published_at: '',
   status: 'draft',
-  tags: '',
   transcript_path: '',
   transcript_type: '',
   chapters_url: '',
@@ -742,7 +735,6 @@ onMounted(async () => {
       image_filename: ep.image_filename || '',
       published_at: ep.published_at ? ep.published_at.slice(0, 16) : '',
       status: ep.status,
-      tags: ep.tags || '',
       transcript_path: ep.transcript_path || '',
       transcript_type: ep.transcript_type || '',
       chapters_url: ep.chapters_url || '',

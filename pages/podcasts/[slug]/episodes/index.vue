@@ -237,7 +237,7 @@ const filteredEpisodes = computed(() => {
       if (to && d > to) return false
     }
     if (q) {
-      const haystack = [ep.title, ep.tags, ep.description].filter(Boolean).join(' ').toLowerCase()
+      const haystack = [ep.title, ep.description].filter(Boolean).join(' ').toLowerCase()
       if (!haystack.includes(q)) return false
     }
     return true

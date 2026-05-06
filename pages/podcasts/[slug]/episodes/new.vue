@@ -59,11 +59,6 @@
               placeholder="Describe your episode, add links, timestamps, etc."
             />
           </div>
-
-          <div class="form-group">
-            <label for="tags">Tags</label>
-            <input id="tags" v-model="form.tags" type="text" placeholder="running, ultramarathon, gear (comma-separated)" />
-          </div>
         </div>
 
         <div class="form-section">
@@ -374,7 +369,6 @@ const form = reactive({
   image_filename: '',
   published_at: '',
   status: 'draft',
-  tags: '',
   transcript_path: '',
   transcript_type: '',
   episode_type: 'full',
