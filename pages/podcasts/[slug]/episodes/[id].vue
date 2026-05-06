@@ -5,6 +5,20 @@
       <div class="page-header">
         <h1>Edit Episode</h1>
         <div class="header-actions">
+          <NuxtLink
+            v-if="prevEpisode"
+            :to="`/podcasts/${podcastSlug}/episodes/${prevEpisode.id}`"
+            class="btn-back"
+            :title="prevEpisode.title"
+          >← Prev</NuxtLink>
+          <span v-else class="btn-back disabled" title="No previous episode">← Prev</span>
+          <NuxtLink
+            v-if="nextEpisode"
+            :to="`/podcasts/${podcastSlug}/episodes/${nextEpisode.id}`"
+            class="btn-back"
+            :title="nextEpisode.title"
+          >Next →</NuxtLink>
+          <span v-else class="btn-back disabled" title="No next episode">Next →</span>
           <button type="button" class="btn-back" :disabled="duplicating" @click="duplicateEpisode">
             {{ duplicating ? 'Duplicating…' : 'Duplicate' }}
           </button>
@@ -432,7 +446,12 @@
 <script setup lang="ts">
 import type { Episode } from '~/composables/useEpisodes'
 
-definePageMeta({ middleware: 'auth' })
+definePageMeta({
+  middleware: 'auth',
+  // Force a fresh page instance when the episode id changes so onMounted runs
+  // again and prev/next navigation reloads the form.
+  key: (route) => route.fullPath,
+})
 
 const route = useRoute()
 const id = Number(route.params.id)
@@ -684,11 +703,27 @@ async function saveChapters() {
 const artworkUploading = ref(false)
 const artworkError = ref('')
 
+// Full episode list (in API order: published newest-first, then drafts by created_at DESC).
+// Used to power prev/next navigation in the page header.
+const allEpisodes = ref<Episode[]>([])
+
+const currentIndex = computed(() =>
+  allEpisodes.value.findIndex((e) => e.id === id),
+)
+const prevEpisode = computed(() => {
+  const i = currentIndex.value
+  return i > 0 ? allEpisodes.value[i - 1] : null
+})
+const nextEpisode = computed(() => {
+  const i = currentIndex.value
+  return i >= 0 && i < allEpisodes.value.length - 1 ? allEpisodes.value[i + 1] : null
+})
+
 // Load episode
 onMounted(async () => {
   try {
-    const episodes = await $fetch<Episode[]>(`/api/podcasts/${podcastSlug}/episodes`)
-    const ep = episodes.find((e) => e.id === id)
+    allEpisodes.value = await $fetch<Episode[]>(`/api/podcasts/${podcastSlug}/episodes`)
+    const ep = allEpisodes.value.find((e) => e.id === id)
     if (!ep) {
       loadError.value = 'Episode not found.'
       return
@@ -935,6 +970,11 @@ h1 { margin: 0; font-size: 1.5rem; color: #1a202c; }
   text-decoration: none;
 }
 .btn-back:hover, .btn-preview:hover { text-decoration: underline; }
+.btn-back.disabled {
+  color: #cbd5e0;
+  cursor: not-allowed;
+}
+.btn-back.disabled:hover { text-decoration: none; }
 
 .publish-banner {
   display: flex;
