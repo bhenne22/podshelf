@@ -95,5 +95,36 @@
       <enclosure url="https://example.com/audio/7.mp3" length="1000" type="audio/mpeg"/>
       <image><url>https://example.com/episode-7.jpg</url></image>
     </item>
+
+    <!-- 8. Bug 7 — "IWVT Ep. 128 –" shape: a short show prefix in front
+         of "Ep." with a period. Title parser must extract 128. -->
+    <item>
+      <title>IWVT Ep. 128 – Black Beam Burrito</title>
+      <description>desc</description>
+      <pubDate>Mon, 02 Feb 2026 09:00:00 +0000</pubDate>
+      <guid isPermaLink="false">https://example.com/?p=128</guid>
+      <enclosure url="https://example.com/audio/128.mp3" length="1000" type="audio/mpeg"/>
+    </item>
+
+    <!-- 9. Bug 7 — "Ep. N" with a sub-series-letter suffix (B-side). The
+         \b boundary on \d+ should reject this so it stays null. -->
+    <item>
+      <title>IWVT Ep. 77B – Cassian and Jin</title>
+      <description>desc</description>
+      <pubDate>Tue, 03 Feb 2026 09:00:00 +0000</pubDate>
+      <guid isPermaLink="false">https://example.com/?p=77b</guid>
+      <enclosure url="https://example.com/audio/77b.mp3" length="1000" type="audio/mpeg"/>
+    </item>
+
+    <!-- 10. Bug 7 — long prefix word ("Philosophical Whacks") rules out
+         the Ep. pattern, so this sub-series stays null and gets the
+         unnumbered-import warning. -->
+    <item>
+      <title>Philosophical Whacks Ep. 2 – Anatomy of a Boss Fight</title>
+      <description>desc</description>
+      <pubDate>Wed, 04 Feb 2026 09:00:00 +0000</pubDate>
+      <guid isPermaLink="false">https://example.com/?p=pw2</guid>
+      <enclosure url="https://example.com/audio/pw2.mp3" length="1000" type="audio/mpeg"/>
+    </item>
   </channel>
 </rss>

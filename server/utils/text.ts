@@ -39,24 +39,27 @@ function safeFromCode(n: number): string {
 /**
  * Pull an episode number out of a title.
  *
- * Patterns recognized:
+ * Patterns recognized, in priority order:
+ *   - `Episode N` anchored at the start ("Episode 24: Darcy Is A Sociopath")
+ *   - `Ep N` / `Ep. N` near the start, optionally preceded by a short
+ *     show-prefix abbreviation ("IWVT Ep. 128 – Black Beam Burrito",
+ *     "Ep. 12: Title"). Limited to one short prefix word so sub-series
+ *     like "Philosophical Whacks Ep. 2" stay null and get the
+ *     unnumbered-import warning instead.
  *   - `#N` anywhere in the title — common in WordPress / PowerPress
- *     ("SI #146 – …", "Subtle Interference #58 …").
- *   - `Episode N` / `Ep N` / `Ep. N` anchored at the start, optionally
- *     followed by `:` or `-` ("Episode 24: Darcy Is A Sociopath").
+ *     ("SI #146 – …").
  *
- * Strict by design: anchored prefixes prevent false positives on phrases
- * like "Episode 4 of Stranger Things"; the `#` form requires a literal
- * `#` so years and other digit clusters don't get misread.
+ * Sub-series suffix-letters are naturally rejected: `\b` after `\d+`
+ * fails on "Ep. 77B" because `B` is a word character.
  *
  * Returns null when the title doesn't fit any pattern — leaving
  * episode_number unset is the right answer for "specials" / interludes.
  */
 export function inferEpisodeNumberFromTitle(title: string | null | undefined): number | null {
   if (!title) return null
-  const prefixed = title.match(/^\s*(?:Episode|Ep\.?)\s+(\d+)\b/i)
-  const hashed = !prefixed ? title.match(/#\s*(\d+)/) : null
-  const m = prefixed || hashed
+  const m = title.match(/^\s*Episode\s+(\d+)\b/i)
+         || title.match(/^\s*(?:\S{1,8}\s+)?Ep\.?\s+(\d+)\b/i)
+         || title.match(/#\s*(\d+)/)
   if (!m) return null
   const n = parseInt(m[1], 10)
   return Number.isFinite(n) && n > 0 ? n : null

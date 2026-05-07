@@ -73,3 +73,36 @@ test('inferEpisodeNumberFromTitle: only anchors at the start (avoids false posit
     null,
   )
 })
+
+test('inferEpisodeNumberFromTitle: "Ep." with period and short show prefix', () => {
+  // The IWVT shape — short acronym, "Ep." with literal period, en-dash, title.
+  assert.equal(inferEpisodeNumberFromTitle('IWVT Ep. 128 – Black Beam Burrito'), 128)
+  assert.equal(inferEpisodeNumberFromTitle('IWVT Ep. 1 – The Gang\'s All Here'), 1)
+  // No prefix is fine too.
+  assert.equal(inferEpisodeNumberFromTitle('Ep. 12: Title'), 12)
+})
+
+test('inferEpisodeNumberFromTitle: B-side suffix-letter on the digits stays null', () => {
+  // "Ep. 77B" is a sub-series in IWVT — the \b boundary after \d+ rejects it.
+  assert.equal(inferEpisodeNumberFromTitle('IWVT Ep. 77B – Cassian and Jin'), null)
+  assert.equal(inferEpisodeNumberFromTitle('Ep 5A: Sidequest'), null)
+})
+
+test('inferEpisodeNumberFromTitle: long prefix word excludes the Ep. pattern', () => {
+  // Sub-series with a multi-word prefix must NOT match — only short
+  // (≤ 8 chars) prefix words count.
+  assert.equal(
+    inferEpisodeNumberFromTitle('Philosophical Whacks Ep. 2 – Anatomy of a Boss Fight'),
+    null,
+  )
+})
+
+test('inferEpisodeNumberFromTitle: doesn\'t match inside other words', () => {
+  // "Epic" doesn't match — "Ep" boundary requires Ep/Ep. followed by
+  // whitespace + digits, not "ic".
+  assert.equal(inferEpisodeNumberFromTitle('Epic 5: Title'), null)
+  // Multi-word prefix exceeds the "one short prefix word" rule and stays
+  // null — conservative tradeoff to keep sub-series like "Philosophical
+  // Whacks Ep. 2" from being mis-numbered.
+  assert.equal(inferEpisodeNumberFromTitle('Some Other Show Ep 1'), null)
+})

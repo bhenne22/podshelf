@@ -1,6 +1,7 @@
 import { defineEventHandler, readBody, getRouterParam, createError } from 'h3'
 import { requirePodcastAccess } from '../../../utils/auth'
 import { parsePodcastFeed } from '../../../utils/rss-parser'
+import { probeHttpsUpgrades } from '../../../utils/image-upgrade'
 import { maybeAutoTrigger } from '../../../utils/github'
 import { bumpFeedLastModified } from '../../../utils/feed-cache'
 import { logAudit } from '../../../utils/audit'
@@ -73,6 +74,26 @@ export default defineEventHandler(async (event) => {
       statusCode: 400,
       statusMessage: err instanceof Error ? err.message : 'Failed to parse RSS feed',
     })
+  }
+
+  // Try to upgrade http:// image URLs to https:// in-place. We only swap
+  // when the https:// variant actually responds 2xx — if HTTPS isn't
+  // available (or the host blocks HEAD), we leave the URL alone and the
+  // post-import warning still lists it. Done before INSERT so persisted
+  // values are already upgraded.
+  const upgrades = await probeHttpsUpgrades([
+    feed.image_url,
+    ...feed.items.map((i) => i.image_url),
+  ])
+  if (upgrades.size > 0) {
+    if (feed.image_url && upgrades.has(feed.image_url)) {
+      feed.image_url = upgrades.get(feed.image_url)!
+    }
+    for (const item of feed.items) {
+      if (item.image_url && upgrades.has(item.image_url)) {
+        item.image_url = upgrades.get(item.image_url)!
+      }
+    }
   }
 
   const seenSlugs = new Set<string>()
@@ -283,8 +304,10 @@ export default defineEventHandler(async (event) => {
   const httpImageTotal = httpImages + (channelImageIsHttp ? 1 : 0)
   if (httpImageTotal > 0) {
     warnings.push(
-      `${httpImageTotal} image URL${httpImageTotal === 1 ? '' : 's'} use http://. `
-      + 'Modern podcast clients and feed validators flag mixed-content; consider switching to https:// where the host supports it.'
+      `${httpImageTotal} image URL${httpImageTotal === 1 ? '' : 's'} stayed http:// — `
+      + 'the https:// variant didn\'t respond, so the URL was left as-is. '
+      + 'Modern podcast clients and feed validators flag mixed-content; '
+      + 'verify the host or rehost these images.'
     )
   }
 

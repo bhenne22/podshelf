@@ -23,7 +23,7 @@ function slugify(text: string): string {
 }
 
 test('parses all items from the fixture', () => {
-  assert.equal(feed.items.length, 7)
+  assert.equal(feed.items.length, 10)
 })
 
 test('Bug 1: titles have entities decoded', () => {
@@ -151,4 +151,19 @@ test('Bug 3 follow-up: "Episode N:" titles infer episode_number', () => {
 test('Bug 3 follow-up: "Ep N:" titles infer episode_number', () => {
   const ep7 = feed.items.find((i) => i.title.startsWith('Ep 7'))!
   assert.equal(ep7.episode_number, 7)
+})
+
+test('Bug 7: "<short prefix> Ep. N –" titles infer episode_number', () => {
+  const ep128 = feed.items.find((i) => i.title.startsWith('IWVT Ep. 128'))!
+  assert.equal(ep128.episode_number, 128)
+})
+
+test('Bug 7: B-side suffix-letter on Ep. N stays null', () => {
+  const bSide = feed.items.find((i) => i.title.startsWith('IWVT Ep. 77B'))!
+  assert.equal(bSide.episode_number, null)
+})
+
+test('Bug 7: long prefix word disqualifies the Ep. N pattern (sub-series)', () => {
+  const subseries = feed.items.find((i) => i.title.startsWith('Philosophical Whacks'))!
+  assert.equal(subseries.episode_number, null)
 })
