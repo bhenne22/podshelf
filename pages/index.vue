@@ -250,10 +250,16 @@ h1 {
 .podcast-desc {
   font-size: 0.875rem;
   color: #4a5568;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   margin-bottom: 0.25rem;
+  /* Wrap and cap at 3 lines so cards stay roughly uniform regardless of
+     description length. */
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
 }
 
 .podcast-meta {
@@ -282,7 +288,6 @@ h1 {
   }
   .podcast-art { width: 56px; height: 56px; }
   .podcast-title { font-size: 1rem; }
-  .podcast-desc { white-space: normal; }
   .restore-btn {
     flex: 1 1 100%;
     margin-left: 0;
