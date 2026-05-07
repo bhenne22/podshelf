@@ -122,6 +122,7 @@ h1 { margin: 0 0 0.25rem; font-size: 1.5rem; color: #1a202c; }
   margin: 0;
   padding: 0;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.75rem;
 }
 .podcast-list li {
@@ -147,9 +148,13 @@ h1 { margin: 0 0 0.25rem; font-size: 1.5rem; color: #1a202c; }
 .podcast-desc {
   font-size: 0.875rem;
   color: #4a5568;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
 }
 .podcast-meta { font-size: 0.78rem; color: #718096; margin-top: 0.25rem; }
 .podcast-meta .slug { font-family: monospace; color: #4c51bf; }
@@ -192,7 +197,6 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
   }
   .podcast-art { width: 56px; height: 56px; }
   .podcast-info { flex-basis: calc(100% - 56px - 0.75rem); min-width: 0; }
-  .podcast-desc { white-space: normal; }
   .actions {
     flex: 1 1 100%;
     flex-direction: column-reverse;
