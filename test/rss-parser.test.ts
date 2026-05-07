@@ -167,3 +167,19 @@ test('Bug 7: long prefix word disqualifies the Ep. N pattern (sub-series)', () =
   const subseries = feed.items.find((i) => i.title.startsWith('Philosophical Whacks'))!
   assert.equal(subseries.episode_number, null)
 })
+
+test('Bug 9: channel description is entity-decoded', () => {
+  // Curly quotes, en-dash, apostrophe — all from numeric character refs
+  // that the parser must decode before persisting.
+  assert.equal(
+    feed.description,
+    'A podcast about “fun” – mirroring the WordPress / PowerPress shapes that Podshelf’s importer must handle.',
+  )
+  assert.doesNotMatch(feed.description ?? '', /&#\d+;/, 'no decimal entity refs should survive')
+})
+
+test('Bug 9: channel copyright + author entity-decoded; named entities too', () => {
+  assert.equal(feed.copyright, '© 2025 Subtle Interference')
+  // <itunes:author>Bob &amp; Jane &#8211; co-hosts</itunes:author>
+  assert.equal(feed.author, 'Bob & Jane – co-hosts')
+})

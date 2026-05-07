@@ -6,9 +6,13 @@
   xmlns:custom="http://example.com/custom-namespace">
   <channel>
     <title>Subtle Interference (test fixture)</title>
-    <description>Synthetic feed mirroring the WordPress / PowerPress shapes that Podshelf's importer must handle.</description>
+    <!-- Bug 9: channel-level numeric character refs must be decoded just
+         like episode titles. The WordPress feed generator wraps curly
+         quotes in &#8220; / &#8221;, en-dashes in &#8211;, etc. -->
+    <description>A podcast about &#8220;fun&#8221; &#8211; mirroring the WordPress / PowerPress shapes that Podshelf&#8217;s importer must handle.</description>
     <language>en</language>
-    <itunes:author>Bob &amp; Jane</itunes:author>
+    <copyright>&#169; 2025 Subtle Interference</copyright>
+    <itunes:author>Bob &amp; Jane &#8211; co-hosts</itunes:author>
     <itunes:image href="https://example.com/show-cover.jpg"/>
     <podcast:guid>9b024349-ccf0-5f69-8d75-12d1a36b3ee6</podcast:guid>
 

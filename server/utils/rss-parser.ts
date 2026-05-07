@@ -290,12 +290,16 @@ export function parsePodcastFeed(xml: string): ParsedFeed {
 
   const channelLicense = parseLicense(channel['podcast:license'])
 
+  // Channel-level plain-text fields can carry the same numeric character
+  // refs WordPress emits in episode titles (Bug 1 / Bug 9) — decode them
+  // here so callers don't have to care. URL fields and HTML-bearing
+  // fields are intentionally NOT decoded.
   return {
-    title: asString(channel.title),
-    description: asString(channel.description),
+    title: decodeEntities(asString(channel.title)) || null,
+    description: decodeEntities(asString(channel.description)) || null,
     language: asString(channel.language),
-    copyright: asString(channel.copyright),
-    author: asString(channel['itunes:author']),
+    copyright: decodeEntities(asString(channel.copyright)) || null,
+    author: decodeEntities(asString(channel['itunes:author'])) || null,
     image_url: itunesImage,
     category: itunesCategory,
     explicit,
