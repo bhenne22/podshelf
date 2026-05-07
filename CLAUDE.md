@@ -40,7 +40,7 @@ User-facing routes (login required):
 - `/podcasts/[slug]/storage` — per-podcast SFTP / S3 credentials, plus separate audio + artwork directories
 - `/podcasts/[slug]/files` — file browser for the audio + artwork directories (list, upload, rename, delete, copy URL, in-use warning)
 - `/podcasts/[slug]/distribution` — "Listen on" destinations list (Apple, Spotify, etc.); admin-only metadata, exposed via API for static-site builds, **not** in the RSS feed
-- `/podcasts/[slug]/preview` — Apple-style preview of the show (artwork, metadata, episode cards with inline `<audio>`); shows drafts + scheduled too; admin-only, no public surface
+- `/podcasts/[slug]/preview`, `/podcasts/[slug]/preview/[id]` — Apple-style preview of the show (artwork, metadata, episode cards with inline `<audio>` + collapsible chapters/transcript/notes panels) and a per-episode detail view (bigger player, prev/next nav). Both pages have a Desktop/Mobile view toggle that wraps the content in a phone-style frame and uses CSS container queries for the responsive layout. Drafts + scheduled included. Admin-only, no public surface.
 - `/podcasts/[slug]/build`, `/podcasts/[slug]/stats`, `/podcasts/[slug]/members`, `/podcasts/[slug]/import-rss` — build dispatch, analytics, membership, RSS import
 - `/podcasts/[slug]/audit` — chronological audit log of every change (visible to all members)
 
