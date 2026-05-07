@@ -267,7 +267,7 @@ export default defineEventHandler(async (event) => {
     )
   }
 
-  logAudit({
+  logAudit(event, {
     podcastId,
     userId: user.id,
     action: 'podcast.import-rss',

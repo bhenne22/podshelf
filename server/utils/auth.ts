@@ -24,6 +24,7 @@ export interface AuthContext {
   user: AuthUser
   restrictedPodcastIds: number[] | null
   permissionLevel: ApiKeyPermissions | null
+  apiKeyId: number | null
 }
 
 export const SESSION_COOKIE_NAME = 'session'
@@ -79,7 +80,7 @@ function contextFromSession(event: H3Event): AuthContext | null {
   const db = getDb()
   const row = db.prepare('SELECT id, email, is_admin FROM users WHERE id = ?').get(claims.uid) as AuthUser | undefined
   if (!row) return null
-  return { user: row, restrictedPodcastIds: null, permissionLevel: null }
+  return { user: row, restrictedPodcastIds: null, permissionLevel: null, apiKeyId: null }
 }
 
 function contextFromApiKey(event: H3Event): AuthContext | null {
@@ -120,6 +121,7 @@ function contextFromApiKey(event: H3Event): AuthContext | null {
     user: { id: row.id, email: row.email, is_admin: row.is_admin },
     restrictedPodcastIds,
     permissionLevel: perm as ApiKeyPermissions,
+    apiKeyId: row.key_id,
   }
 }
 
@@ -162,6 +164,9 @@ export function requireAuthContext(event: H3Event): AuthContext {
     throw createError({ statusCode: 401, statusMessage: 'Unauthorized' })
   }
   enforceMethodPermission(event, ctx)
+  // Stash so audit logging can stamp api_key_id without every handler
+  // having to thread the value through manually.
+  event.context.apiKeyId = ctx.apiKeyId
   return ctx
 }
 

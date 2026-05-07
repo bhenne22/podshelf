@@ -1,8 +1,10 @@
+import type { H3Event } from 'h3'
 import getDb from '../db/index'
 
 export interface AuditEntry {
   podcastId?: number | null
   userId?: number | null
+  apiKeyId?: number | null
   action: string
   entityType?: string | null
   entityId?: number | null
@@ -14,19 +16,35 @@ export interface AuditEntry {
  * Append a row to the audit log. Cheap, synchronous, never throws.
  * Failures are swallowed (logged to console) — auditing should not break
  * the user request that triggered it.
+ *
+ * When called with an h3 event, the api_key_id is auto-stamped from
+ * `event.context.apiKeyId` (set by requireAuthContext at auth time) so
+ * actions taken by an API key are credited to the key, not the underlying
+ * user. System events (scheduler, migration worker) call without an event.
  */
-export function logAudit(entry: AuditEntry): void {
+export function logAudit(entry: AuditEntry): void
+export function logAudit(event: H3Event, entry: AuditEntry): void
+export function logAudit(eventOrEntry: H3Event | AuditEntry, maybeEntry?: AuditEntry): void {
+  let entry: AuditEntry
+  if (maybeEntry) {
+    const event = eventOrEntry as H3Event
+    const ctxKeyId = (event.context?.apiKeyId as number | null | undefined) ?? null
+    entry = { ...maybeEntry, apiKeyId: maybeEntry.apiKeyId ?? ctxKeyId }
+  } else {
+    entry = eventOrEntry as AuditEntry
+  }
   try {
     const db = getDb()
     const detailsJson = entry.details === undefined || entry.details === null
       ? null
       : JSON.stringify(entry.details)
     db.prepare(`
-      INSERT INTO audit_log (podcast_id, user_id, action, entity_type, entity_id, summary, details)
-      VALUES (@podcast_id, @user_id, @action, @entity_type, @entity_id, @summary, @details)
+      INSERT INTO audit_log (podcast_id, user_id, api_key_id, action, entity_type, entity_id, summary, details)
+      VALUES (@podcast_id, @user_id, @api_key_id, @action, @entity_type, @entity_id, @summary, @details)
     `).run({
       podcast_id: entry.podcastId ?? null,
       user_id: entry.userId ?? null,
+      api_key_id: entry.apiKeyId ?? null,
       action: entry.action,
       entity_type: entry.entityType ?? null,
       entity_id: entry.entityId ?? null,

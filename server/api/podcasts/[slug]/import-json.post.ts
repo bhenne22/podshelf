@@ -287,7 +287,7 @@ export default defineEventHandler(async (event) => {
     maybeAutoTrigger(podcastId, 'json-import')
   }
 
-  logAudit({
+  logAudit(event, {
     podcastId,
     userId: user.id,
     action: 'podcast.import-json',

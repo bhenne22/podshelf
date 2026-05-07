@@ -33,7 +33,7 @@ export default defineEventHandler(async (event) => {
     auto_trigger: autoTrigger,
   })
 
-  logAudit({
+  logAudit(event, {
     podcastId,
     userId: user.id,
     action: 'podcast.github.update',

@@ -26,7 +26,7 @@ export default defineEventHandler(async (event) => {
       config,
       { reason: 'podshelf:manual', podcast_id: podcastId, fired_at: new Date().toISOString() },
     )
-    logAudit({
+    logAudit(event, {
       podcastId,
       userId: user.id,
       action: 'podcast.github.trigger',

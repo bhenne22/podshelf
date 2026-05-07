@@ -30,7 +30,7 @@ export default defineEventHandler((event) => {
   db.prepare('DELETE FROM people WHERE id = ?').run(id)
   bumpFeedLastModified(podcastId)
 
-  logAudit({
+  logAudit(event, {
     podcastId,
     userId: user.id,
     action: 'people.delete',

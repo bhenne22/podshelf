@@ -27,7 +27,7 @@ export default defineEventHandler((event) => {
     WHERE id = ?
   `).run(podcastId)
 
-  logAudit({
+  logAudit(event, {
     podcastId,
     userId: user.id,
     action: 'podcast.restore',

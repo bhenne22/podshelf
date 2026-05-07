@@ -65,7 +65,7 @@ export default defineEventHandler(async (event) => {
   ).get(id) as Record<string, unknown>
   const diff = diffFields(existing, after)
   if (diff.changed.length > 0) {
-    logAudit({
+    logAudit(event, {
       podcastId,
       userId: user.id,
       action: 'people.update',

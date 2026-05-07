@@ -2,7 +2,14 @@
   <div class="admin-page">
     <AdminNav :podcast-slug="podcastSlug" />
     <div class="container">
-      <h1>Audit Log</h1>
+      <div class="page-head">
+        <h1>Audit Log</h1>
+        <a
+          :href="`/api/podcasts/${podcastSlug}/audit.csv`"
+          class="btn-secondary"
+          download
+        >Download CSV</a>
+      </div>
       <p class="page-intro">
         Chronological record of who changed what, scoped to this podcast.
         Visible to all members. Click a row to expand the field-level diff.
@@ -14,6 +21,12 @@
       <div v-else-if="!entries.length" class="empty">No audit entries yet.</div>
 
       <ul v-else class="audit-list">
+        <li class="audit-row audit-header" aria-hidden="true">
+          <span class="audit-time">Time</span>
+          <span class="audit-action-head">Action</span>
+          <span class="audit-text">Actor &amp; summary</span>
+          <span class="audit-chev"></span>
+        </li>
         <li v-for="entry in entries" :key="entry.id" class="audit-row">
           <button
             class="audit-summary"
@@ -24,7 +37,7 @@
             <span class="audit-time">{{ formatDate(entry.created_at) }}</span>
             <span class="audit-action" :class="actionClass(entry.action)">{{ entry.action }}</span>
             <span class="audit-text">
-              <span class="audit-actor">{{ entry.user_email || 'system' }}</span>
+              <span class="audit-actor" :title="actorTitle(entry)">{{ actorLabel(entry) }}</span>
               <span class="audit-divider">·</span>
               <span class="audit-msg">{{ entry.summary || entry.action }}</span>
             </span>
@@ -70,6 +83,7 @@ interface AuditEntry {
   id: number
   podcast_id: number | null
   user_id: number | null
+  api_key_id: number | null
   action: string
   entity_type: string | null
   entity_id: number | null
@@ -82,6 +96,7 @@ interface AuditEntry {
   } | null
   created_at: string
   user_email: string | null
+  api_key_label: string | null
 }
 
 interface AuditResponse {
@@ -147,6 +162,20 @@ function formatVal(v: unknown): string {
   return String(v)
 }
 
+// API-key actions credit the key (with the user as a tooltip) so the
+// audit log shows automation runs distinctly from human ones.
+function actorLabel(entry: AuditEntry): string {
+  if (entry.api_key_id) return `🔑 ${entry.api_key_label || `key #${entry.api_key_id}`}`
+  return entry.user_email || 'system'
+}
+function actorTitle(entry: AuditEntry): string {
+  if (entry.api_key_id) {
+    return `API key${entry.api_key_label ? ` "${entry.api_key_label}"` : ''}`
+      + (entry.user_email ? ` (owner: ${entry.user_email})` : '')
+  }
+  return entry.user_email || 'system'
+}
+
 function actionClass(action: string): string {
   if (action.includes('publish') && !action.includes('unpublish')) return 'tag-publish'
   if (action.includes('delete') || action.includes('purge') || action.includes('detach') || action.includes('remove')) return 'tag-danger'
@@ -172,7 +201,16 @@ useHead({ title: 'Audit Log — Podshelf Admin' })
   padding: 2rem 1.25rem;
 }
 
-h1 { margin: 0 0 0.5rem; font-size: 1.5rem; color: #1a202c; }
+h1 { margin: 0; font-size: 1.5rem; color: #1a202c; }
+
+.page-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 0 0 0.5rem;
+  flex-wrap: wrap;
+}
 
 .page-intro {
   margin: 0 0 1.5rem;
@@ -194,9 +232,14 @@ h1 { margin: 0 0 0.5rem; font-size: 1.5rem; color: #1a202c; }
 .audit-row { border-bottom: 1px solid #edf2f7; }
 .audit-row:last-child { border-bottom: none; }
 
-.audit-summary {
+.audit-summary,
+.audit-header {
+  /* Action labels go up to ~"podcast.settings.update" (22 chars). The
+     200px column fits the longest realistic label without overflowing
+     into the actor cell — the original 100px column was the source of
+     the overlapping/garbled text on first render. */
   display: grid;
-  grid-template-columns: 160px 100px 1fr auto;
+  grid-template-columns: 185px 200px 1fr auto;
   gap: 0.75rem;
   align-items: center;
   width: 100%;
@@ -204,28 +247,55 @@ h1 { margin: 0 0 0.5rem; font-size: 1.5rem; color: #1a202c; }
   border: none;
   padding: 0.7rem 1rem;
   text-align: left;
-  cursor: pointer;
   font-size: 0.85rem;
   color: #2d3748;
   font-family: inherit;
 }
+.audit-summary { cursor: pointer; }
 .audit-summary:hover { background: #f7fafc; }
 .audit-summary.expanded { background: #f7fafc; }
+
+.audit-header {
+  background: #f7fafc;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #718096;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: default;
+}
+.audit-header:hover { background: #f7fafc; }
 
 .audit-time {
   font-variant-numeric: tabular-nums;
   color: #718096;
   font-size: 0.78rem;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.audit-action {
+.audit-action,
+.audit-action-head {
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   font-size: 0.72rem;
   padding: 0.15rem 0.45rem;
   border-radius: 4px;
   white-space: nowrap;
   text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* min-width: 0 + grid-area sizing keeps overflow contained inside
+     the column slot rather than visually overlapping the actor cell. */
+  min-width: 0;
+  justify-self: start;
+}
+.audit-header .audit-action-head {
+  background: transparent;
+  font-family: inherit;
+  padding: 0;
+  text-align: left;
 }
 
 .tag-neutral { background: #edf2f7; color: #4a5568; }
@@ -372,5 +442,8 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
   .audit-text { grid-area: text; flex-wrap: wrap; }
   .audit-chev { grid-area: chev; }
   .audit-msg { white-space: normal; }
+  /* Header doesn't translate to the stacked mobile layout — each card
+     is self-labeled by its own structure. */
+  .audit-header { display: none; }
 }
 </style>

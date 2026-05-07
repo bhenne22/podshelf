@@ -61,11 +61,38 @@
             <td class="col-expires" data-label="Expires">{{ k.expires_at ? formatDate(k.expires_at) : '—' }}</td>
             <td class="col-lastused dim" data-label="Last used">{{ k.last_used_at ? formatRelative(k.last_used_at) : 'never' }}</td>
             <td class="col-actions">
-              <button class="action-btn" @click="openEdit(k)">Edit</button>
-              <button class="action-btn" @click="toggleDisabled(k)">
-                {{ k.disabled ? 'Enable' : 'Disable' }}
-              </button>
-              <button class="action-btn danger" @click="confirmRevoke(k)">Revoke</button>
+              <div class="row-menu">
+                <button
+                  type="button"
+                  class="row-menu-btn"
+                  :class="{ open: openMenuId === k.id }"
+                  :aria-expanded="openMenuId === k.id"
+                  aria-haspopup="true"
+                  aria-label="Key actions"
+                  @click.stop="toggleMenu(k.id, $event)"
+                >⋯</button>
+                <div v-if="openMenuId === k.id" class="row-menu-panel" :class="{ up: menuDirection === 'up' }" role="menu" @click.stop>
+                  <button
+                    type="button"
+                    class="row-menu-item"
+                    role="menuitem"
+                    @click="openEdit(k); closeMenu()"
+                  >Edit</button>
+                  <button
+                    type="button"
+                    class="row-menu-item"
+                    role="menuitem"
+                    @click="toggleDisabled(k); closeMenu()"
+                  >{{ k.disabled ? 'Enable' : 'Disable' }}</button>
+                  <div class="row-menu-divider"></div>
+                  <button
+                    type="button"
+                    class="row-menu-item danger"
+                    role="menuitem"
+                    @click="confirmRevoke(k); closeMenu()"
+                  >Revoke</button>
+                </div>
+              </div>
             </td>
           </tr>
         </tbody>
@@ -230,6 +257,8 @@ const savingEdit = ref(false)
 
 const revokeTarget = ref<ApiKey | null>(null)
 const revoking = ref(false)
+
+const { openMenuId, menuDirection, toggleMenu, closeMenu } = useRowMenu()
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
@@ -490,7 +519,82 @@ h1 { margin: 0; font-size: 1.5rem; color: #1a202c; }
 }
 .key-table tr:last-child td { border-bottom: none; }
 .row-disabled { opacity: 0.55; }
-.col-actions { width: 200px; }
+.col-actions { width: 64px; text-align: right; }
+
+/* Row hamburger menu — matches the episodes table pattern. */
+.row-menu { position: relative; display: inline-block; }
+.row-menu-btn {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  width: 32px;
+  height: 30px;
+  font-size: 1.1rem;
+  line-height: 1;
+  color: #4a5568;
+  cursor: pointer;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+.row-menu-btn:hover, .row-menu-btn.open {
+  border-color: #667eea;
+  color: #667eea;
+  background: #f7fafc;
+}
+.row-menu-panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 160px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 0.3rem;
+  box-shadow: 0 8px 24px -8px rgba(0, 0, 0, 0.18);
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  text-align: left;
+}
+.row-menu-panel.up {
+  top: auto;
+  bottom: calc(100% + 4px);
+}
+.row-menu-item {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.45rem 0.65rem;
+  background: none;
+  border: none;
+  border-radius: 5px;
+  color: #2d3748;
+  font-size: 0.85rem;
+  font-family: inherit;
+  text-decoration: none;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.row-menu-item:hover:not(:disabled) {
+  background: #f7fafc;
+  color: #1a202c;
+}
+.row-menu-item:disabled { opacity: 0.6; cursor: not-allowed; }
+.row-menu-item.danger { color: #c53030; }
+.row-menu-item.danger:hover:not(:disabled) {
+  background: #fff5f5;
+  color: #9b2c2c;
+}
+.row-menu-divider {
+  height: 1px;
+  background: #f0f4f8;
+  margin: 0.25rem 0.1rem;
+}
 .dim { color: #718096; font-size: 0.85rem; }
 
 .status {
@@ -764,20 +868,16 @@ h1 { margin: 0; font-size: 1.5rem; color: #1a202c; }
   .col-lastused { order: 6; }
   .col-actions {
     order: 7;
-    flex-direction: column;
-    gap: 0.5rem;
+    justify-content: flex-end;
     padding-top: 0.625rem;
     margin-top: 0.5rem;
     border-top: 1px solid #f0f4f8;
     width: auto;
   }
-  .col-actions .action-btn {
-    width: 100%;
-    text-align: center;
-    padding: 0.625rem 0.75rem;
-    font-size: 0.85rem;
-    min-height: 40px;
-    margin-right: 0;
+  .row-menu-btn {
+    width: 40px;
+    height: 40px;
+    font-size: 1.2rem;
   }
   .new-key-card { padding: 1rem; }
   .key-display { flex-wrap: wrap; }

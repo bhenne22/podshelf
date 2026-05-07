@@ -76,7 +76,7 @@ export default defineEventHandler(async (event) => {
     VALUES (?, ?, ?, ?)
   `).run(podcastId, source.adapter, adapter, encryptJson(targetWrapped))
 
-  logAudit({
+  logAudit(event, {
     podcastId,
     userId: user.id,
     action: 'storage.migrate.start',

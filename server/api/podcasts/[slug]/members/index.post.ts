@@ -38,7 +38,7 @@ export default defineEventHandler(async (event) => {
 
   if (result.changes > 0) {
     const u = db.prepare('SELECT email FROM users WHERE id = ?').get(userId) as { email: string } | undefined
-    logAudit({
+    logAudit(event, {
       podcastId: podcast.id,
       userId: admin.id,
       action: 'podcast.member.add',

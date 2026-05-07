@@ -46,7 +46,7 @@ export default defineEventHandler(async (event) => {
   }
 
   // Don't log credentials — just record that storage was reconfigured.
-  logAudit({
+  logAudit(event, {
     podcastId,
     userId: user.id,
     action: 'podcast.storage.update',

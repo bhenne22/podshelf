@@ -40,7 +40,7 @@ export default defineEventHandler(async (event) => {
 
   if (!text) {
     db.prepare(`UPDATE episodes SET chapters_url = NULL, updated_at = datetime('now') WHERE id = ?`).run(id)
-    logAudit({
+    logAudit(event, {
       podcastId,
       userId: user.id,
       action: 'episode.chapters.clear',
@@ -77,7 +77,7 @@ export default defineEventHandler(async (event) => {
 
   db.prepare(`UPDATE episodes SET chapters_url = ?, updated_at = datetime('now') WHERE id = ?`).run(url, id)
 
-  logAudit({
+  logAudit(event, {
     podcastId,
     userId: user.id,
     action: 'episode.chapters.update',

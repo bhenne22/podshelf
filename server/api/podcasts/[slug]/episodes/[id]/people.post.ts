@@ -72,7 +72,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const personRow = db.prepare('SELECT name FROM people WHERE id = ?').get(personId) as { name: string }
-  logAudit({
+  logAudit(event, {
     podcastId,
     userId: user.id,
     action: existing ? 'episode.people.update' : 'episode.people.attach',

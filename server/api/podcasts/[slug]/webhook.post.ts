@@ -32,7 +32,7 @@ export default defineEventHandler(async (event) => {
 
   saveWebhookConfig(podcastId, { format: format as WebhookFormat, enabled, url })
 
-  logAudit({
+  logAudit(event, {
     podcastId,
     userId: user.id,
     action: 'podcast.webhook.update',

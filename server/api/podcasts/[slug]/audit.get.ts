@@ -27,11 +27,14 @@ export default defineEventHandler((event) => {
 
   const db = getDb()
   const sql = `
-    SELECT a.id, a.podcast_id, a.user_id, a.action, a.entity_type, a.entity_id,
+    SELECT a.id, a.podcast_id, a.user_id, a.api_key_id,
+           a.action, a.entity_type, a.entity_id,
            a.summary, a.details, a.created_at,
-           u.email AS user_email
+           u.email AS user_email,
+           k.label AS api_key_label
     FROM audit_log a
     LEFT JOIN users u ON u.id = a.user_id
+    LEFT JOIN api_keys k ON k.id = a.api_key_id
     WHERE a.podcast_id = ?
       ${before !== null ? 'AND a.id < ?' : ''}
     ORDER BY a.id DESC
@@ -45,6 +48,7 @@ export default defineEventHandler((event) => {
     id: number
     podcast_id: number | null
     user_id: number | null
+    api_key_id: number | null
     action: string
     entity_type: string | null
     entity_id: number | null
@@ -52,6 +56,7 @@ export default defineEventHandler((event) => {
     details: string | null
     created_at: string
     user_email: string | null
+    api_key_label: string | null
   }>
 
   const hasMore = rows.length > limit

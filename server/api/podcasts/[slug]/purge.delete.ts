@@ -30,7 +30,7 @@ export default defineEventHandler((event) => {
 
   // Log BEFORE delete — the audit row's podcast_id FK cascades on delete,
   // so post-delete logging would orphan the entry.
-  logAudit({
+  logAudit(event, {
     podcastId: null,
     userId: admin.id,
     action: 'podcast.purge',

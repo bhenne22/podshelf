@@ -74,7 +74,7 @@ export default defineEventHandler(async (event) => {
     storage_adapter: body.storage_adapter ?? 'sftp',
   })
 
-  logAudit({
+  logAudit(event, {
     podcastId: Number(id),
     userId: user.id,
     action: 'podcast.create',

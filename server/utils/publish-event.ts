@@ -43,6 +43,7 @@ export async function firePublishEvent(
   episodeId: number,
   source: PublishSource,
   actorUserId: number | null = null,
+  actorApiKeyId: number | null = null,
 ): Promise<{ webhook?: { ok: boolean; status?: number; message?: string } }> {
   const db = getDb()
 
@@ -89,6 +90,7 @@ export async function firePublishEvent(
   logAudit({
     podcastId,
     userId: actorUserId,
+    apiKeyId: actorApiKeyId,
     action: result.ok ? 'webhook.publish.ok' : 'webhook.publish.fail',
     entityType: 'episode',
     entityId: episodeId,

@@ -191,6 +191,7 @@ CREATE TABLE IF NOT EXISTS audit_log (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   podcast_id  INTEGER REFERENCES podcasts(id) ON DELETE CASCADE,
   user_id     INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  api_key_id  INTEGER REFERENCES api_keys(id) ON DELETE SET NULL,
   action      TEXT NOT NULL,
   entity_type TEXT,
   entity_id   INTEGER,

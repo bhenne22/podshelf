@@ -176,6 +176,7 @@ CREATE TABLE IF NOT EXISTS audit_log (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   podcast_id  INTEGER REFERENCES podcasts(id) ON DELETE CASCADE,
   user_id     INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  api_key_id  INTEGER REFERENCES api_keys(id) ON DELETE SET NULL,
   action      TEXT NOT NULL,
   entity_type TEXT,
   entity_id   INTEGER,
@@ -337,6 +338,11 @@ function applyMigrations(db: Database.Database) {
   }
   if (!podcastCols.includes('episode_numbers_enabled')) {
     db.exec('ALTER TABLE podcasts ADD COLUMN episode_numbers_enabled INTEGER NOT NULL DEFAULT 1')
+  }
+
+  const auditCols = cols('audit_log')
+  if (!auditCols.includes('api_key_id')) {
+    db.exec('ALTER TABLE audit_log ADD COLUMN api_key_id INTEGER REFERENCES api_keys(id) ON DELETE SET NULL')
   }
 
   const episodeCols = cols('episodes')

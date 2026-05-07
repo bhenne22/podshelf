@@ -37,7 +37,7 @@ export default defineEventHandler(async (event) => {
   )
 
   const personId = Number(result.lastInsertRowid)
-  logAudit({
+  logAudit(event, {
     podcastId,
     userId: user.id,
     action: 'people.create',

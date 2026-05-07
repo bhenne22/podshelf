@@ -25,9 +25,40 @@
             <td class="col-admin" data-label="Admin">{{ u.is_admin ? 'Yes' : 'No' }}</td>
             <td class="col-created dim" data-label="Created">{{ formatDate(u.created_at) }}</td>
             <td class="col-actions">
-              <button class="action-btn" @click="resetPassword(u)">Reset password</button>
-              <button class="action-btn" @click="toggleAdmin(u)">{{ u.is_admin ? 'Demote' : 'Promote' }}</button>
-              <button v-if="me && u.id !== me.id" class="action-btn danger" @click="confirmDelete(u)">Delete</button>
+              <div class="row-menu">
+                <button
+                  type="button"
+                  class="row-menu-btn"
+                  :class="{ open: openMenuId === u.id }"
+                  :aria-expanded="openMenuId === u.id"
+                  aria-haspopup="true"
+                  aria-label="User actions"
+                  @click.stop="toggleMenu(u.id, $event)"
+                >⋯</button>
+                <div v-if="openMenuId === u.id" class="row-menu-panel" :class="{ up: menuDirection === 'up' }" role="menu" @click.stop>
+                  <button
+                    type="button"
+                    class="row-menu-item"
+                    role="menuitem"
+                    @click="resetPassword(u); closeMenu()"
+                  >Reset password</button>
+                  <button
+                    type="button"
+                    class="row-menu-item"
+                    role="menuitem"
+                    @click="toggleAdmin(u); closeMenu()"
+                  >{{ u.is_admin ? 'Demote' : 'Promote' }}</button>
+                  <template v-if="me && u.id !== me.id">
+                    <div class="row-menu-divider"></div>
+                    <button
+                      type="button"
+                      class="row-menu-item danger"
+                      role="menuitem"
+                      @click="confirmDelete(u); closeMenu()"
+                    >Delete</button>
+                  </template>
+                </div>
+              </div>
             </td>
           </tr>
         </tbody>
@@ -120,6 +151,8 @@ const newPassword = ref('')
 
 const deleteTarget = ref<User | null>(null)
 const deleting = ref(false)
+
+const { openMenuId, menuDirection, toggleMenu, closeMenu } = useRowMenu()
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString()
@@ -245,14 +278,81 @@ h1 { margin: 0; font-size: 1.5rem; color: #1a202c; }
 .user-table tr:last-child td { border-bottom: none; }
 .dim { color: #718096; font-size: 0.85rem; }
 
-.action-btn {
-  padding: 0.3rem 0.65rem;
-  border: 1px solid #e2e8f0; border-radius: 5px;
-  background: white; color: #4a5568;
-  font-size: 0.8rem; cursor: pointer; margin-right: 0.375rem;
+.col-actions { width: 64px; text-align: right; }
+
+/* Row hamburger menu — matches the episodes table pattern. */
+.row-menu { position: relative; display: inline-block; }
+.row-menu-btn {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  width: 32px;
+  height: 30px;
+  font-size: 1.1rem;
+  line-height: 1;
+  color: #4a5568;
+  cursor: pointer;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
 }
-.action-btn:hover { border-color: #667eea; color: #667eea; }
-.action-btn.danger:hover { border-color: #fc8181; color: #c53030; }
+.row-menu-btn:hover, .row-menu-btn.open {
+  border-color: #667eea;
+  color: #667eea;
+  background: #f7fafc;
+}
+.row-menu-panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 160px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 0.3rem;
+  box-shadow: 0 8px 24px -8px rgba(0, 0, 0, 0.18);
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  text-align: left;
+}
+.row-menu-panel.up {
+  top: auto;
+  bottom: calc(100% + 4px);
+}
+.row-menu-item {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.45rem 0.65rem;
+  background: none;
+  border: none;
+  border-radius: 5px;
+  color: #2d3748;
+  font-size: 0.85rem;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.row-menu-item:hover:not(:disabled) {
+  background: #f7fafc;
+  color: #1a202c;
+}
+.row-menu-item:disabled { opacity: 0.6; cursor: not-allowed; }
+.row-menu-item.danger { color: #c53030; }
+.row-menu-item.danger:hover:not(:disabled) {
+  background: #fff5f5;
+  color: #9b2c2c;
+}
+.row-menu-divider {
+  height: 1px;
+  background: #f0f4f8;
+  margin: 0.25rem 0.1rem;
+}
 
 .modal-overlay {
   position: fixed; inset: 0;
@@ -303,7 +403,6 @@ h1 { margin: 0; font-size: 1.5rem; color: #1a202c; }
   .user-table { min-width: 640px; }
   .user-table th,
   .user-table td { padding: 0.5rem 0.625rem; font-size: 0.85rem; }
-  .action-btn { padding: 0.5rem 0.625rem; min-height: 38px; }
   .modal {
     padding: 1.25rem;
     max-height: 86vh;
@@ -387,19 +486,15 @@ h1 { margin: 0; font-size: 1.5rem; color: #1a202c; }
   .col-created { order: 3; }
   .col-actions {
     order: 4;
-    flex-direction: column;
-    gap: 0.5rem;
+    justify-content: flex-end;
     padding-top: 0.625rem;
     margin-top: 0.5rem;
     border-top: 1px solid #f0f4f8;
   }
-  .col-actions .action-btn {
-    width: 100%;
-    text-align: center;
-    padding: 0.625rem 0.75rem;
-    font-size: 0.85rem;
-    min-height: 40px;
-    margin-right: 0;
+  .row-menu-btn {
+    width: 40px;
+    height: 40px;
+    font-size: 1.2rem;
   }
 }
 </style>

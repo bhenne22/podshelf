@@ -35,7 +35,7 @@ export default defineEventHandler(async (event) => {
   `).run(podcastId, name, url, platformId, notes, position)
 
   const id = Number(result.lastInsertRowid)
-  logAudit({
+  logAudit(event, {
     podcastId,
     userId: user.id,
     action: 'distribution.create',

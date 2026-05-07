@@ -143,7 +143,7 @@ export default defineEventHandler(async (event) => {
 
   const diff = diffFields(before, updated)
   if (diff.changed.length > 0) {
-    logAudit({
+    logAudit(event, {
       podcastId,
       userId: user.id,
       action: 'podcast.settings.update',

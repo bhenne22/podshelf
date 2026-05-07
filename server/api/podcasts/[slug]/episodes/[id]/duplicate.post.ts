@@ -113,7 +113,7 @@ export default defineEventHandler((event) => {
     return id
   })()
 
-  logAudit({
+  logAudit(event, {
     podcastId,
     userId: user.id,
     action: 'episode.duplicate',

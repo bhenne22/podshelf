@@ -93,7 +93,7 @@ export default defineEventHandler(async (event) => {
                   action === 'episode.unpublish' ? 'Reverted to draft' :
                   'Updated'} "${updated.title}"`
     }
-    logAudit({
+    logAudit(event, {
       podcastId,
       userId: user.id,
       action,
@@ -110,7 +110,7 @@ export default defineEventHandler(async (event) => {
   const becamePublished = beforeStatus !== 'published' && updated.status === 'published'
   const wasOrIsPublished = beforeStatus === 'published' || updated.status === 'published'
   if (becamePublished) {
-    await firePublishEvent(podcastId, Number(id), 'episode-update', user.id)
+    await firePublishEvent(podcastId, Number(id), 'episode-update', user.id, event.context.apiKeyId ?? null)
   } else if (wasOrIsPublished) {
     bumpFeedLastModified(podcastId)
     maybeAutoTrigger(podcastId, 'episode-update')

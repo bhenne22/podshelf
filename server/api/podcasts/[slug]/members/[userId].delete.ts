@@ -28,7 +28,7 @@ export default defineEventHandler((event) => {
   const result = db.prepare('DELETE FROM podcast_users WHERE podcast_id = ? AND user_id = ?').run(podcast.id, userId)
 
   if (result.changes > 0) {
-    logAudit({
+    logAudit(event, {
       podcastId: podcast.id,
       userId: admin.id,
       action: 'podcast.member.remove',

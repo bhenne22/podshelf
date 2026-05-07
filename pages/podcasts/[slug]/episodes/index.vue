@@ -144,9 +144,9 @@
                   :aria-expanded="openMenuId === ep.id"
                   aria-haspopup="true"
                   aria-label="Episode actions"
-                  @click.stop="toggleMenu(ep.id)"
+                  @click.stop="toggleMenu(ep.id, $event)"
                 >⋯</button>
-                <div v-if="openMenuId === ep.id" class="row-menu-panel" role="menu" @click.stop>
+                <div v-if="openMenuId === ep.id" class="row-menu-panel" :class="{ up: menuDirection === 'up' }" role="menu" @click.stop>
                   <NuxtLink
                     :to="`/podcasts/${podcastSlug}/episodes/${ep.id}`"
                     class="row-menu-item"
@@ -382,15 +382,8 @@ function clearFilters() {
 const deleteTarget = ref<Episode | null>(null)
 const deleting = ref(false)
 
-const openMenuId = ref<number | null>(null)
+const { openMenuId, menuDirection, toggleMenu, closeMenu } = useRowMenu()
 const duplicatingId = ref<number | null>(null)
-
-function toggleMenu(id: number) {
-  openMenuId.value = openMenuId.value === id ? null : id
-}
-function closeMenu() {
-  openMenuId.value = null
-}
 
 async function duplicateEpisode(ep: Episode) {
   if (duplicatingId.value) return
@@ -408,24 +401,6 @@ async function duplicateEpisode(ep: Episode) {
     duplicatingId.value = null
   }
 }
-
-function onDocClick(e: MouseEvent) {
-  if (openMenuId.value === null) return
-  const target = e.target as HTMLElement | null
-  if (target?.closest('.row-menu')) return
-  openMenuId.value = null
-}
-function onDocKeydown(e: KeyboardEvent) {
-  if (e.key === 'Escape' && openMenuId.value !== null) closeMenu()
-}
-onMounted(() => {
-  document.addEventListener('click', onDocClick)
-  document.addEventListener('keydown', onDocKeydown)
-})
-onBeforeUnmount(() => {
-  document.removeEventListener('click', onDocClick)
-  document.removeEventListener('keydown', onDocKeydown)
-})
 
 function confirmDelete(ep: Episode) {
   deleteTarget.value = ep
@@ -795,6 +770,12 @@ h1 {
   flex-direction: column;
   gap: 0.1rem;
   text-align: left;
+}
+/* Flip the panel above the trigger when there isn't room below. The
+   composable sets `menuDirection = 'up'` based on viewport space. */
+.row-menu-panel.up {
+  top: auto;
+  bottom: calc(100% + 4px);
 }
 .row-menu-item {
   display: block;

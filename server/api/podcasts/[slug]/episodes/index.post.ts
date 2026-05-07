@@ -127,7 +127,7 @@ export default defineEventHandler(async (event) => {
 
   const episode = db.prepare('SELECT * FROM episodes WHERE id = ?').get(episodeId) as { status: string }
 
-  logAudit({
+  logAudit(event, {
     podcastId,
     userId: user.id,
     action: 'episode.create',
@@ -138,7 +138,7 @@ export default defineEventHandler(async (event) => {
 
   // Only kick a rebuild if this episode lands in the published feed.
   if (episode.status === 'published') {
-    await firePublishEvent(podcastId, episodeId, 'episode-create', user.id)
+    await firePublishEvent(podcastId, episodeId, 'episode-create', user.id, event.context.apiKeyId ?? null)
   }
 
   event.node.res.statusCode = 201

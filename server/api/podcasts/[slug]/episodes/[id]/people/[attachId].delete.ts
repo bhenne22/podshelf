@@ -42,7 +42,7 @@ export default defineEventHandler((event) => {
     throw createError({ statusCode: 404, statusMessage: 'Attachment not found' })
   }
 
-  logAudit({
+  logAudit(event, {
     podcastId,
     userId: user.id,
     action: 'episode.people.detach',

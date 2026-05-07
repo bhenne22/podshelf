@@ -26,7 +26,7 @@ export default defineEventHandler((event) => {
 
   db.prepare('DELETE FROM episodes WHERE id = ?').run(id)
 
-  logAudit({
+  logAudit(event, {
     podcastId,
     userId: user.id,
     action: 'episode.delete',
