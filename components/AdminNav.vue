@@ -33,6 +33,7 @@
           <ul class="more-panel">
             <li class="more-mobile-label">More</li>
             <li><NuxtLink :to="`/podcasts/${podcastSlug}/storage`" active-class="active">Storage</NuxtLink></li>
+            <li><NuxtLink :to="`/podcasts/${podcastSlug}/distribution`" active-class="active">Distribution</NuxtLink></li>
             <li><NuxtLink :to="`/podcasts/${podcastSlug}/build`" active-class="active">Build</NuxtLink></li>
             <li><NuxtLink :to="`/podcasts/${podcastSlug}/import-rss`" active-class="active">Import / Export</NuxtLink></li>
             <li><NuxtLink :to="`/podcasts/${podcastSlug}/members`" active-class="active">Members</NuxtLink></li>
@@ -93,7 +94,7 @@ const route = useRoute()
 // Pages tucked into the "More ▾" dropdown — when the current route is one
 // of these, the trigger gets the active style so the user can see where
 // they are even though the link isn't directly visible.
-const MORE_SEGMENTS = ['storage', 'build', 'import-rss', 'members', 'audit']
+const MORE_SEGMENTS = ['storage', 'distribution', 'build', 'import-rss', 'members', 'audit']
 const isInMoreSection = computed(() => {
   if (!props.podcastSlug) return false
   const base = `/podcasts/${props.podcastSlug}/`

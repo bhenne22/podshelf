@@ -223,6 +223,29 @@ the target. Re-running skips files already present at the target, so
 retries are safe. New uploads (audio, artwork, transcript, chapters) are
 blocked while a migration is in progress.
 
+### Distribution destinations
+
+Per-podcast list of "Listen on" destinations (Apple, Spotify, Pocket Casts,
+etc.). Pure metadata for the operator's reference. **Not** surfaced in the
+RSS feed — but exposed via the API so a static-site build (e.g. one
+triggered by `repository_dispatch` on episode publish) can pull this list
+on each rebuild and render a "Listen on" block.
+
+Each row has `name` (required), `url`, `platform_id` (the show's ID on that
+platform — Apple show ID, Spotify URI, etc.), and free-form `notes`. Order
+is preserved via `position`.
+
+| Endpoint                                                | Purpose                                |
+|---------------------------------------------------------|----------------------------------------|
+| `GET    /api/podcasts/[slug]/distribution`              | List destinations in display order     |
+| `POST   /api/podcasts/[slug]/distribution`              | Add — body: `{ name, url?, platform_id?, notes? }` |
+| `PATCH  /api/podcasts/[slug]/distribution/[id]`         | Update any of `name`, `url`, `platform_id`, `notes` |
+| `DELETE /api/podcasts/[slug]/distribution/[id]`         | Remove a destination                   |
+| `POST   /api/podcasts/[slug]/distribution/reorder`      | Body: `{ ids: [3, 1, 2] }` — rewrites positions |
+
+Reorder requires the request to contain exactly the same set of ids the
+podcast currently has — partial reorders are rejected.
+
 ---
 
 ## Episodes

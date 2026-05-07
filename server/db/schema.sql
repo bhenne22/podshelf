@@ -162,6 +162,25 @@ CREATE TABLE IF NOT EXISTS slug_aliases (
 
 CREATE INDEX IF NOT EXISTS idx_slug_aliases_podcast_id ON slug_aliases(podcast_id);
 
+-- Per-podcast list of "Listen on" destinations (Apple, Spotify, etc.).
+-- Pure metadata for the operator's reference. Not surfaced in the RSS feed,
+-- but exposed via the API so static-site builds can render a "Listen on"
+-- section after a publish.
+CREATE TABLE IF NOT EXISTS podcast_distributions (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  podcast_id    INTEGER NOT NULL REFERENCES podcasts(id) ON DELETE CASCADE,
+  name          TEXT NOT NULL,
+  url           TEXT,
+  platform_id   TEXT,
+  notes         TEXT,
+  position      INTEGER NOT NULL DEFAULT 0,
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_podcast_distributions_podcast_id
+  ON podcast_distributions(podcast_id, position);
+
 -- Per-podcast audit trail. podcast_id is nullable so we can capture
 -- platform-level events (admin actions on podcasts as a whole, etc.).
 -- user_id is nullable for system-generated events (e.g. the scheduler

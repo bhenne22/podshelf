@@ -50,6 +50,8 @@ tags:
     description: Episode CRUD, duplicate, chapters
   - name: People
     description: Per-podcast roster of hosts/guests + per-episode attachments
+  - name: Distribution
+    description: Per-podcast "Listen on" destinations (Apple, Spotify, etc.)
   - name: Uploads & files
     description: Audio / artwork / transcript / chapters file uploads + file browser
   - name: Storage
@@ -526,6 +528,112 @@ paths:
         '200':
           description: Removed.
 
+  # ---------------------------------------------------------------- Distribution
+  /api/podcasts/{slug}/distribution:
+    parameters:
+      - { $ref: '#/components/parameters/Slug' }
+    get:
+      tags: [Distribution]
+      summary: List "Listen on" destinations
+      description: |
+        Pure metadata — not surfaced in the RSS feed. A static-site build can
+        fetch this list on each rebuild to render a "Listen on" block.
+      responses:
+        '200':
+          description: Destinations in display order.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Distribution' }
+    post:
+      tags: [Distribution]
+      summary: Add a destination
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, example: Apple Podcasts }
+                url: { type: string, format: uri, nullable: true, example: 'https://podcasts.apple.com/us/podcast/.../id1234567890' }
+                platform_id: { type: string, nullable: true, description: 'Platform-specific show ID (Apple show ID, Spotify URI, etc).' }
+                notes: { type: string, nullable: true }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Distribution' }
+
+  /api/podcasts/{slug}/distribution/{id}:
+    parameters:
+      - { $ref: '#/components/parameters/Slug' }
+      - { $ref: '#/components/parameters/DistributionId' }
+    patch:
+      tags: [Distribution]
+      summary: Update a destination
+      description: |
+        `position` is owned by the reorder endpoint and cannot be set here.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                name: { type: string }
+                url: { type: string, format: uri, nullable: true }
+                platform_id: { type: string, nullable: true }
+                notes: { type: string, nullable: true }
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Distribution' }
+    delete:
+      tags: [Distribution]
+      summary: Remove a destination
+      responses:
+        '200':
+          description: Removed.
+
+  /api/podcasts/{slug}/distribution/reorder:
+    parameters:
+      - { $ref: '#/components/parameters/Slug' }
+    post:
+      tags: [Distribution]
+      summary: Reorder destinations
+      description: |
+        The body must contain exactly the same set of ids the podcast currently
+        has. Partial reorders are rejected.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ids]
+              properties:
+                ids:
+                  type: array
+                  items: { type: integer }
+                  example: [3, 1, 2]
+      responses:
+        '200':
+          description: Reordered.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  count: { type: integer }
+
   # ---------------------------------------------------------------- Uploads & files
   /api/podcasts/{slug}/upload:
     parameters:
@@ -1000,6 +1108,11 @@ components:
       name: id
       required: true
       schema: { type: integer }
+    DistributionId:
+      in: path
+      name: id
+      required: true
+      schema: { type: integer }
 
   responses:
     Unauthorized:
@@ -1123,6 +1236,19 @@ components:
         name: { type: string, description: "Live from the person's record." }
         img_url: { type: string, nullable: true }
         href: { type: string, nullable: true }
+
+    Distribution:
+      type: object
+      properties:
+        id: { type: integer }
+        podcast_id: { type: integer }
+        name: { type: string, example: Apple Podcasts }
+        url: { type: string, nullable: true }
+        platform_id: { type: string, nullable: true, description: 'Platform-specific show ID.' }
+        notes: { type: string, nullable: true }
+        position: { type: integer, description: 'Display order, ascending.' }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
 
     UploadResult:
       type: object

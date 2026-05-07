@@ -155,6 +155,21 @@ CREATE TABLE IF NOT EXISTS slug_aliases (
 
 CREATE INDEX IF NOT EXISTS idx_slug_aliases_podcast_id ON slug_aliases(podcast_id);
 
+CREATE TABLE IF NOT EXISTS podcast_distributions (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  podcast_id    INTEGER NOT NULL REFERENCES podcasts(id) ON DELETE CASCADE,
+  name          TEXT NOT NULL,
+  url           TEXT,
+  platform_id   TEXT,
+  notes         TEXT,
+  position      INTEGER NOT NULL DEFAULT 0,
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_podcast_distributions_podcast_id
+  ON podcast_distributions(podcast_id, position);
+
 CREATE TABLE IF NOT EXISTS audit_log (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   podcast_id  INTEGER REFERENCES podcasts(id) ON DELETE CASCADE,
