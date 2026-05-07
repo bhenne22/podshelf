@@ -95,7 +95,7 @@ export default defineEventHandler(async (event) => {
       podcast_id, title, slug, episode_number, season_number,
       description, audio_url, audio_size_bytes, audio_duration_seconds,
       published_at, status, tags, guid, episode_type,
-      transcript_path, transcript_type, chapters_url,
+      transcript_path, transcript_type, chapters_url, image_url,
       itunes_title, itunes_author, itunes_explicit,
       season_name, episode_display,
       license_identifier, license_url
@@ -103,12 +103,21 @@ export default defineEventHandler(async (event) => {
       @podcast_id, @title, @slug, @episode_number, @season_number,
       @description, @audio_url, @audio_size_bytes, @audio_duration_seconds,
       @published_at, 'published', NULL, @guid, @episode_type,
-      @transcript_path, @transcript_type, @chapters_url,
+      @transcript_path, @transcript_type, @chapters_url, @image_url,
       @itunes_title, @itunes_author, @itunes_explicit,
       @season_name, @episode_display,
       @license_identifier, @license_url
     )
   `)
+
+  // Refuse to persist a published_at that doesn't include seconds. The
+  // parser is supposed to always emit full ISO, but if it ever returned a
+  // truncated value we'd rather store NULL and let the user fix it than
+  // commit a half-formed timestamp that other code paths might widen.
+  function safePubDate(s: string | null): string | null {
+    if (!s) return null
+    return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(s) ? s : null
+  }
 
   // People are added as one-off rows on import — no roster pre-existing here.
   // Same name + role inferred from item-level entries are deduped by name to
@@ -136,12 +145,14 @@ export default defineEventHandler(async (event) => {
     let imported = 0
     let skipped = 0
     let unnumbered = 0
+    let httpImages = 0
     for (const item of items) {
       if (!item.audio_url) {
         skipped++
         continue
       }
       if (item.episode_number === null) unnumbered++
+      if (item.image_url && /^http:\/\//i.test(item.image_url)) httpImages++
       const slug = uniqueSlug(slugify(item.title))
       const result = insert.run({
         podcast_id: podcastId,
@@ -153,12 +164,13 @@ export default defineEventHandler(async (event) => {
         audio_url: item.audio_url,
         audio_size_bytes: item.audio_size_bytes,
         audio_duration_seconds: item.audio_duration_seconds,
-        published_at: item.pubDate,
+        published_at: safePubDate(item.pubDate),
         guid: item.guid,
         episode_type: item.episode_type || 'full',
         transcript_path: item.transcript_url,
         transcript_type: item.transcript_type,
         chapters_url: item.chapters_url,
+        image_url: item.image_url,
         itunes_title: item.itunes_title,
         itunes_author: item.itunes_author,
         itunes_explicit: item.itunes_explicit,
@@ -176,7 +188,7 @@ export default defineEventHandler(async (event) => {
       }
       imported++
     }
-    return { imported, skipped, unnumbered }
+    return { imported, skipped, unnumbered, httpImages }
   })
 
   // Channel-level <podcast:person> are the show's regular cast; create them
@@ -189,7 +201,8 @@ export default defineEventHandler(async (event) => {
     })()
   }
 
-  const { imported, skipped, unnumbered } = tx(feed.items)
+  const { imported, skipped, unnumbered, httpImages } = tx(feed.items)
+  const channelImageIsHttp = !!feed.image_url && /^http:\/\//i.test(feed.image_url)
 
   // Preserve the source feed's channel <podcast:guid> so existing
   // subscribers stay subscribed when they re-point their app at our feed.
@@ -262,8 +275,16 @@ export default defineEventHandler(async (event) => {
   const warnings: string[] = []
   if (unnumbered > 0) {
     warnings.push(
-      `${unnumbered} episode${unnumbered === 1 ? '' : 's'} imported without an episode_number `
-      + '(no <itunes:episode> tag and no #N in the title). Review titles to backfill.'
+      `${unnumbered} episode${unnumbered === 1 ? '' : 's'} imported without an episode number. `
+      + 'Source feed had no <itunes:episode> tag and the title didn\'t match a recognized pattern '
+      + '(#N, "Episode N", "Ep N"). Review titles to backfill.'
+    )
+  }
+  const httpImageTotal = httpImages + (channelImageIsHttp ? 1 : 0)
+  if (httpImageTotal > 0) {
+    warnings.push(
+      `${httpImageTotal} image URL${httpImageTotal === 1 ? '' : 's'} use http://. `
+      + 'Modern podcast clients and feed validators flag mixed-content; consider switching to https:// where the host supports it.'
     )
   }
 

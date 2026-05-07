@@ -9,6 +9,17 @@
 
       <div v-if="errorMsg" class="error-msg">{{ errorMsg }}</div>
       <div v-if="successMsg" class="success-msg" v-html="successMsg"></div>
+      <div v-if="importWarnings.length" class="warning-msg">
+        <strong>Heads up — review before publishing:</strong>
+        <ul>
+          <li v-for="(w, i) in importWarnings" :key="i">{{ w }}</li>
+        </ul>
+        <p class="warning-actions">
+          <NuxtLink :to="`/podcasts/${podcastSlug}/episodes`" class="warning-link">
+            Continue to the episodes list →
+          </NuxtLink>
+        </p>
+      </div>
 
       <!-- Export -->
       <section class="form-section">
@@ -112,7 +123,11 @@ interface RssImportResult {
   total_items: number
   imported: number
   skipped: number
+  unnumbered: number
+  warnings: string[]
 }
+
+const importWarnings = ref<string[]>([])
 
 interface JsonImportResult {
   imported: {
@@ -128,6 +143,7 @@ async function onRssImport() {
   rssLoading.value = true
   errorMsg.value = ''
   successMsg.value = ''
+  importWarnings.value = []
   try {
     const result = await $fetch<RssImportResult>(`/api/podcasts/${podcastSlug}/import-rss`, {
       method: 'POST',
@@ -135,8 +151,14 @@ async function onRssImport() {
     })
     successMsg.value = `Imported <strong>${result.imported} episodes</strong> from <em>${result.feed_title ?? 'feed'}</em>.`
         + (result.skipped ? ` Skipped ${result.skipped} item(s) without audio.` : '')
-        + ' Heading to the episodes list…'
-    setTimeout(() => router.push(`/podcasts/${podcastSlug}/episodes`), 1500)
+    importWarnings.value = result.warnings || []
+    // Hold the user on this page when there are warnings — they need to
+    // see them and decide what to do. With no warnings, fall through to
+    // the episodes list as before.
+    if (importWarnings.value.length === 0) {
+      successMsg.value += ' Heading to the episodes list…'
+      setTimeout(() => router.push(`/podcasts/${podcastSlug}/episodes`), 1500)
+    }
   } catch (err: unknown) {
     errorMsg.value = (err as { data?: { statusMessage?: string } })?.data?.statusMessage || 'Import failed'
   } finally {
@@ -265,6 +287,20 @@ input[type="url"]:focus {
   line-height: 1.55;
 }
 :deep(.success-msg em) { font-style: italic; }
+
+.warning-msg {
+  background: #fffaf0; border: 1px solid #f6ad55;
+  color: #7b341e; padding: 0.875rem 1rem;
+  border-radius: 8px; margin-bottom: 1rem; font-size: 0.9rem;
+  line-height: 1.55;
+}
+.warning-msg ul { margin: 0.5rem 0 0.5rem 1.25rem; padding: 0; }
+.warning-msg li { margin-bottom: 0.25rem; }
+.warning-actions { margin: 0.5rem 0 0; }
+.warning-link {
+  color: #b7791f; font-weight: 500; text-decoration: none;
+}
+.warning-link:hover { text-decoration: underline; }
 
 @media (max-width: 720px) {
   .container { padding: 1rem 0.75rem; }

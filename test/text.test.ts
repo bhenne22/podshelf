@@ -50,3 +50,26 @@ test('inferEpisodeNumberFromTitle: tolerates whitespace', () => {
   assert.equal(inferEpisodeNumberFromTitle('Episode # 42'), 42)
   assert.equal(inferEpisodeNumberFromTitle('Episode #42'), 42)
 })
+
+test('inferEpisodeNumberFromTitle: parses anchored "Episode N" / "Ep N" prefixes', () => {
+  // OIWT shape — "Episode 24: Darcy Is A Sociopath", "Episode 1: Pilot"
+  assert.equal(inferEpisodeNumberFromTitle('Episode 24: Darcy Is A Sociopath'), 24)
+  assert.equal(inferEpisodeNumberFromTitle('Episode 1: Pilot'), 1)
+  // Hyphenated separator instead of colon
+  assert.equal(inferEpisodeNumberFromTitle('Episode 100 - The Recap'), 100)
+  // Short "Ep" / "Ep." abbreviations
+  assert.equal(inferEpisodeNumberFromTitle('Ep 5: Some title'), 5)
+  assert.equal(inferEpisodeNumberFromTitle('Ep. 12: Title'), 12)
+  // Case-insensitive
+  assert.equal(inferEpisodeNumberFromTitle('episode 7: lowercase'), 7)
+  assert.equal(inferEpisodeNumberFromTitle('EPISODE 8: SHOUTING'), 8)
+})
+
+test('inferEpisodeNumberFromTitle: only anchors at the start (avoids false positives)', () => {
+  // Phrase like "Episode 4 of Stranger Things" must NOT match — the prefix
+  // form requires it at the start of the title.
+  assert.equal(
+    inferEpisodeNumberFromTitle('We talk about Episode 4 of Stranger Things'),
+    null,
+  )
+})

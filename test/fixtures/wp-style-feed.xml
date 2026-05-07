@@ -2,12 +2,14 @@
 <rss version="2.0"
   xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"
   xmlns:content="http://purl.org/rss/1.0/modules/content/"
-  xmlns:podcast="https://podcastindex.org/namespace/1.0">
+  xmlns:podcast="https://podcastindex.org/namespace/1.0"
+  xmlns:custom="http://example.com/custom-namespace">
   <channel>
     <title>Subtle Interference (test fixture)</title>
     <description>Synthetic feed mirroring the WordPress / PowerPress shapes that Podshelf's importer must handle.</description>
     <language>en</language>
     <itunes:author>Bob &amp; Jane</itunes:author>
+    <itunes:image href="https://example.com/show-cover.jpg"/>
     <podcast:guid>9b024349-ccf0-5f69-8d75-12d1a36b3ee6</podcast:guid>
 
     <!-- 1. Title with numeric character references inside CDATA — the
@@ -63,6 +65,35 @@
       <pubDate>Sat, 11 Jan 2025 12:00:00 +0000</pubDate>
       <guid isPermaLink="false">https://example.com/?p=1</guid>
       <enclosure url="https://example.com/audio/1.mp3" length="1000" type="audio/mpeg"/>
+    </item>
+
+    <!-- 6. Bug 5 — per-episode <itunes:image> with a URL different from
+         the channel image. Also exercises Bug 3 follow-up: title uses the
+         "Episode N:" form (not #N). And exercises Bug 6 namespace
+         robustness: <podcast:season> + a custom namespace that must NOT
+         interfere with pubDate / image_url parsing. -->
+    <item>
+      <title>Episode 24: Darcy Is A Sociopath</title>
+      <description>desc</description>
+      <pubDate>Thu, 05 Mar 2020 06:00:54 +0000</pubDate>
+      <guid isPermaLink="false">https://example.com/?p=1103</guid>
+      <enclosure url="https://example.com/audio/1103.mp3" length="67696711" type="audio/mpeg"/>
+      <itunes:image href="https://example.com/episode-24.jpg"/>
+      <itunes:season>1</itunes:season>
+      <podcast:season>1</podcast:season>
+      <itunes:duration>1:06:13</itunes:duration>
+      <custom:something>foo</custom:something>
+    </item>
+
+    <!-- 7. Bug 5 fallback — older RSS <image><url>…</url></image> form
+         per item, no <itunes:image>. Also "Ep N:" pattern variant. -->
+    <item>
+      <title>Ep 7: Older image fallback</title>
+      <description>desc</description>
+      <pubDate>Sun, 01 Feb 2026 09:00:00 +0000</pubDate>
+      <guid isPermaLink="false">https://example.com/?p=7</guid>
+      <enclosure url="https://example.com/audio/7.mp3" length="1000" type="audio/mpeg"/>
+      <image><url>https://example.com/episode-7.jpg</url></image>
     </item>
   </channel>
 </rss>

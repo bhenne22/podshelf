@@ -536,6 +536,8 @@ interface EpisodeForm {
   license_url: string
 }
 
+const originalPublishedAt = ref<string | null>(null)
+
 const form = reactive<EpisodeForm>({
   title: '',
   slug: '',
@@ -774,6 +776,11 @@ onMounted(async () => {
       license_identifier: ep.license_identifier || '',
       license_url: ep.license_url || '',
     })
+    // <input type="datetime-local"> can only round-trip minute precision,
+    // so we display the truncated value but remember the full ISO. On save
+    // we send the full ISO back if the user didn't change the field;
+    // otherwise we send what they typed.
+    originalPublishedAt.value = ep.published_at || null
 
     await Promise.all([loadRoster(), loadEpisodePeople()])
   } catch (err: unknown) {
@@ -812,6 +819,18 @@ async function saveEpisode() {
   errorMsg.value = ''
   successMsg.value = ''
 
+  // Preserve the original full-precision ISO when the user didn't change
+  // the field. Without this, just opening + saving an episode strips the
+  // seconds (and the Z suffix) off the stored timestamp.
+  let publishedAtToSend: string | null = form.published_at || null
+  if (
+    publishedAtToSend
+    && originalPublishedAt.value
+    && publishedAtToSend === originalPublishedAt.value.slice(0, 16)
+  ) {
+    publishedAtToSend = originalPublishedAt.value
+  }
+
   try {
     await updateEpisode(id, {
       ...form,
@@ -819,7 +838,7 @@ async function saveEpisode() {
       season_number: form.season_number || null,
       audio_size_bytes: form.audio_size_bytes || null,
       audio_duration_seconds: form.audio_duration_seconds || null,
-      published_at: form.published_at || null,
+      published_at: publishedAtToSend,
     })
     formDirty.value = false
     successMsg.value = 'Episode saved successfully.'
@@ -836,7 +855,11 @@ async function togglePublish() {
   if (form.status === 'draft') {
     form.status = 'published'
     if (!form.published_at) {
-      form.published_at = new Date().toISOString().slice(0, 16)
+      const now = new Date().toISOString()
+      form.published_at = now.slice(0, 16)
+      // Stash the full ISO so saveEpisode keeps full precision instead of
+      // persisting a minute-truncated timestamp for first-time publishes.
+      originalPublishedAt.value = now
     }
     // The server coerces to 'scheduled' automatically when published_at is in the future.
   } else {

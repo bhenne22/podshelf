@@ -23,6 +23,7 @@ export interface ParsedItem {
   transcript_url: string | null
   transcript_type: string | null
   chapters_url: string | null
+  image_url: string | null
   itunes_title: string | null
   itunes_author: string | null
   itunes_explicit: string | null
@@ -119,12 +120,21 @@ function parseDuration(value: unknown): number | null {
 
 /**
  * Convert RFC 2822 date string to ISO 8601. Returns null if unparseable.
+ *
+ * Always returns full-precision ISO (`YYYY-MM-DDTHH:mm:ss.sssZ`) or null —
+ * never a partial value. Callers that defensively re-validate the result
+ * can rely on this contract.
  */
 function parsePubDate(value: unknown): string | null {
   const s = asString(value)
   if (!s) return null
   const d = new Date(s)
-  return Number.isNaN(d.getTime()) ? null : d.toISOString()
+  if (Number.isNaN(d.getTime())) return null
+  const iso = d.toISOString()
+  // Belt-and-suspenders: refuse anything that doesn't have seconds. If
+  // toISOString ever changed shape this would surface immediately rather
+  // than persisting a half-formed timestamp.
+  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/.test(iso) ? iso : null
 }
 
 function asArray(value: unknown): unknown[] {
@@ -215,6 +225,13 @@ export function parsePodcastFeed(xml: string): ParsedFeed {
 
     const epLicense = parseLicense(item['podcast:license'])
 
+    // Per-episode artwork. Apple's spec says <itunes:image href="…"/>;
+    // some publishers emit the older RSS <image><url>…</url></image>
+    // form per item — handle that as a fallback.
+    const itemImageNode = item['itunes:image'] as { '@_href'?: string } | undefined
+    const itemImageFallback = (item.image as { url?: unknown })?.url
+    const itemImageUrl = itemImageNode?.['@_href'] || asString(itemImageFallback) || null
+
     items.push({
       title,
       description: asString(item['content:encoded']) || asString(item.description),
@@ -235,6 +252,7 @@ export function parsePodcastFeed(xml: string): ParsedFeed {
       transcript_url: firstTranscript?.['@_url'] || null,
       transcript_type: firstTranscript?.['@_type'] || null,
       chapters_url: chaptersNode?.['@_url'] || null,
+      image_url: itemImageUrl,
       itunes_title: decodeEntities(asString(item['itunes:title'])) || null,
       itunes_author: asString(item['itunes:author']),
       itunes_explicit: epExplicit,

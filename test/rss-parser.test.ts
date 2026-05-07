@@ -23,7 +23,7 @@ function slugify(text: string): string {
 }
 
 test('parses all items from the fixture', () => {
-  assert.equal(feed.items.length, 5)
+  assert.equal(feed.items.length, 7)
 })
 
 test('Bug 1: titles have entities decoded', () => {
@@ -105,4 +105,50 @@ test('preserves <guid> exactly (no regression — listeners depend on it)', () =
   for (const item of feed.items) {
     assert.ok(item.guid, `every item should preserve its <guid>; missing on "${item.title}"`)
   }
+})
+
+test('Bug 5: per-episode <itunes:image href> populates image_url', () => {
+  const ep24 = feed.items.find((i) => i.title.startsWith('Episode 24'))!
+  assert.equal(ep24.image_url, 'https://example.com/episode-24.jpg')
+  assert.notEqual(ep24.image_url, feed.image_url, 'must NOT inherit the channel-level image')
+})
+
+test('Bug 5: <image><url> per-item is used as a fallback when itunes:image is absent', () => {
+  const ep7 = feed.items.find((i) => i.title.startsWith('Ep 7'))!
+  assert.equal(ep7.image_url, 'https://example.com/episode-7.jpg')
+})
+
+test('Bug 5: items without any image stay null', () => {
+  const noImage = feed.items.find((i) => i.audio_url?.endsWith('/300.mp3'))!
+  assert.equal(noImage.image_url, null)
+})
+
+test('Bug 6: pubDate parses to full ISO with seconds even when extra namespaces are present', () => {
+  // The OIWT regression: this is the only item with both <itunes:season>
+  // and <podcast:season> plus an unknown namespace. pubDate must still
+  // parse to full ISO, not be truncated.
+  const ep24 = feed.items.find((i) => i.title.startsWith('Episode 24'))!
+  assert.equal(ep24.pubDate, '2020-03-05T06:00:54.000Z')
+  assert.match(
+    ep24.pubDate ?? '',
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z$/,
+    'must include seconds + ms + Z',
+  )
+})
+
+test('Bug 6: unknown namespaces don\'t affect parsing of standard fields', () => {
+  const ep24 = feed.items.find((i) => i.title.startsWith('Episode 24'))!
+  assert.equal(ep24.audio_url, 'https://example.com/audio/1103.mp3')
+  assert.equal(ep24.audio_duration_seconds, 1 * 3600 + 6 * 60 + 13)
+  assert.equal(ep24.season_number, 1)
+})
+
+test('Bug 3 follow-up: "Episode N:" titles infer episode_number', () => {
+  const ep24 = feed.items.find((i) => i.title.startsWith('Episode 24'))!
+  assert.equal(ep24.episode_number, 24)
+})
+
+test('Bug 3 follow-up: "Ep N:" titles infer episode_number', () => {
+  const ep7 = feed.items.find((i) => i.title.startsWith('Ep 7'))!
+  assert.equal(ep7.episode_number, 7)
 })
