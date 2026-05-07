@@ -12,6 +12,7 @@
       <div v-if="loadError" class="error-msg">{{ loadError }}</div>
 
       <div v-if="episode && podcast" :class="['preview-frame', { mobile: viewMode === 'mobile' }]">
+        <div class="preview-screen">
         <article class="ep-detail">
           <div class="ep-art">
             <img v-if="artUrl" :src="artUrl" :alt="episode.title" />
@@ -146,6 +147,7 @@
             <span class="ep-nav-arrow">→</span>
           </span>
         </nav>
+        </div>
       </div>
     </div>
   </div>
@@ -294,6 +296,10 @@ useHead({ title: () => `${episode.value?.title || 'Episode'} — Preview — Pod
 }
 .preview-frame.mobile {
   max-width: 390px;
+  /* Phone-ish viewport: ~720px usable screen + 60px combined top/bottom bezel
+   * borders. Content inside scrolls instead of letting the frame grow. */
+  height: 780px;
+  max-height: calc(100vh - 4rem);
   margin: 0.5rem auto 2rem;
   border: 14px solid #1a202c;
   border-top-width: 30px;
@@ -301,8 +307,17 @@ useHead({ title: () => `${episode.value?.title || 'Episode'} — Preview — Pod
   border-radius: 38px;
   background: white;
   box-shadow: 0 24px 48px rgba(0, 0, 0, 0.18);
-  padding: 0.75rem;
+  padding: 0;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.preview-frame.mobile .preview-screen {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0.75rem;
+  -webkit-overflow-scrolling: touch;
 }
 
 .ep-detail {

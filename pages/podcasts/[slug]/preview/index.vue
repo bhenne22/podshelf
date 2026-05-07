@@ -15,6 +15,7 @@
       <div v-if="loadError" class="error-msg">{{ loadError }}</div>
 
       <div :class="['preview-frame', { mobile: viewMode === 'mobile' }]">
+        <div class="preview-screen">
         <template v-if="podcast">
           <section class="hero">
             <div class="hero-art">
@@ -64,6 +65,7 @@
             </ul>
           </section>
         </template>
+        </div>
       </div>
     </div>
   </div>
@@ -156,6 +158,10 @@ useHead({ title: () => `Preview: ${podcast.value?.title || podcastSlug} — Pods
 }
 .preview-frame.mobile {
   max-width: 390px;
+  /* Phone-ish viewport: ~720px usable screen + 60px combined top/bottom bezel
+   * borders. Content inside scrolls instead of letting the frame grow. */
+  height: 780px;
+  max-height: calc(100vh - 4rem);
   margin: 0.5rem auto 2rem;
   border: 14px solid #1a202c;
   border-top-width: 30px;
@@ -163,8 +169,17 @@ useHead({ title: () => `Preview: ${podcast.value?.title || podcastSlug} — Pods
   border-radius: 38px;
   background: white;
   box-shadow: 0 24px 48px rgba(0, 0, 0, 0.18);
-  padding: 0.5rem;
+  padding: 0;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.preview-frame.mobile .preview-screen {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0.5rem;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* Hero */

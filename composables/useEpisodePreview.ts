@@ -135,6 +135,10 @@ export function useEpisodePreview(
   }
 
   // When the active cue advances, scroll it into view inside its own pane.
+  // We use getBoundingClientRect math instead of `target.offsetTop` because
+  // offsetTop is relative to the nearest *positioned* ancestor, which often
+  // isn't the cues container — that mismatch caused the scroll position to
+  // overshoot and land minutes ahead of the active cue.
   watch(activeCueIdx, (idx) => {
     if (idx < 0 || !transcriptOpen.value || idx === lastScrolledIdx.value) return
     lastScrolledIdx.value = idx
@@ -143,12 +147,16 @@ export function useEpisodePreview(
       if (!container) return
       const target = container.querySelector(`[data-idx="${idx}"]`) as HTMLElement | null
       if (!target) return
-      const cTop = container.scrollTop
-      const cBottom = cTop + container.clientHeight
-      const tTop = target.offsetTop
-      const tBottom = tTop + target.offsetHeight
-      if (tTop < cTop || tBottom > cBottom) {
-        container.scrollTo({ top: tTop - container.clientHeight / 3, behavior: 'smooth' })
+      const cRect = container.getBoundingClientRect()
+      const tRect = target.getBoundingClientRect()
+      const targetTopWithin = tRect.top - cRect.top + container.scrollTop
+      const visibleTop = container.scrollTop
+      const visibleBottom = visibleTop + container.clientHeight
+      if (targetTopWithin < visibleTop || targetTopWithin + tRect.height > visibleBottom) {
+        container.scrollTo({
+          top: Math.max(0, targetTopWithin - container.clientHeight / 3),
+          behavior: 'smooth',
+        })
       }
     })
   })
