@@ -221,13 +221,15 @@ const numberDisplay = computed(() => {
 })
 
 const currentIndex = computed(() => allEpisodes.value.findIndex((e) => e.id === episodeId))
+// API returns episodes newest-first; chronologically Prev = older = LATER in
+// the array, Next = newer = EARLIER. Walk it backwards.
 const prevEpisode = computed(() => {
   const i = currentIndex.value
-  return i > 0 ? allEpisodes.value[i - 1] : null
+  return i >= 0 && i < allEpisodes.value.length - 1 ? allEpisodes.value[i + 1] : null
 })
 const nextEpisode = computed(() => {
   const i = currentIndex.value
-  return i >= 0 && i < allEpisodes.value.length - 1 ? allEpisodes.value[i + 1] : null
+  return i > 0 ? allEpisodes.value[i - 1] : null
 })
 
 function formatDate(iso: string): string {

@@ -3,27 +3,50 @@
     <AdminNav :podcast-slug="podcastSlug" />
     <div class="container">
       <div class="page-header">
-        <h1>Edit Episode</h1>
-        <div class="header-actions">
+        <div class="page-header-top">
+          <h1>Edit Episode</h1>
+          <NuxtLink :to="`/podcasts/${podcastSlug}/episodes`" class="btn-back">← Episodes</NuxtLink>
+        </div>
+
+        <nav v-if="allEpisodes.length > 1" class="ep-nav" aria-label="Episode navigation">
           <NuxtLink
             v-if="prevEpisode"
             :to="`/podcasts/${podcastSlug}/episodes/${prevEpisode.id}`"
-            class="btn-back"
-            :title="prevEpisode.title"
-          >← Prev</NuxtLink>
-          <span v-else class="btn-back disabled" title="No previous episode">← Prev</span>
+            class="ep-nav-link"
+          >
+            <span class="ep-nav-arrow">←</span>
+            <span class="ep-nav-meta">
+              <span class="ep-nav-label">Previous (older)</span>
+              <span class="ep-nav-title">{{ prevEpisode.title }}</span>
+            </span>
+          </NuxtLink>
+          <span v-else class="ep-nav-link disabled" aria-disabled="true">
+            <span class="ep-nav-arrow">←</span>
+            <span class="ep-nav-meta">
+              <span class="ep-nav-label">Previous (older)</span>
+              <span class="ep-nav-title">—</span>
+            </span>
+          </span>
+
           <NuxtLink
             v-if="nextEpisode"
             :to="`/podcasts/${podcastSlug}/episodes/${nextEpisode.id}`"
-            class="btn-back"
-            :title="nextEpisode.title"
-          >Next →</NuxtLink>
-          <span v-else class="btn-back disabled" title="No next episode">Next →</span>
-          <button type="button" class="btn-back" :disabled="duplicating" @click="duplicateEpisode">
-            {{ duplicating ? 'Duplicating…' : 'Duplicate' }}
-          </button>
-          <NuxtLink :to="`/podcasts/${podcastSlug}/episodes`" class="btn-back">← Episodes</NuxtLink>
-        </div>
+            class="ep-nav-link right"
+          >
+            <span class="ep-nav-meta">
+              <span class="ep-nav-label">Next (newer)</span>
+              <span class="ep-nav-title">{{ nextEpisode.title }}</span>
+            </span>
+            <span class="ep-nav-arrow">→</span>
+          </NuxtLink>
+          <span v-else class="ep-nav-link right disabled" aria-disabled="true">
+            <span class="ep-nav-meta">
+              <span class="ep-nav-label">Next (newer)</span>
+              <span class="ep-nav-title">—</span>
+            </span>
+            <span class="ep-nav-arrow">→</span>
+          </span>
+        </nav>
       </div>
 
       <div v-if="loadError" class="error-msg">{{ loadError }}</div>
@@ -559,25 +582,6 @@ const chaptersMsg = ref('')
 const chaptersMsgOk = ref(false)
 const transcriptUploading = ref(false)
 const transcriptError = ref('')
-const duplicating = ref(false)
-
-async function duplicateEpisode() {
-  duplicating.value = true
-  errorMsg.value = ''
-  try {
-    const newEp = await $fetch<{ id: number }>(
-      `/api/podcasts/${podcastSlug}/episodes/${id}/duplicate`,
-      { method: 'POST' },
-    )
-    formSaved.value = true
-    await navigateTo(`/podcasts/${podcastSlug}/episodes/${newEp.id}`)
-  } catch (err: unknown) {
-    errorMsg.value = (err as { data?: { statusMessage?: string } })?.data?.statusMessage
-      || (err instanceof Error ? err.message : 'Duplicate failed')
-  } finally {
-    duplicating.value = false
-  }
-}
 const chaptersFileUploading = ref(false)
 const chaptersFileError = ref('')
 
@@ -709,13 +713,16 @@ const allEpisodes = ref<Episode[]>([])
 const currentIndex = computed(() =>
   allEpisodes.value.findIndex((e) => e.id === id),
 )
+// API returns episodes newest-first (DESC by published_at, drafts at the
+// end). The user thinks chronologically — Prev = older, Next = newer — so
+// we walk the array backwards relative to the index ordering.
 const prevEpisode = computed(() => {
   const i = currentIndex.value
-  return i > 0 ? allEpisodes.value[i - 1] : null
+  return i >= 0 && i < allEpisodes.value.length - 1 ? allEpisodes.value[i + 1] : null
 })
 const nextEpisode = computed(() => {
   const i = currentIndex.value
-  return i >= 0 && i < allEpisodes.value.length - 1 ? allEpisodes.value[i + 1] : null
+  return i > 0 ? allEpisodes.value[i - 1] : null
 })
 
 // Load episode
@@ -951,28 +958,83 @@ useHead({ title: () => `Edit: ${form.title || '…'} — Podshelf Admin` })
   padding: 2rem 1.25rem;
 }
 
-.page-header {
+.page-header { margin-bottom: 1.5rem; }
+.page-header-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 1.5rem;
+  margin-bottom: 0.875rem;
 }
 
 h1 { margin: 0; font-size: 1.5rem; color: #1a202c; }
 
-.header-actions { display: flex; gap: 0.75rem; align-items: center; }
-
-.btn-back, .btn-preview {
+.btn-back {
   font-size: 0.875rem;
   color: #667eea;
   text-decoration: none;
 }
-.btn-back:hover, .btn-preview:hover { text-decoration: underline; }
-.btn-back.disabled {
+.btn-back:hover { text-decoration: underline; }
+
+/* Prev/Next nav strip */
+.ep-nav {
+  display: flex;
+  gap: 0.75rem;
+}
+.ep-nav-link {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  flex: 1;
+  min-width: 0;
+  padding: 0.625rem 0.875rem;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  text-decoration: none;
+  color: #2d3748;
+  transition: all 0.15s;
+}
+.ep-nav-link.right {
+  flex-direction: row;
+  justify-content: flex-end;
+  text-align: right;
+}
+.ep-nav-link:hover:not(.disabled) {
+  border-color: #c3dafe;
+  background: #f7fafc;
+}
+.ep-nav-link.disabled {
   color: #cbd5e0;
   cursor: not-allowed;
+  background: #f7fafc;
 }
-.btn-back.disabled:hover { text-decoration: none; }
+.ep-nav-arrow {
+  flex-shrink: 0;
+  color: #a0aec0;
+  font-size: 1rem;
+}
+.ep-nav-link:hover:not(.disabled) .ep-nav-arrow { color: #4c51bf; }
+.ep-nav-meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+.ep-nav-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #a0aec0;
+  font-weight: 600;
+}
+.ep-nav-title {
+  font-size: 0.85rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+}
 
 .publish-banner {
   display: flex;
@@ -1478,12 +1540,12 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
     min-height: 44px;
   }
   textarea { min-height: auto; }
-  .page-header {
+  .page-header-top {
     flex-direction: column;
     align-items: stretch;
     gap: 0.5rem;
   }
-  .header-actions { justify-content: flex-end; }
+  .ep-nav { flex-direction: column; }
   .form-row { flex-direction: column; gap: 0; }
   .publish-banner {
     flex-direction: column;

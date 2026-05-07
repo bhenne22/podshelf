@@ -126,8 +126,38 @@
               <span v-else>{{ ep.published_at ? formatDate(ep.published_at) : '—' }}</span>
             </td>
             <td class="col-actions">
-              <NuxtLink :to="`/podcasts/${podcastSlug}/episodes/${ep.id}`" class="action-btn">Edit</NuxtLink>
-              <button @click="confirmDelete(ep)" class="action-btn danger">Delete</button>
+              <div class="row-menu">
+                <button
+                  type="button"
+                  class="row-menu-btn"
+                  :class="{ open: openMenuId === ep.id }"
+                  :aria-expanded="openMenuId === ep.id"
+                  aria-haspopup="true"
+                  aria-label="Episode actions"
+                  @click.stop="toggleMenu(ep.id)"
+                >⋯</button>
+                <div v-if="openMenuId === ep.id" class="row-menu-panel" role="menu" @click.stop>
+                  <NuxtLink
+                    :to="`/podcasts/${podcastSlug}/episodes/${ep.id}`"
+                    class="row-menu-item"
+                    role="menuitem"
+                  >Edit</NuxtLink>
+                  <button
+                    type="button"
+                    class="row-menu-item"
+                    role="menuitem"
+                    :disabled="duplicatingId === ep.id"
+                    @click="duplicateEpisode(ep)"
+                  >{{ duplicatingId === ep.id ? 'Duplicating…' : 'Duplicate' }}</button>
+                  <div class="row-menu-divider"></div>
+                  <button
+                    type="button"
+                    class="row-menu-item danger"
+                    role="menuitem"
+                    @click="confirmDelete(ep); closeMenu()"
+                  >Delete</button>
+                </div>
+              </div>
             </td>
           </tr>
         </tbody>
@@ -263,6 +293,51 @@ function clearFilters() {
 
 const deleteTarget = ref<Episode | null>(null)
 const deleting = ref(false)
+
+const openMenuId = ref<number | null>(null)
+const duplicatingId = ref<number | null>(null)
+
+function toggleMenu(id: number) {
+  openMenuId.value = openMenuId.value === id ? null : id
+}
+function closeMenu() {
+  openMenuId.value = null
+}
+
+async function duplicateEpisode(ep: Episode) {
+  if (duplicatingId.value) return
+  duplicatingId.value = ep.id
+  try {
+    const newEp = await $fetch<{ id: number }>(
+      `/api/podcasts/${podcastSlug}/episodes/${ep.id}/duplicate`,
+      { method: 'POST' },
+    )
+    closeMenu()
+    await navigateTo(`/podcasts/${podcastSlug}/episodes/${newEp.id}`)
+  } catch (err: unknown) {
+    error.value = err instanceof Error ? err.message : 'Duplicate failed'
+  } finally {
+    duplicatingId.value = null
+  }
+}
+
+function onDocClick(e: MouseEvent) {
+  if (openMenuId.value === null) return
+  const target = e.target as HTMLElement | null
+  if (target?.closest('.row-menu')) return
+  openMenuId.value = null
+}
+function onDocKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape' && openMenuId.value !== null) closeMenu()
+}
+onMounted(() => {
+  document.addEventListener('click', onDocClick)
+  document.addEventListener('keydown', onDocKeydown)
+})
+onBeforeUnmount(() => {
+  document.removeEventListener('click', onDocClick)
+  document.removeEventListener('keydown', onDocKeydown)
+})
 
 function confirmDelete(ep: Episode) {
   deleteTarget.value = ep
@@ -485,7 +560,7 @@ h1 {
 .col-num { width: 56px; }
 .col-status { width: 110px; }
 .col-date { width: 140px; font-size: 0.85rem; color: #718096; }
-.col-actions { width: 140px; }
+.col-actions { width: 64px; text-align: right; }
 
 .ep-num {
   display: inline-block;
@@ -589,6 +664,83 @@ h1 {
 .action-btn.danger:hover {
   border-color: #fc8181;
   color: #c53030;
+}
+
+/* Row hamburger menu */
+.row-menu {
+  position: relative;
+  display: inline-block;
+}
+.row-menu-btn {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  width: 32px;
+  height: 30px;
+  font-size: 1.1rem;
+  line-height: 1;
+  color: #4a5568;
+  cursor: pointer;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+.row-menu-btn:hover, .row-menu-btn.open {
+  border-color: #667eea;
+  color: #667eea;
+  background: #f7fafc;
+}
+.row-menu-panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 160px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 0.3rem;
+  box-shadow: 0 8px 24px -8px rgba(0, 0, 0, 0.18);
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  text-align: left;
+}
+.row-menu-item {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.45rem 0.65rem;
+  background: none;
+  border: none;
+  border-radius: 5px;
+  color: #2d3748;
+  font-size: 0.85rem;
+  font-family: inherit;
+  text-decoration: none;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.row-menu-item:hover:not(:disabled) {
+  background: #f7fafc;
+  color: #1a202c;
+}
+.row-menu-item:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.row-menu-item.danger { color: #c53030; }
+.row-menu-item.danger:hover:not(:disabled) {
+  background: #fff5f5;
+  color: #9b2c2c;
+}
+.row-menu-divider {
+  height: 1px;
+  background: #f0f4f8;
+  margin: 0.25rem 0.1rem;
 }
 
 /* Modal */
@@ -706,12 +858,7 @@ h1 {
   .col-num { min-width: 56px; width: auto; }
   .col-status { min-width: 90px; width: auto; }
   .col-date { min-width: 110px; width: auto; }
-  .col-actions { min-width: 160px; width: auto; }
-  .action-btn {
-    padding: 0.5rem 0.625rem;
-    font-size: 0.8rem;
-    min-height: 38px;
-  }
+  .col-actions { min-width: 64px; width: auto; }
   .episodes-table { min-width: 720px; /* force horizontal scroll instead of cramming */ }
   .modal { padding: 1.25rem; }
   .modal-actions button { min-height: 44px; }
@@ -789,22 +936,18 @@ h1 {
   .col-num:nth-of-type(2) { order: 4; }
   .col-num:nth-of-type(3) { order: 5; }
   .col-date { order: 6; }
-  /* Actions row gets full-width buttons stacked. */
+  /* Actions cell collapses to a single hamburger button on the right edge. */
   .col-actions {
     order: 7;
-    flex-direction: row;
-    gap: 0.5rem;
+    justify-content: flex-end;
     padding-top: 0.625rem;
     margin-top: 0.5rem;
     border-top: 1px solid #f0f4f8;
   }
-  .col-actions .action-btn {
-    flex: 1;
-    text-align: center;
-    padding: 0.625rem 0.75rem;
-    font-size: 0.85rem;
-    min-height: 40px;
-    margin-right: 0;
+  .row-menu-btn {
+    width: 40px;
+    height: 40px;
+    font-size: 1.2rem;
   }
 }
 </style>
