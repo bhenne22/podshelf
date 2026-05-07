@@ -32,7 +32,7 @@ nginx reverse-proxy.
 
 ---
 
-## Phase B — Install Node, create app user, build
+## Phase B — Install Node, create app user
 
 Run as root (or with `sudo` per command):
 
@@ -56,12 +56,18 @@ sudo -u podshelf bash -lc '
   rm -rf /tmp/ps
 '
 
-# Install + build
-sudo -u podshelf bash -lc 'cd /opt/podshelf && npm ci && npm run build'
+# Install dependencies. Used by occasional admin scripts (create-admin,
+# password resets) — the runtime itself uses .output/ which arrives later
+# via the deploy script in Phase D.5.
+sudo -u podshelf bash -lc 'cd /opt/podshelf && npm ci'
 
 # Data dir for the SQLite file
 sudo -u podshelf bash -lc 'mkdir -p /opt/podshelf/data'
 ```
+
+> **Why no `npm run build` here?** Bundling Nuxt+Vite needs ~1.5 GB of
+> heap. On a 1 GB VPS the build OOMs. We build on your dev machine and
+> rsync `.output/` instead — see Phase D.5 below.
 
 ---
 
@@ -122,16 +128,75 @@ WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
-systemctl enable --now podshelf
-sleep 2
-systemctl status podshelf --no-pager
-curl -sS -o /dev/null -w "local 3000: %{http_code}\n" http://127.0.0.1:3000/
-# Expect: active (running) + status 302
+# Don't `enable --now` yet — there's no .output/ on the box. Phase D.5
+# delivers the build and starts the service.
 ```
 
 The hardening flags (`ProtectSystem=full`, `ProtectHome=read-only`,
 `ReadWritePaths=/opt/podshelf/data`, `NoNewPrivileges=true`) lock the unit
 down so a compromised app can't write outside `data/`.
+
+---
+
+## Phase D.5 — First deploy from your dev machine
+
+This is where the actual build artifact arrives. Builds happen on your
+dev box (where memory isn't tight) and ship over rsync.
+
+**Prereqs on your dev box:**
+
+- Working SSH key for `root@<server>` (the deploy script SSHes in to
+  restart the service)
+- A clone of the Podshelf repo with all dependencies installed
+  (`npm ci`)
+
+**Run the deploy:**
+
+```bash
+# From your local clone of the podshelf repo
+./scripts/deploy-linode.sh
+```
+
+`REMOTE_HOST` defaults to the SSH alias `linode`. If your `~/.ssh/config`
+uses a different alias, override it: `REMOTE_HOST=myserver ./scripts/deploy-linode.sh`.
+
+> **Why an SSH alias and not the public hostname?** Cloudflare (and most
+> CDNs) don't proxy port 22 — `ssh podshelf.<your-domain>` will time out.
+> Use the origin IP or an SSH alias that points at it. The deploy script
+> sets up an `Host linode` block in your `~/.ssh/config` that maps to
+> the Linode's origin IP under the hood.
+
+The script `npm ci`s, builds, rsyncs `.output/` to
+`/opt/podshelf/.output/` on the host, runs `npm rebuild` inside
+`.output/server/` to fetch correct native binaries (more on this
+below), chowns to `podshelf:podshelf`, and restarts the service. If
+the service fails to come up, it prints the last 40 lines of
+`journalctl -u podshelf` and exits non-zero.
+
+> **Why `npm rebuild better-sqlite3` post-rsync?** `better-sqlite3`
+> ships a precompiled `.node` binary per platform. Build on Mac
+> arm64 → `.output` contains a darwin-arm64 binary → Node on the
+> linux-x64 Linode fails to load it with `invalid ELF header`. The
+> rebuild step re-runs `prebuild-install` to download the right
+> binary. We *don't* run a blanket `npm rebuild` because `ssh2`'s
+> optional `cpu-features` extension fails to compile in `.output`
+> (Nitro strips its source) — and ssh2 falls back to pure-JS crypto
+> when cpu-features isn't available, so it's harmless to leave
+> alone.
+
+After a successful first deploy, enable the unit so it survives reboots:
+
+```bash
+ssh linode 'systemctl enable podshelf'
+
+# Smoke test from the server
+ssh linode 'curl -sS -o /dev/null -w "local 3000: %{http_code}\n" http://127.0.0.1:3000/'
+# Expect: 302 (redirects to /login when unauthenticated)
+```
+
+For routine deploys after this, just re-run `./scripts/deploy-linode.sh`
+from your dev box. See **Routine operations → Deploy a new version**
+below.
 
 ---
 
@@ -446,27 +511,53 @@ also returns 200). Then sign in via the browser with the user
 
 ### Deploy a new version
 
+Run from your **dev box**, not from the Linode:
+
 ```bash
-cd /opt/podshelf
-sudo -u podshelf git pull
-sudo -u podshelf npm ci
-sudo -u podshelf npm run build
-systemctl restart podshelf
-journalctl -u podshelf -n 30 --no-pager   # verify clean start
+# in your local podshelf checkout
+./scripts/deploy-linode.sh
 ```
 
-The DB migration runner adds new columns automatically on startup, so most
-upgrades don't need any manual schema work.
+The script `npm ci`s, builds locally, rsyncs `.output/` to the host,
+chowns it to `podshelf:podshelf`, and restarts the systemd unit. It
+fails loudly (with recent `journalctl` output) if the service doesn't
+come back active.
 
-> **Always prefix `git`, `npm`, etc. with `sudo -u podshelf` when in
-> `/opt/podshelf`.** If you ever run those as root, the new files end up
-> owned by root and the next `sudo -u podshelf npm ci` fails with `EACCES
-> rmdir node_modules/...` because the podshelf user can't delete root-owned
-> directories. We've hit this three times. Fix:
-> ```bash
-> sudo chown -R podshelf:podshelf /opt/podshelf
-> ```
-> Then re-run the deploy.
+The DB migration runner adds new columns automatically on startup, so
+most upgrades don't need any manual schema work.
+
+#### Why the Linode doesn't build
+
+Bundling Nuxt+Vite needs ~1.5 GB of heap. The reference Linode is 1 GB
+RAM total, so a build there OOMs (`Ineffective mark-compacts near heap
+limit`). Building on a dev box with plenty of memory and shipping the
+finished `.output/` is faster and avoids the swap-thrash.
+
+#### When the source code on the Linode matters
+
+The Linode's source tree (`/opt/podshelf/{server,scripts,...}`) only
+gets used by occasional admin scripts — `npm run create-admin`, manual
+SQLite probing, etc. The runtime never reads it; it lives entirely in
+`.output/`.
+
+If you need an admin script to use freshly-released code (e.g., a new
+schema migration was added in the deploy you just shipped), pull the
+source on the Linode separately:
+
+```bash
+ssh linode 'cd /opt/podshelf && sudo -u podshelf git pull --ff-only'
+# Optional, only when package.json changed:
+ssh linode 'cd /opt/podshelf && sudo -u podshelf npm ci'
+```
+
+The recurring **EACCES rmdir node_modules** gotcha (root-owned files
+in `/opt/podshelf` blocking the next `sudo -u podshelf npm ci`) still
+applies if you do this. Fix:
+```bash
+ssh linode 'chown -R podshelf:podshelf /opt/podshelf'
+```
+Then retry. Always prefix `git`, `npm`, etc. with `sudo -u podshelf`
+when in `/opt/podshelf`.
 
 ### Rotate `NUXT_SECRET_KEY`
 

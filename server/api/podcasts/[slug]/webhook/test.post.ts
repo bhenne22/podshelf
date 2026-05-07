@@ -23,7 +23,7 @@ export default defineEventHandler(async (event) => {
     SELECT id, slug, title, website FROM podcasts WHERE id = ?
   `).get(podcastId) as { id: number; slug: string; title: string; website: string | null }
 
-  const siteUrl = ((useRuntimeConfig().public.siteUrl as string) || '').replace(/\/+$/, '')
+  const siteUrl = (process.env.SITE_URL || (useRuntimeConfig().public.siteUrl as string) || '').replace(/\/+$/, '')
   const feedUrl = `${siteUrl}/feeds/${podcast.slug}.xml`
 
   const result = await sendPublishWebhook(

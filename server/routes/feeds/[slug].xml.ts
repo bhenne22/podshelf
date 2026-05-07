@@ -184,7 +184,7 @@ export default defineEventHandler((event) => {
     }
   }
 
-  const siteUrl = (useRuntimeConfig().public.siteUrl as string || '').replace(/\/+$/, '')
+  const siteUrl = (process.env.SITE_URL || (useRuntimeConfig().public.siteUrl as string) || '').replace(/\/+$/, '')
   // selfFeedUrl always points at the canonical (current) slug — even when
   // we're serving the response under an alias slug, we want subscribers'
   // apps to follow the new-feed-url and update their stored subscription.

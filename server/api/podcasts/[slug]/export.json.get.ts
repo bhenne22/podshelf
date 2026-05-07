@@ -71,7 +71,7 @@ export default defineEventHandler((event) => {
     schema_version: SCHEMA_VERSION,
     exported_at: new Date().toISOString(),
     exported_by: 'podshelf',
-    source_instance: ((useRuntimeConfig().public.siteUrl as string) || '').replace(/\/+$/, ''),
+    source_instance: (process.env.SITE_URL || (useRuntimeConfig().public.siteUrl as string) || '').replace(/\/+$/, ''),
     podcast,
     episodes,
     people,

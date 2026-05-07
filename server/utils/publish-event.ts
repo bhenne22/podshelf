@@ -64,7 +64,7 @@ export async function firePublishEvent(
   const config = loadWebhookConfig(podcastId)
   if (!config || !config.enabled) return {}
 
-  const siteUrl = ((useRuntimeConfig().public.siteUrl as string) || '').replace(/\/+$/, '')
+  const siteUrl = (process.env.SITE_URL || (useRuntimeConfig().public.siteUrl as string) || '').replace(/\/+$/, '')
   const feedUrl = `${siteUrl}/feeds/${podcast.slug}.xml`
   const websiteBase = (podcast.website || '').replace(/\/+$/, '')
   const episodeUrl = websiteBase

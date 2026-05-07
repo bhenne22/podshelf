@@ -1,6 +1,6 @@
 import Database from 'better-sqlite3'
 import { mkdirSync, existsSync } from 'fs'
-import { dirname } from 'path'
+import { dirname, resolve } from 'path'
 
 // Inlined schema — avoids file-read issues in Nitro production builds.
 // Mirror of server/db/schema.sql; update both when changing.
@@ -228,7 +228,11 @@ let _db: Database.Database | null = null
 
 function initDb(): Database.Database {
   const config = useRuntimeConfig()
-  const resolvedPath = config.databasePath
+  // Prefer the runtime env var (set by systemd EnvironmentFile in production)
+  // over the build-time default; resolve here so a relative path becomes
+  // absolute against the current working dir, not the build machine's CWD.
+  const rawPath = process.env.DATABASE_PATH || config.databasePath
+  const resolvedPath = resolve(rawPath)
   const dir = dirname(resolvedPath)
 
   if (!existsSync(dir)) {

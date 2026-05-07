@@ -1,5 +1,3 @@
-import { resolve } from 'path'
-
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
   devtools: { enabled: process.env.NODE_ENV !== 'production' },
@@ -25,7 +23,10 @@ export default defineNuxtConfig({
   // Runtime config — values can be overridden by .env
   runtimeConfig: {
     // Server-only secrets
-    databasePath: resolve(process.env.DATABASE_PATH || './data/podshelf.db'),
+    // Don't `resolve()` here — that runs at build time and bakes in the
+    // build machine's CWD. server/db/index.ts resolves at runtime so the
+    // default works on whichever box ends up running this build.
+    databasePath: process.env.DATABASE_PATH || './data/podshelf.db',
     secretKey: process.env.NUXT_SECRET_KEY || '',
     encryptionKey: process.env.PODSHELF_ENCRYPTION_KEY || '',
     geoipDbPath: process.env.GEOIP_DB_PATH || '',

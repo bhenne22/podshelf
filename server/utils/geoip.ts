@@ -8,7 +8,7 @@ let _reader: any = null
 let _readerPath: string | null = null
 
 async function getReader(): Promise<any> {
-  const dbPath = (useRuntimeConfig().geoipDbPath || '').trim()
+  const dbPath = (process.env.GEOIP_DB_PATH || useRuntimeConfig().geoipDbPath || '').trim()
 
   if (!dbPath || !existsSync(dbPath)) return null
   if (_reader && _readerPath === dbPath) return _reader

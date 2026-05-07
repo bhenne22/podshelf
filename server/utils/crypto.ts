@@ -5,11 +5,12 @@ const IV_LEN = 12
 const TAG_LEN = 16
 
 /**
- * Loads the encryption key from PODSHELF_ENCRYPTION_KEY runtimeConfig.
- * Accepts hex (64 chars) or base64 (44 chars) encoding. Must decode to 32 bytes.
+ * Loads the encryption key. Reads from process.env at runtime so the host's
+ * .env value wins over whatever was baked into the build — building on a dev
+ * box and shipping to prod must not leak the dev key.
  */
 function loadKey(): Buffer {
-  const raw = (useRuntimeConfig().encryptionKey || '').trim()
+  const raw = (process.env.PODSHELF_ENCRYPTION_KEY || useRuntimeConfig().encryptionKey || '').trim()
   if (!raw) {
     throw new Error('PODSHELF_ENCRYPTION_KEY is not set')
   }
