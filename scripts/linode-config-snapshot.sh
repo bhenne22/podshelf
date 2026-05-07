@@ -1,10 +1,11 @@
 #!/bin/bash
-# Stages Linode system config + Podshelf secrets into /var/backups/linode-config/
-# so the unprivileged `backup` user (used by the Synology pull job over Tailscale)
-# can read them without sudo or root SSH.
+# Stages host system config + Podshelf secrets into /var/backups/linode-config/
+# so the unprivileged `backup` user (used by the off-host pull job) can read
+# them without sudo or root SSH.
 #
-# Run nightly as root via /etc/cron.d/linode-config-snapshot. The Synology pulls
-# /var/backups/linode-config/ + /var/backups/podshelf/ on a later schedule.
+# Run nightly as root via /etc/cron.d/linode-config-snapshot. The destination
+# pulls /var/backups/linode-config/ + /var/backups/podshelf/ on a later
+# schedule (see docs/deployment.md, Phase G).
 #
 # What we stage and why:
 #   - /etc/nginx/conf.d/ + nginx.conf  → reverse-proxy configs for every site

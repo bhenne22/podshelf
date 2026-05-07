@@ -5,10 +5,9 @@ priority within each section.
 
 ## Operational hardening
 
-- **Off-site DB backup to NAS.** A nightly cron exists on the Linode that
-  snapshots `/opt/podshelf/data/podshelf.db`; add a second job that ships
-  that snapshot off-box to the home NAS so a Linode loss doesn't take the
-  data with it.
+- **Off-site DB backup.** *Implemented* — see `docs/deployment.md` Phase G
+  (off-host pull of nightly SQLite dumps + system config to a separate
+  machine).
 
 
 ## Publishing workflow

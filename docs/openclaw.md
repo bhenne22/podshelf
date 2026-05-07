@@ -116,7 +116,7 @@ The richer the transcript, the better the generated show notes.
 ### Foreground (test run)
 
 ```bash
-PODSHELF_URL=https://podshelf.hennemo.com \
+PODSHELF_URL=https://podshelf.example.com \
 PODSHELF_API_KEY=pk_… \
 PODSHELF_PODCAST=yousaid100miles \
 WATCH_DIR=~/podcast-inbox \
@@ -126,7 +126,7 @@ WATCH_DIR=~/podcast-inbox \
 ### Background
 
 ```bash
-PODSHELF_URL=https://podshelf.hennemo.com \
+PODSHELF_URL=https://podshelf.example.com \
 PODSHELF_API_KEY=pk_… \
 PODSHELF_PODCAST=yousaid100miles \
 nohup ./openclaw/podshelf-watch.sh >> ~/podshelf-watch.log 2>&1 &
@@ -162,7 +162,7 @@ Per-podcast env file `/home/podshelf/openclaw-yousaid100miles.env`:
 
 ```env
 WATCH_DIR=/home/podshelf/inbox/yousaid100miles
-PODSHELF_URL=https://podshelf.hennemo.com
+PODSHELF_URL=https://podshelf.example.com
 PODSHELF_API_KEY=pk_…
 PODSHELF_PODCAST=yousaid100miles
 DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/…

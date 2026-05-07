@@ -125,5 +125,5 @@ one command, see `scripts/podshelf-publish.sh` at the repo root.
 
 ## Going to production
 
-See [deployment.md](./deployment.md) for the full Linux/nginx runbook used to
-stand up `podshelf.hennemo.com`.
+See [deployment.md](./deployment.md) for the full Linux/nginx runbook —
+systemd unit, reverse proxy, nightly backups, and an off-host backup pull.

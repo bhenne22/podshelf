@@ -1,11 +1,11 @@
 # Production Deployment
 
-This is the runbook used to deploy Podshelf to a Linux VPS behind nginx. The
-canonical reference instance is `podshelf.hennemo.com` on a Linode VPS
-(Ubuntu 24.04 LTS, behind Cloudflare).
+This is the runbook for deploying Podshelf to a Linux VPS behind nginx. The
+reference setup runs on a 1 GB Ubuntu 24.04 LTS VPS behind Cloudflare, but
+the shape works on any Debian/Ubuntu host with an existing nginx reverse-proxy.
 
-The shape is generic enough for any Debian/Ubuntu host with an existing
-nginx reverse-proxy.
+> Examples below use `podshelf.example.com` and `your-vps` as placeholders.
+> Substitute your real public hostname and SSH alias / origin IP.
 
 ---
 
@@ -157,14 +157,14 @@ dev box (where memory isn't tight) and ship over rsync.
 ./scripts/deploy-linode.sh
 ```
 
-`REMOTE_HOST` defaults to the SSH alias `linode`. If your `~/.ssh/config`
-uses a different alias, override it: `REMOTE_HOST=myserver ./scripts/deploy-linode.sh`.
+Set `REMOTE_HOST` (and any other overrides) in `.env` at the repo root, or
+pass them inline: `REMOTE_HOST=my-vps ./scripts/deploy-linode.sh`. See
+`.env.example` for the full list of deployment variables.
 
 > **Why an SSH alias and not the public hostname?** Cloudflare (and most
 > CDNs) don't proxy port 22 — `ssh podshelf.<your-domain>` will time out.
-> Use the origin IP or an SSH alias that points at it. The deploy script
-> sets up an `Host linode` block in your `~/.ssh/config` that maps to
-> the Linode's origin IP under the hood.
+> Use the origin IP or an SSH alias that points at it (configured in your
+> `~/.ssh/config`).
 
 The script `npm ci`s, builds, rsyncs `.output/` to
 `/opt/podshelf/.output/` on the host, runs `npm rebuild` inside
@@ -176,7 +176,7 @@ the service fails to come up, it prints the last 40 lines of
 > **Why `npm rebuild better-sqlite3` post-rsync?** `better-sqlite3`
 > ships a precompiled `.node` binary per platform. Build on Mac
 > arm64 → `.output` contains a darwin-arm64 binary → Node on the
-> linux-x64 Linode fails to load it with `invalid ELF header`. The
+> linux-x64 host fails to load it with `invalid ELF header`. The
 > rebuild step re-runs `prebuild-install` to download the right
 > binary. We *don't* run a blanket `npm rebuild` because `ssh2`'s
 > optional `cpu-features` extension fails to compile in `.output`
@@ -187,10 +187,10 @@ the service fails to come up, it prints the last 40 lines of
 After a successful first deploy, enable the unit so it survives reboots:
 
 ```bash
-ssh linode 'systemctl enable podshelf'
+ssh "$REMOTE_HOST" 'systemctl enable podshelf'
 
 # Smoke test from the server
-ssh linode 'curl -sS -o /dev/null -w "local 3000: %{http_code}\n" http://127.0.0.1:3000/'
+ssh "$REMOTE_HOST" 'curl -sS -o /dev/null -w "local 3000: %{http_code}\n" http://127.0.0.1:3000/'
 # Expect: 302 (redirects to /login when unauthenticated)
 ```
 
@@ -297,21 +297,22 @@ sudo -u podshelf /usr/local/bin/podshelf-backup.sh
 ls -lh /var/backups/podshelf/
 ```
 
-**Off-host copy:** the backups still live on the same Linode. Phase G below
+**Off-host copy:** the backups still live on the same VPS. Phase G below
 pulls them (and the rest of the system config) to a separate machine.
 
 ---
 
-## Phase G — Off-host backup pull (Synology over Tailscale)
+## Phase G — Off-host backup pull (over a private network)
 
-The Linode-local nightly dumps from Phase F survive a corrupted database but
-not a lost VM. This phase has a separate machine **pull** the dumps over
-Tailscale, so a compromise of the Linode can't reach back and wipe history
-on the destination.
+The host-local nightly dumps from Phase F survive a corrupted database but
+not a lost VM. This phase has a separate machine **pull** the dumps over a
+private link (Tailscale, WireGuard, plain SSH on a non-routable VLAN — your
+choice), so a compromise of the production host can't reach back and wipe
+history on the destination.
 
-The example here uses a Synology DS923+ on DSM 7.2; the same shape works
-for any Linux box with rsync — the only Synology-specific bits are DSM Task
-Scheduler and Snapshot Replication.
+Any Linux box with rsync works as the destination — a NAS, a homelab box,
+another VPS. The example below uses Tailscale for the transport and a
+generic Linux NAS for the destination; the script is the same regardless.
 
 **What we back up beyond the SQLite dumps:**
 - `/etc/nginx/conf.d/` + `nginx.conf` — every site's reverse-proxy config
@@ -320,7 +321,7 @@ Scheduler and Snapshot Replication.
   the SQLite backup is junk; encrypted storage credentials can't be
   decrypted. **This is the single most critical file in the backup set.**
 
-### G.1 — Linode: stage the system config nightly
+### G.1 — Source host: stage the system config nightly
 
 Debian/Ubuntu already ships a system `backup` user (UID 34, home
 `/var/backups`). We reuse it; no `adduser` needed. Verify:
@@ -368,21 +369,21 @@ sudo ls -la /var/backups/linode-config/
 The cron runs at 03:19, two minutes after the Phase F podshelf-backup.sh
 cron, so the same night's `.db.gz` is in place when the staging fires.
 
-### G.2 — Linode: install the puller's SSH key with an rrsync sandbox
+### G.2 — Source host: install the puller's SSH key with an rrsync sandbox
 
-Generate the keypair on the **destination** machine (Synology, here):
+Generate the keypair on the **destination** machine:
 
 ```bash
-# On the Synology
+# On the destination machine
 sudo -i
 mkdir -p /root/.ssh && chmod 700 /root/.ssh
-ssh-keygen -t ed25519 -f /root/.ssh/linode-backup -N "" -C "synology-backup-pull"
-cat /root/.ssh/linode-backup.pub
+ssh-keygen -t ed25519 -f /root/.ssh/podshelf-backup -N "" -C "podshelf-backup-pull"
+cat /root/.ssh/podshelf-backup.pub
 ```
 
-Back on the Linode, install the public key in `/var/backups/.ssh/` (the
-`backup` user's home) with an `rrsync` forced command that chroots reads to
-`/var/backups`:
+Back on the source host, install the public key in `/var/backups/.ssh/`
+(the `backup` user's home) with an `rrsync` forced command that chroots
+reads to `/var/backups`:
 
 ```bash
 sudo install -d -m 0700 -o backup -g backup /var/backups/.ssh
@@ -398,71 +399,69 @@ sudo chown backup:backup /var/backups/.ssh/authorized_keys
 sudo chmod 600 /var/backups/.ssh/authorized_keys
 ```
 
-Replace `<PASTE_PUBKEY_HERE>` with the line you copied from the Synology.
+Replace `<PASTE_PUBKEY_HERE>` with the line you copied from the destination.
 The `restrict` keyword denies port forwarding, agent forwarding, X11, etc.
 by default; the explicit `no-…` options are belt-and-suspenders for older
 sshd versions.
 
-### G.3 — Synology: pull script + DSM Task Scheduler
+### G.3 — Destination: pull script + scheduled task
 
-DSM doesn't wire Tailscale's MagicDNS into the system resolver — `nslookup
-linode-reverse-proxy.tail-XXXX.ts.net` returns `NXDOMAIN` because DSM
-queries the LAN router. **Use the Tailscale IP directly**, found via
-`tailscale status | grep <linode-name>`. Tailscale IPs are stable per-node
-across reboots and reinstalls; they only change if you delete and re-auth
-the machine.
+If you're using Tailscale, note that some platforms (e.g. Synology DSM)
+don't wire MagicDNS into the system resolver. **Use the Tailscale IP
+directly** in that case — find it via `tailscale status | grep <hostname>`.
+Tailscale IPs are stable per-node across reboots and reinstalls.
+
+Adjust `BACKUP_ROOT` below to wherever you want the mirror to land
+(`/srv/backups`, `/mnt/data/backups`, a Synology share like
+`/volume1/Backups`, etc.):
 
 ```bash
-# On the Synology, as root (sudo -i first; sudo cat > /file doesn't work
-# because the redirect runs unprivileged)
-mkdir -p /volume1/Backups/linode/{podshelf,config}
-mkdir -p /volume1/Backups/logs
+# On the destination, as root
+BACKUP_ROOT=/srv/backups            # adjust to taste
+mkdir -p "$BACKUP_ROOT/podshelf/"{podshelf,config}
+mkdir -p "$BACKUP_ROOT/podshelf/logs"
 
-cat > /usr/local/bin/linode-pull.sh <<'EOF'
+cat > /usr/local/bin/podshelf-pull.sh <<EOF
 #!/bin/sh
 set -eu
-TS_HOST="100.x.y.z"            # Tailscale IP of the Linode
-KEY=/root/.ssh/linode-backup
-LOG=/volume1/Backups/logs/linode-pull-$(date -u +%Y%m%d).log
-DEST=/volume1/Backups/linode
+SRC_HOST="100.x.y.z"          # Tailscale IP (or hostname) of the source host
+KEY=/root/.ssh/podshelf-backup
+DEST=$BACKUP_ROOT/podshelf
+LOG=\$DEST/logs/pull-\$(date -u +%Y%m%d).log
 
-exec >>"$LOG" 2>&1
-echo "=== $(date -u +%FT%TZ) starting pull ==="
+exec >>"\$LOG" 2>&1
+echo "=== \$(date -u +%FT%TZ) starting pull ==="
 
-# rrsync is chrooted to /var/backups, so source paths are relative to that.
-rsync -avz --delete -e "ssh -i $KEY -o StrictHostKeyChecking=accept-new" \
-  "backup@$TS_HOST:podshelf/"      "$DEST/podshelf/"
+# rrsync is chrooted to /var/backups on the source, so paths are relative.
+rsync -avz --delete -e "ssh -i \$KEY -o StrictHostKeyChecking=accept-new" \\
+  "backup@\$SRC_HOST:podshelf/" "\$DEST/podshelf/"
 
-rsync -avz --delete -e "ssh -i $KEY" \
-  "backup@$TS_HOST:linode-config/" "$DEST/config/"
+rsync -avz --delete -e "ssh -i \$KEY" \\
+  "backup@\$SRC_HOST:linode-config/" "\$DEST/config/"
 
-echo "=== $(date -u +%FT%TZ) done ==="
+echo "=== \$(date -u +%FT%TZ) done ==="
 EOF
-chmod +x /usr/local/bin/linode-pull.sh
+chmod +x /usr/local/bin/podshelf-pull.sh
 
 # Test
-/usr/local/bin/linode-pull.sh
-tail /volume1/Backups/logs/linode-pull-*.log
-ls -lh /volume1/Backups/linode/podshelf/ /volume1/Backups/linode/config/
+/usr/local/bin/podshelf-pull.sh
+tail "$BACKUP_ROOT/podshelf/logs/pull-"*.log
+ls -lh "$BACKUP_ROOT/podshelf/"{podshelf,config}/
 ```
 
-> Watch out for `/volume1/Backups` (capital B) — Linux paths are case-sensitive.
+Schedule the pull via whatever your destination uses — `cron`, a systemd
+timer, Synology DSM Task Scheduler, etc. Run it shortly after the source's
+03:19 staging cron from G.1 so the same night's dumps are in place. Pipe
+notifications to your inbox or chat so you find out when it fails.
 
-In DSM UI: **Control Panel → Task Scheduler → Create → Scheduled Task →
-User-defined script**. Set User to `root`, schedule daily at 04:30 (after
-the Linode's 03:17 podshelf dump and 03:19 config snapshot), command
-`/usr/local/bin/linode-pull.sh`. Under Notifications, enable "Send run
-details by email" → "Only when the script terminates abnormally" so you
-only get pinged on failures.
-
-### G.4 — Versioning: Snapshot Replication on the destination
+### G.4 — Versioning: filesystem snapshots on the destination
 
 A single mirror only protects against host loss, not "I corrupted the DB
-last night and the bad backup overwrote the good one." Enable
-**Snapshot Replication** on the `Backups` shared folder (DSM →
-Snapshot Replication → Snapshots → Settings) — daily snapshots, retain
-something like 7 daily + 4 weekly + 6 monthly. That's your point-in-time
-recovery.
+last night and the bad backup overwrote the good one." Use whatever
+point-in-time mechanism your destination filesystem provides — ZFS or btrfs
+snapshots on Linux, DSM Snapshot Replication on Synology, etc. Daily
+snapshots with something like 7 daily + 4 weekly + 6 monthly retention is a
+reasonable starting point.
 
 ### G.5 — Disaster recovery rehearsal
 
@@ -484,10 +483,10 @@ Worth knowing the restore path before you need it:
 
 | Symptom | Cause / fix |
 |---|---|
-| `Could not resolve hostname linode-reverse-proxy` on Synology | MagicDNS isn't in DSM's resolver; use the Tailscale IP. |
+| `Could not resolve hostname …ts.net` on Synology DSM | DSM doesn't pipe Tailscale MagicDNS into the system resolver; use the Tailscale IP directly. |
 | `protocol version mismatch -- is your shell clean?` | Remote user's login shell is printing output. Almost always `/usr/sbin/nologin`. Switch to `/bin/sh`. |
 | `Permission denied` writing the script with `sudo cat > /file` | Redirect runs unprivileged before sudo elevates. Use `sudo -i` then heredoc, or `sudo tee /file <<'EOF' … EOF`. |
-| Pull succeeds but `podshelf/` directory is empty on Synology | `backup` group can't read `/var/backups/podshelf/`. Re-run the chgrp/chmod from G.1. |
+| Pull succeeds but `podshelf/` directory is empty on the destination | `backup` group can't read `/var/backups/podshelf/` on the source. Re-run the chgrp/chmod from G.1. |
 
 ---
 
@@ -511,7 +510,7 @@ also returns 200). Then sign in via the browser with the user
 
 ### Deploy a new version
 
-Run from your **dev box**, not from the Linode:
+Run from your **dev box**, not from the production host:
 
 ```bash
 # in your local podshelf checkout
@@ -526,35 +525,34 @@ come back active.
 The DB migration runner adds new columns automatically on startup, so
 most upgrades don't need any manual schema work.
 
-#### Why the Linode doesn't build
+#### Why we don't build on the host
 
-Bundling Nuxt+Vite needs ~1.5 GB of heap. The reference Linode is 1 GB
-RAM total, so a build there OOMs (`Ineffective mark-compacts near heap
-limit`). Building on a dev box with plenty of memory and shipping the
-finished `.output/` is faster and avoids the swap-thrash.
+Bundling Nuxt+Vite needs ~1.5 GB of heap. A 1 GB VPS OOMs trying to build
+locally (`Ineffective mark-compacts near heap limit`). Building on a dev
+box with plenty of memory and shipping the finished `.output/` is faster
+and avoids the swap-thrash.
 
-#### When the source code on the Linode matters
+#### When the source code on the host matters
 
-The Linode's source tree (`/opt/podshelf/{server,scripts,...}`) only
-gets used by occasional admin scripts — `npm run create-admin`, manual
-SQLite probing, etc. The runtime never reads it; it lives entirely in
-`.output/`.
+The host's source tree (`/opt/podshelf/{server,scripts,...}`) only gets
+used by occasional admin scripts — `npm run create-admin`, manual SQLite
+probing, etc. The runtime never reads it; it lives entirely in `.output/`.
 
 If you need an admin script to use freshly-released code (e.g., a new
 schema migration was added in the deploy you just shipped), pull the
-source on the Linode separately:
+source on the host separately:
 
 ```bash
-ssh linode 'cd /opt/podshelf && sudo -u podshelf git pull --ff-only'
+ssh "$REMOTE_HOST" 'cd /opt/podshelf && sudo -u podshelf git pull --ff-only'
 # Optional, only when package.json changed:
-ssh linode 'cd /opt/podshelf && sudo -u podshelf npm ci'
+ssh "$REMOTE_HOST" 'cd /opt/podshelf && sudo -u podshelf npm ci'
 ```
 
 The recurring **EACCES rmdir node_modules** gotcha (root-owned files
 in `/opt/podshelf` blocking the next `sudo -u podshelf npm ci`) still
 applies if you do this. Fix:
 ```bash
-ssh linode 'chown -R podshelf:podshelf /opt/podshelf'
+ssh "$REMOTE_HOST" 'chown -R podshelf:podshelf /opt/podshelf'
 ```
 Then retry. Always prefix `git`, `npm`, etc. with `sudo -u podshelf`
 when in `/opt/podshelf`.

@@ -9,9 +9,11 @@
 #   3. SSH in to chown to the app user and `systemctl restart` the service
 #   4. Verify the service is active, dump recent logs if it isn't
 #
-# Defaults match the canonical podshelf.hennemo.com Linode. Override with
-# env vars when deploying somewhere else:
-#   REMOTE_HOST=stage.example.com ./scripts/deploy-linode.sh
+# Configure via env vars (or set them in .env at the repo root — this
+# script sources .env if it exists):
+#   REMOTE_HOST=my-vps ./scripts/deploy-linode.sh
+# See .env.example for the full list (REMOTE_HOST, REMOTE_USER, REMOTE_DIR,
+# APP_USER, SERVICE_NAME).
 #
 # Requirements on the remote host:
 #   - SSH access as REMOTE_USER (default root) without password (key auth)
@@ -20,23 +22,37 @@
 #     via rsync --delete
 #
 # Source code on the remote (everything outside .output/) is NOT touched
-# here. The Linode keeps a git checkout for occasional admin scripts
+# here. The remote host keeps a git checkout for occasional admin scripts
 # (`npm run create-admin`, password resets); pull that separately when
 # you need it.
 
 set -euo pipefail
 
+cd "$(dirname "$0")/.."
+
+# Source .env at the repo root if present, so config can live alongside
+# runtime config instead of being passed on every invocation.
+if [ -f .env ]; then
+  set -a
+  # shellcheck disable=SC1091
+  . ./.env
+  set +a
+fi
+
 REMOTE_USER="${REMOTE_USER:-root}"
 # SSH target — usually an alias from ~/.ssh/config that points at the
 # server's origin IP, NOT the public-facing hostname. Cloudflare and most
-# CDNs don't proxy port 22, so connecting to `podshelf.hennemo.com:22`
+# CDNs don't proxy port 22, so connecting to the public hostname on :22
 # times out.
-REMOTE_HOST="${REMOTE_HOST:-linode}"
+REMOTE_HOST="${REMOTE_HOST:-}"
+if [ -z "$REMOTE_HOST" ]; then
+  echo "REMOTE_HOST is not set. Add it to .env or pass inline:" >&2
+  echo "  REMOTE_HOST=my-vps ./scripts/deploy-linode.sh" >&2
+  exit 1
+fi
 REMOTE_DIR="${REMOTE_DIR:-/opt/podshelf}"
 APP_USER="${APP_USER:-podshelf}"
 SERVICE_NAME="${SERVICE_NAME:-podshelf}"
-
-cd "$(dirname "$0")/.."
 
 echo "==> Installing dependencies (npm ci)"
 npm ci
