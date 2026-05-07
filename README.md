@@ -121,4 +121,11 @@ Only four matter at the env layer (everything else moved into the admin UI):
 
 ## License
 
-MIT — do whatever you want with it.
+[Elastic License 2.0](./LICENSE) — source-available, not OSI "open source".
+
+In plain English: you can run Podshelf for your own podcast(s), modify it,
+and share your changes. You **cannot** offer it to third parties as a hosted
+or managed service (i.e. don't turn it into a paid SaaS product), and you
+can't strip the license/copyright notices.
+
+If that doesn't work for your use case, get in touch.
