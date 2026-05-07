@@ -93,11 +93,11 @@
                 <label for="title">Title <span class="required">*</span></label>
                 <input id="title" v-model="form.title" type="text" required />
               </div>
-              <div class="form-group">
+              <div v-if="episodeNumbersEnabled" class="form-group">
                 <label for="episode_number">Episode #</label>
                 <input id="episode_number" v-model.number="form.episode_number" type="number" min="1" />
               </div>
-              <div class="form-group">
+              <div v-if="seasonsEnabled" class="form-group">
                 <label for="season_number">Season #</label>
                 <input id="season_number" v-model.number="form.season_number" type="number" min="1" />
               </div>
@@ -408,7 +408,7 @@
             </div>
 
             <div class="form-row">
-              <div class="form-group flex-2">
+              <div v-if="seasonsEnabled" class="form-group flex-2">
                 <label for="season_name">Season name</label>
                 <input id="season_name" v-model="form.season_name" type="text" placeholder='e.g. "Series 1"' />
                 <p class="hint">Emitted as <code>name</code> attr on <code>podcast:season</code>.</p>
@@ -481,6 +481,20 @@ const route = useRoute()
 const id = Number(route.params.id)
 const podcastSlug = route.params.slug as string
 const { updateEpisode } = useEpisodes(podcastSlug)
+
+interface PodcastFlags {
+  seasons_enabled: number | null
+  episode_numbers_enabled: number | null
+}
+const { data: podcastSettings } = await useFetch<PodcastFlags>(`/api/podcasts/${podcastSlug}`)
+const seasonsEnabled = computed(() => {
+  const v = podcastSettings.value?.seasons_enabled
+  return v == null ? true : !!v
+})
+const episodeNumbersEnabled = computed(() => {
+  const v = podcastSettings.value?.episode_numbers_enabled
+  return v == null ? true : !!v
+})
 
 const pending = ref(true)
 const saving = ref(false)

@@ -232,6 +232,34 @@
         </div>
 
         <div class="form-section">
+          <h2>Episode Numbering</h2>
+          <p class="hint section-hint">
+            Turn off whichever of these your podcast doesn't use. Disabled
+            fields are hidden from the episode list and the episode editor.
+            The "Overall #" column is always shown.
+          </p>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="seasons_enabled">Use seasons</label>
+              <select id="seasons_enabled" v-model="form.seasons_enabled">
+                <option :value="true">Yes</option>
+                <option :value="false">No</option>
+              </select>
+              <p class="hint">Shows the Season column on the episode list and the season selector on the editor.</p>
+            </div>
+            <div class="form-group">
+              <label for="episode_numbers_enabled">Use episode numbers</label>
+              <select id="episode_numbers_enabled" v-model="form.episode_numbers_enabled">
+                <option :value="true">Yes</option>
+                <option :value="false">No</option>
+              </select>
+              <p class="hint">Per-season (or per-show) episode #. Independent of seasons — many shows use only this.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-section">
           <h2>New Episode Templates</h2>
           <p class="hint section-hint">
             Pre-fills the title and show notes when you click "+ New Episode".
@@ -393,6 +421,8 @@ interface PodcastRow {
   license_url: string | null
   episode_title_template: string | null
   episode_description_template: string | null
+  seasons_enabled: number | null
+  episode_numbers_enabled: number | null
   status: string
   deleted_at: string | null
 }
@@ -425,6 +455,8 @@ const form = reactive({
   license_url: '',
   episode_title_template: '',
   episode_description_template: '',
+  seasons_enabled: true,
+  episode_numbers_enabled: true,
 })
 
 const originalSlug = ref(podcastSlug)
@@ -615,6 +647,8 @@ watch(initial, (p) => {
   form.license_url = p.license_url || ''
   form.episode_title_template = p.episode_title_template || ''
   form.episode_description_template = p.episode_description_template || ''
+  form.seasons_enabled = p.seasons_enabled == null ? true : !!p.seasons_enabled
+  form.episode_numbers_enabled = p.episode_numbers_enabled == null ? true : !!p.episode_numbers_enabled
 }, { immediate: true })
 
 async function saveSettings() {

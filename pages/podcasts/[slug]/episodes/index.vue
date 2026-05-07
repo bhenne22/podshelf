@@ -33,7 +33,7 @@
             </select>
           </div>
 
-          <div class="filter-group">
+          <div v-if="seasonsEnabled" class="filter-group">
             <label>Season</label>
             <select v-model="seasonFilter">
               <option value="">All seasons</option>
@@ -64,6 +64,16 @@
             </div>
           </template>
 
+          <div class="filter-group">
+            <label>Per page</label>
+            <select v-model="pageSize">
+              <option :value="25">25</option>
+              <option :value="50">50</option>
+              <option :value="100">100</option>
+              <option :value="0">All</option>
+            </select>
+          </div>
+
           <div class="filter-summary">
             Showing <strong>{{ filteredEpisodes.length }}</strong> of {{ episodes.length }}
             <button v-if="hasActiveFilters" type="button" class="filter-clear" @click="clearFilters">Clear filters</button>
@@ -89,8 +99,8 @@
         <thead>
           <tr>
             <th scope="col" title="Overall episode # — chronological index across all published episodes">Overall</th>
-            <th scope="col" title="Season number">Season</th>
-            <th scope="col" title="Episode number within the season">Ep</th>
+            <th v-if="seasonsEnabled" scope="col" title="Season number">Season</th>
+            <th v-if="episodeNumbersEnabled" scope="col" title="Episode number within the season">Ep</th>
             <th scope="col">Title</th>
             <th scope="col">Status</th>
             <th scope="col">Published</th>
@@ -98,16 +108,16 @@
           </tr>
         </thead>
         <tbody>
-          <tr v-for="ep in filteredEpisodes" :key="ep.id">
+          <tr v-for="ep in pagedEpisodes" :key="ep.id">
             <td class="col-num" data-label="Overall">
               <span v-if="overallNumber.get(ep.id)" class="ep-num overall">{{ overallNumber.get(ep.id) }}</span>
               <span v-else class="ep-num draft">—</span>
             </td>
-            <td class="col-num" data-label="Season">
+            <td v-if="seasonsEnabled" class="col-num" data-label="Season">
               <span v-if="ep.season_number" class="ep-num season">{{ ep.season_number }}</span>
               <span v-else class="ep-num draft">—</span>
             </td>
-            <td class="col-num" data-label="Episode">
+            <td v-if="episodeNumbersEnabled" class="col-num" data-label="Episode">
               <span v-if="ep.episode_number" class="ep-num">{{ ep.episode_number }}</span>
               <span v-else class="ep-num draft">—</span>
             </td>
@@ -162,6 +172,25 @@
           </tr>
         </tbody>
       </table></div>
+
+      <div v-if="!loading && !error && totalPages > 1" class="pagination">
+        <button
+          type="button"
+          class="page-btn"
+          :disabled="currentPage <= 1"
+          @click="goToPage(currentPage - 1)"
+        >‹ Prev</button>
+        <span class="page-info">
+          Page <strong>{{ currentPage }}</strong> of {{ totalPages }}
+          <span class="page-range">({{ pageRangeStart }}–{{ pageRangeEnd }} of {{ filteredEpisodes.length }})</span>
+        </span>
+        <button
+          type="button"
+          class="page-btn"
+          :disabled="currentPage >= totalPages"
+          @click="goToPage(currentPage + 1)"
+        >Next ›</button>
+      </div>
     </div>
 
     <!-- Delete confirmation modal -->
@@ -190,6 +219,20 @@ const podcastSlug = route.params.slug as string
 
 const { episodes, loading, error, refresh, deleteEpisode } = useEpisodes(podcastSlug)
 await refresh()
+
+interface PodcastFlags {
+  seasons_enabled: number | null
+  episode_numbers_enabled: number | null
+}
+const { data: podcastSettings } = await useFetch<PodcastFlags>(`/api/podcasts/${podcastSlug}`)
+const seasonsEnabled = computed(() => {
+  const v = podcastSettings.value?.seasons_enabled
+  return v == null ? true : !!v
+})
+const episodeNumbersEnabled = computed(() => {
+  const v = podcastSettings.value?.episode_numbers_enabled
+  return v == null ? true : !!v
+})
 
 // Map episode.id -> overall episode # (chronological index over published episodes)
 const overallNumber = computed(() => {
@@ -280,6 +323,51 @@ const hasActiveFilters = computed(() =>
   || rangePreset.value !== 'all'
   || debouncedSearch.value !== '',
 )
+
+const pageSize = ref<number>(50)
+const currentPage = ref<number>(1)
+
+const totalPages = computed(() => {
+  if (pageSize.value === 0) return 1
+  return Math.max(1, Math.ceil(filteredEpisodes.value.length / pageSize.value))
+})
+
+const pagedEpisodes = computed(() => {
+  if (pageSize.value === 0) return filteredEpisodes.value
+  const start = (currentPage.value - 1) * pageSize.value
+  return filteredEpisodes.value.slice(start, start + pageSize.value)
+})
+
+const pageRangeStart = computed(() => {
+  if (filteredEpisodes.value.length === 0) return 0
+  if (pageSize.value === 0) return 1
+  return (currentPage.value - 1) * pageSize.value + 1
+})
+
+const pageRangeEnd = computed(() => {
+  if (pageSize.value === 0) return filteredEpisodes.value.length
+  return Math.min(currentPage.value * pageSize.value, filteredEpisodes.value.length)
+})
+
+function goToPage(p: number) {
+  if (p < 1 || p > totalPages.value) return
+  currentPage.value = p
+  closeMenu()
+  if (typeof window !== 'undefined') {
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+}
+
+// Reset to page 1 whenever filters or page size change
+watch(
+  [seasonFilter, statusFilter, debouncedSearch, rangePreset, customFrom, customTo, pageSize],
+  () => { currentPage.value = 1 },
+)
+
+// Keep current page in range if filtered list shrinks
+watch(totalPages, (n) => {
+  if (currentPage.value > n) currentPage.value = n
+})
 
 function clearFilters() {
   seasonFilter.value = ''
@@ -821,6 +909,42 @@ h1 {
   -webkit-overflow-scrolling: touch;
   border-radius: 10px;
 }
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  font-size: 0.875rem;
+  color: #4a5568;
+  flex-wrap: wrap;
+}
+.page-btn {
+  padding: 0.4rem 0.85rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: white;
+  color: #4a5568;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.page-btn:hover:not(:disabled) {
+  border-color: #667eea;
+  color: #667eea;
+}
+.page-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.page-info { color: #4a5568; }
+.page-info strong { color: #1a202c; }
+.page-range { color: #a0aec0; margin-left: 0.35rem; }
 
 @media (max-width: 720px) {
   .container { padding: 1rem 0.75rem; }

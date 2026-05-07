@@ -23,8 +23,11 @@ const UPDATABLE = [
   'funding_url', 'funding_label',
   'verify_txt', 'license_identifier', 'license_url',
   'episode_title_template', 'episode_description_template',
+  'seasons_enabled', 'episode_numbers_enabled',
   'storage_adapter', 'github_owner', 'github_repo', 'github_event_type',
 ]
+
+const BOOL_INT_FIELDS = new Set(['seasons_enabled', 'episode_numbers_enabled'])
 
 const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 
@@ -52,6 +55,7 @@ export default defineEventHandler(async (event) => {
            itunes_type, podcast_locked, itunes_complete, itunes_block,
            funding_url, funding_label, verify_txt, license_identifier, license_url,
            episode_title_template, episode_description_template,
+           seasons_enabled, episode_numbers_enabled,
            storage_adapter, github_owner, github_repo, github_event_type
     FROM podcasts WHERE id = ?
   `).get(podcastId) as Record<string, unknown>
@@ -98,7 +102,7 @@ export default defineEventHandler(async (event) => {
   for (const field of UPDATABLE) {
     if (field in body) {
       updates.push(`${field} = @${field}`)
-      values[field] = body[field]
+      values[field] = BOOL_INT_FIELDS.has(field) ? (body[field] ? 1 : 0) : body[field]
     }
   }
 
@@ -131,6 +135,7 @@ export default defineEventHandler(async (event) => {
       itunes_type, podcast_locked, itunes_complete, itunes_block,
       funding_url, funding_label, verify_txt, license_identifier, license_url,
       episode_title_template, episode_description_template,
+      seasons_enabled, episode_numbers_enabled,
       storage_adapter, github_owner, github_repo, github_event_type,
       created_at, updated_at
     FROM podcasts WHERE id = ?

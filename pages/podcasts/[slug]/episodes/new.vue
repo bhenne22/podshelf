@@ -25,11 +25,11 @@
                 @input="autoSlug"
               />
             </div>
-            <div class="form-group">
+            <div v-if="episodeNumbersEnabled" class="form-group">
               <label for="episode_number">Episode #</label>
               <input id="episode_number" v-model.number="form.episode_number" type="number" min="1" placeholder="e.g. 42" />
             </div>
-            <div class="form-group">
+            <div v-if="seasonsEnabled" class="form-group">
               <label for="season_number">Season #</label>
               <input id="season_number" v-model.number="form.season_number" type="number" min="1" placeholder="e.g. 2" />
             </div>
@@ -250,7 +250,7 @@
             </div>
           </div>
           <div class="form-row">
-            <div class="form-group">
+            <div v-if="seasonsEnabled" class="form-group">
               <label for="season_name">Season name</label>
               <input id="season_name" v-model="form.season_name" type="text" placeholder='e.g. "Series 1"' />
             </div>
@@ -300,11 +300,11 @@
               <span class="preview-label">itunes:title</span>
               <span class="preview-value">{{ form.title || '—' }}</span>
             </div>
-            <div class="preview-item">
+            <div v-if="episodeNumbersEnabled" class="preview-item">
               <span class="preview-label">itunes:episode</span>
               <span class="preview-value">{{ form.episode_number || '—' }}</span>
             </div>
-            <div class="preview-item">
+            <div v-if="seasonsEnabled" class="preview-item">
               <span class="preview-label">itunes:season</span>
               <span class="preview-value">{{ form.season_number || '—' }}</span>
             </div>
@@ -351,6 +351,20 @@ const route = useRoute()
 const router = useRouter()
 const podcastSlug = route.params.slug as string
 const { createEpisode } = useEpisodes(podcastSlug)
+
+interface PodcastFlags {
+  seasons_enabled: number | null
+  episode_numbers_enabled: number | null
+}
+const { data: podcastSettings } = await useFetch<PodcastFlags>(`/api/podcasts/${podcastSlug}`)
+const seasonsEnabled = computed(() => {
+  const v = podcastSettings.value?.seasons_enabled
+  return v == null ? true : !!v
+})
+const episodeNumbersEnabled = computed(() => {
+  const v = podcastSettings.value?.episode_numbers_enabled
+  return v == null ? true : !!v
+})
 
 const formDirty = ref(false)
 const formSaved = ref(false)
