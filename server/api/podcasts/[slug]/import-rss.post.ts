@@ -135,11 +135,13 @@ export default defineEventHandler(async (event) => {
   const tx = db.transaction((items: typeof feed.items) => {
     let imported = 0
     let skipped = 0
+    let unnumbered = 0
     for (const item of items) {
       if (!item.audio_url) {
         skipped++
         continue
       }
+      if (item.episode_number === null) unnumbered++
       const slug = uniqueSlug(slugify(item.title))
       const result = insert.run({
         podcast_id: podcastId,
@@ -174,7 +176,7 @@ export default defineEventHandler(async (event) => {
       }
       imported++
     }
-    return { imported, skipped }
+    return { imported, skipped, unnumbered }
   })
 
   // Channel-level <podcast:person> are the show's regular cast; create them
@@ -187,7 +189,7 @@ export default defineEventHandler(async (event) => {
     })()
   }
 
-  const { imported, skipped } = tx(feed.items)
+  const { imported, skipped, unnumbered } = tx(feed.items)
 
   // Preserve the source feed's channel <podcast:guid> so existing
   // subscribers stay subscribed when they re-point their app at our feed.
@@ -257,6 +259,14 @@ export default defineEventHandler(async (event) => {
     maybeAutoTrigger(podcastId, 'rss-import')
   }
 
+  const warnings: string[] = []
+  if (unnumbered > 0) {
+    warnings.push(
+      `${unnumbered} episode${unnumbered === 1 ? '' : 's'} imported without an episode_number `
+      + '(no <itunes:episode> tag and no #N in the title). Review titles to backfill.'
+    )
+  }
+
   logAudit({
     podcastId,
     userId: user.id,
@@ -269,6 +279,7 @@ export default defineEventHandler(async (event) => {
       feed_title: feed.title,
       imported,
       skipped,
+      unnumbered,
       settings_backfilled: setClauses.map((c) => c.split(' = ')[0]),
     },
   })
@@ -278,6 +289,8 @@ export default defineEventHandler(async (event) => {
     total_items: feed.items.length,
     imported,
     skipped,
+    unnumbered,
+    warnings,
     settings_backfilled: setClauses.map((c) => c.split(' = ')[0]),
   }
 })

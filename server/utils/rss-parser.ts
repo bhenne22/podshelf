@@ -1,4 +1,5 @@
 import { XMLParser } from 'fast-xml-parser'
+import { decodeEntities, inferEpisodeNumberFromTitle } from './text'
 
 export interface ParsedItemPerson {
   name: string
@@ -184,8 +185,12 @@ export function parsePodcastFeed(xml: string): ParsedFeed {
   for (const raw of rawItems) {
     const item = raw as Record<string, unknown>
 
-    const title = asString(item.title)
-    if (!title) continue
+    const rawTitle = asString(item.title)
+    if (!rawTitle) continue
+    // Decode entities — WordPress emits CDATA-wrapped titles with numeric
+    // character refs like &#8211;, &#8217; that XML parsers preserve as-is.
+    // The slug derives from this same decoded text downstream.
+    const title = decodeEntities(rawTitle)
 
     const enclosure = item.enclosure as { '@_url'?: string; '@_length'?: string } | undefined
     const audio_url = enclosure?.['@_url'] || null
@@ -217,14 +222,20 @@ export function parsePodcastFeed(xml: string): ParsedFeed {
       audio_url,
       audio_size_bytes: Number.isFinite(audio_size_bytes) ? audio_size_bytes : null,
       audio_duration_seconds: parseDuration(item['itunes:duration']),
-      episode_number: asNumber(item['itunes:episode']) ?? asNumber(item['podcast:episode']),
+      // <itunes:episode> wins. Most WP-emitted feeds don't set it, so fall
+      // back to the `#N` pattern in the title — strict regex, no false
+      // positives on year-like digits.
+      episode_number:
+        asNumber(item['itunes:episode'])
+        ?? asNumber(item['podcast:episode'])
+        ?? inferEpisodeNumberFromTitle(title),
       season_number: asNumber(item['itunes:season']) ?? asNumber(item['podcast:season']),
       guid: asString(item.guid),
       episode_type: ['full', 'trailer', 'bonus'].includes(epType) ? epType : null,
       transcript_url: firstTranscript?.['@_url'] || null,
       transcript_type: firstTranscript?.['@_type'] || null,
       chapters_url: chaptersNode?.['@_url'] || null,
-      itunes_title: asString(item['itunes:title']),
+      itunes_title: decodeEntities(asString(item['itunes:title'])) || null,
       itunes_author: asString(item['itunes:author']),
       itunes_explicit: epExplicit,
       season_name: seasonNode?.['@_name'] || null,

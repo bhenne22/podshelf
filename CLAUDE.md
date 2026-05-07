@@ -13,9 +13,11 @@ npm run dev        # Development server
 npm run build      # Production build
 npm run preview    # Preview production build
 npm run typecheck  # TypeScript type checking (requires `nuxi prepare` first)
+npm test           # node:test runner via tsx; tests live in test/*.test.ts
 ```
 
-No test suite exists.
+Tests are intentionally narrow — pure-function coverage on parsers and
+projection-shape pinning on a few endpoints. No e2e or DB integration tests.
 
 ## Architecture
 

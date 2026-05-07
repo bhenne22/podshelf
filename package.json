@@ -9,6 +9,7 @@
     "preview": "nuxt preview",
     "typecheck": "nuxi typecheck",
     "create-admin": "tsx scripts/create-admin.ts",
+    "test": "node --import tsx --test test/*.test.ts",
     "postinstall": "nuxt prepare"
   },
   "dependencies": {

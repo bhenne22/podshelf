@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"
+  xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"
+  xmlns:content="http://purl.org/rss/1.0/modules/content/"
+  xmlns:podcast="https://podcastindex.org/namespace/1.0">
+  <channel>
+    <title>Subtle Interference (test fixture)</title>
+    <description>Synthetic feed mirroring the WordPress / PowerPress shapes that Podshelf's importer must handle.</description>
+    <language>en</language>
+    <itunes:author>Bob &amp; Jane</itunes:author>
+    <podcast:guid>9b024349-ccf0-5f69-8d75-12d1a36b3ee6</podcast:guid>
+
+    <!-- 1. Title with numeric character references inside CDATA — the
+         WordPress case. Importer must decode &#8211;, &#8217;, &#8230;
+         and let &amp;ampersand survive as a single &. No itunes:episode
+         tag, but #146 is in the title — should be inferred. -->
+    <item>
+      <title><![CDATA[SI #146 &#8211; with &#8217;quotes&#8217; and &amp;ampersand]]></title>
+      <description><![CDATA[<p>Show notes &#8211; HTML stays as HTML.</p>]]></description>
+      <content:encoded><![CDATA[<p>Full notes with <a href="https://example.com">a link</a> and &#8211; an en-dash.</p>]]></content:encoded>
+      <pubDate>Wed, 15 Jan 2025 12:00:00 +0000</pubDate>
+      <guid isPermaLink="false">https://example.com/?p=146</guid>
+      <enclosure url="https://example.com/audio/146.mp3" length="12345678" type="audio/mpeg"/>
+      <itunes:duration>1:23:45</itunes:duration>
+    </item>
+
+    <!-- 2. Explicit itunes:episode wins over title pattern. Title also
+         has #99 but the tag says 200; importer must use the tag. -->
+    <item>
+      <title>SI #99 – tag wins over title</title>
+      <description>desc</description>
+      <pubDate>Tue, 14 Jan 2025 12:00:00 +0000</pubDate>
+      <guid isPermaLink="false">https://example.com/?p=200</guid>
+      <enclosure url="https://example.com/audio/200.mp3" length="1000" type="audio/mpeg"/>
+      <itunes:episode>200</itunes:episode>
+      <itunes:season>1</itunes:season>
+    </item>
+
+    <!-- 3. "Specials" with no number anywhere. Must stay null, NOT auto-set
+         to bonus, not invent a number. -->
+    <item>
+      <title><![CDATA[Subtle Interference &#8211; The Challenge Bloodlines]]></title>
+      <description>special</description>
+      <pubDate>Mon, 13 Jan 2025 12:00:00 +0000</pubDate>
+      <guid isPermaLink="false">https://example.com/?p=300</guid>
+      <enclosure url="https://example.com/audio/300.mp3" length="1000" type="audio/mpeg"/>
+    </item>
+
+    <!-- 4. Title with hex entity &#x2014; (em-dash). -->
+    <item>
+      <title><![CDATA[SI #58 &#x2014; February show]]></title>
+      <description>hex</description>
+      <pubDate>Sun, 12 Jan 2025 12:00:00 +0000</pubDate>
+      <guid isPermaLink="false">https://example.com/?p=58</guid>
+      <enclosure url="https://example.com/audio/58.mp3" length="1000" type="audio/mpeg"/>
+    </item>
+
+    <!-- 5. itunes:title with entities — also needs decoding. -->
+    <item>
+      <title>Plain title #1</title>
+      <itunes:title><![CDATA[Itunes title &#8217;s test]]></itunes:title>
+      <description>desc</description>
+      <pubDate>Sat, 11 Jan 2025 12:00:00 +0000</pubDate>
+      <guid isPermaLink="false">https://example.com/?p=1</guid>
+      <enclosure url="https://example.com/audio/1.mp3" length="1000" type="audio/mpeg"/>
+    </item>
+  </channel>
+</rss>
