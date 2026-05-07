@@ -270,6 +270,9 @@ async function logout() {
 .more-panel a {
   width: 100%;
   white-space: nowrap;
+  /* Without this the link's padding pushes the visible box past the panel's
+   * right edge so the hover/active highlight bleeds into the page background. */
+  box-sizing: border-box;
 }
 .more-panel .divider {
   width: auto;

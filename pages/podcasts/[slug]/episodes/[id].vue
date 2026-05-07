@@ -337,6 +337,12 @@
             <div v-if="chaptersFileUploading" class="upload-progress">Uploading chapters… {{ uploadProgress }}%</div>
             <div v-if="chaptersFileError" class="probe-error">{{ chaptersFileError }}</div>
 
+            <div class="form-group">
+              <label for="chapters_url">Chapters URL</label>
+              <input id="chapters_url" v-model="form.chapters_url" type="url" placeholder="https://example.com/episode-42.chapters.json" />
+              <p class="hint">Or paste an existing public URL to a chapters JSON file hosted elsewhere.</p>
+            </div>
+
             <div class="chapters-divider"><span>or paste a list</span></div>
 
             <textarea v-model="chaptersText" rows="8" class="chapters-textarea"
