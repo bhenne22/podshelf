@@ -118,10 +118,12 @@
           <tbody>
             <tr v-for="f in pagedFiles" :key="f.name">
               <td class="col-name" data-label="Name">
-                <span v-if="kind === 'artwork' && isImage(f.name)" class="thumb-cell">
-                  <img :src="f.url" :alt="f.name" class="thumb" />
-                </span>
-                <span class="filename">{{ f.name }}</span>
+                <div class="col-name-inner">
+                  <span v-if="kind === 'artwork' && isImage(f.name)" class="thumb-cell">
+                    <img :src="f.url" :alt="f.name" class="thumb" />
+                  </span>
+                  <span class="filename">{{ f.name }}</span>
+                </div>
               </td>
               <td class="col-size" data-label="Size">{{ formatSize(f.size) }}</td>
               <td class="col-modified" data-label="Modified">{{ f.modifiedAt ? formatDate(f.modifiedAt) : '—' }}</td>
@@ -719,7 +721,7 @@ h1 { margin: 0 0 0.25rem; font-size: 1.5rem; color: #1a202c; }
   color: inherit;
 }
 
-.col-name { display: flex; align-items: center; gap: 0.625rem; }
+.col-name-inner { display: flex; align-items: center; gap: 0.625rem; }
 .thumb-cell { flex-shrink: 0; }
 .thumb {
   width: 36px;
@@ -1046,7 +1048,7 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
     padding: 0.5rem 0.625rem;
     font-size: 0.825rem;
   }
-  .col-name { gap: 0.5rem; }
+  .col-name-inner { gap: 0.5rem; }
   .thumb { width: 32px; height: 32px; }
   .filter-bar {
     padding: 0.625rem 0.75rem;
