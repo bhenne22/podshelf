@@ -7,7 +7,14 @@
         :to="`/podcasts/${podcastSlug}`"
         class="nav-podcast-name"
       >
-        / {{ podcast?.title || podcastSlug }}
+        <span class="nav-podcast-sep">/</span>
+        <img
+          v-if="podcast?.image_url"
+          :src="podcast.image_url"
+          :alt="podcast.title"
+          class="nav-podcast-art"
+        />
+        <span class="nav-podcast-title">{{ podcast?.title || podcastSlug }}</span>
       </NuxtLink>
     </div>
     <ul class="nav-links" :class="{ open: menuOpen }">
@@ -74,7 +81,7 @@ const props = defineProps<{
 }>()
 
 interface Me { id: number; email: string; is_admin: boolean }
-interface Podcast { id: number; slug: string; title: string }
+interface Podcast { id: number; slug: string; title: string; image_url: string | null }
 
 const { data: me } = await useFetch<Me>('/api/me', { default: () => null })
 
@@ -171,14 +178,39 @@ async function logout() {
 }
 
 .nav-podcast-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
   font-size: 0.95rem;
   color: #4a5568;
   text-decoration: none;
+}
+.nav-podcast-name:hover { color: #667eea; }
+.nav-podcast-name:hover .nav-podcast-art { border-color: #c3dafe; }
+
+.nav-podcast-sep {
+  color: #a0aec0;
+  flex-shrink: 0;
+}
+
+.nav-podcast-art {
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  object-fit: cover;
+  background: #edf2f7;
+  border: 1px solid #e2e8f0;
+  flex-shrink: 0;
+  transition: border-color 0.15s;
+}
+
+.nav-podcast-title {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
 }
-.nav-podcast-name:hover { color: #667eea; }
 
 .nav-links {
   display: flex;
@@ -331,6 +363,8 @@ async function logout() {
     gap: 0.75rem;
   }
   .hamburger { display: flex; }
+
+  .nav-podcast-art { width: 24px; height: 24px; }
 
   .nav-links {
     /* Drawer slides down beneath the bar. Hidden by default; max-height
