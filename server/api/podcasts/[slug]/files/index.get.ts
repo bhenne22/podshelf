@@ -43,7 +43,7 @@ export default defineEventHandler(async (event) => {
         .map((e) => ({
           name: e.name,
           size: e.size,
-          modifiedAt: e.modifiedAt ? new Date(e.modifiedAt * 1000).toISOString() : null,
+          modifiedAt: e.modifiedAt ? new Date(e.modifiedAt).toISOString() : null,
         }))
     } else if (storage.adapter === 's3' && storage.s3) {
       const result = await listS3Directory(storage.s3, kind)

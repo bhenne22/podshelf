@@ -16,10 +16,10 @@
  * rule (already added to each consumer's <style> block).
  */
 export function useRowMenu(estimatedPanelHeight = 200) {
-  const openMenuId = ref<number | null>(null)
+  const openMenuId = ref<number | string | null>(null)
   const menuDirection = ref<'down' | 'up'>('down')
 
-  function toggleMenu(id: number, ev?: Event) {
+  function toggleMenu(id: number | string, ev?: Event) {
     if (openMenuId.value === id) {
       openMenuId.value = null
       return
