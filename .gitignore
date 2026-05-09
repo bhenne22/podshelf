@@ -5,5 +5,7 @@ data/
 node_modules/
 .nuxt/
 .output/
+# dist is a symlink to .output/public; trailing slash wouldn't match a symlink.
+dist
 .DS_Store
 *.log
