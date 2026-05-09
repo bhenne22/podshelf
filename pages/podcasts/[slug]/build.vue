@@ -79,8 +79,9 @@
           <input v-model="form.token" type="password" autocomplete="off"
             :placeholder="current?.has_token ? '(leave blank to keep existing)' : 'ghp_… or fine-grained token'" />
           <p class="hint">
-            Needs <code>contents: read</code> + <code>actions: write</code> on the target repo
-            (fine-grained), or classic token with <code>repo</code> scope. Stored encrypted.
+            Fine-grained token: <code>Contents</code> → <strong>Read and write</strong> on the target repo
+            (the <code>repository_dispatch</code> endpoint checks contents-write, not
+            actions-write). Classic token: <code>repo</code> scope. Stored encrypted.
           </p>
         </div>
 
