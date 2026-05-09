@@ -97,12 +97,12 @@ export function processPendingPublishes(): number {
   // Interpolating the constant integer is safe (it's our own typed value;
   // not user input) and lets us use SQLite's datetime() modifier syntax.
   const rows = db.prepare(`
-    SELECT id FROM podcasts
+    SELECT id, slug FROM podcasts
     WHERE github_auto_trigger = 1
       AND publish_dirty_last_at IS NOT NULL
       AND status = 'active'
       AND datetime(publish_dirty_last_at, '+${PUBLISH_DEBOUNCE_MINUTES} minutes') <= datetime('now')
-  `).all() as { id: number }[]
+  `).all() as { id: number; slug: string }[]
 
   let fired = 0
   for (const row of rows) {
@@ -117,6 +117,7 @@ export function processPendingPublishes(): number {
     clearPublishDirty(row.id)
 
     void dispatchRepositoryEvent(config, {
+      slug: row.slug,
       reason: 'podshelf:auto-debounced',
       podcast_id: row.id,
       fired_at: new Date().toISOString(),

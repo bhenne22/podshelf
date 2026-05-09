@@ -39,7 +39,7 @@ export default defineEventHandler(async (event) => {
   try {
     const result = await dispatchRepositoryEvent(
       config as GitHubConfig,
-      { reason: 'podshelf:test', podcast_id: podcastId, fired_at: new Date().toISOString() },
+      { slug, reason: 'podshelf:test', podcast_id: podcastId, fired_at: new Date().toISOString() },
     )
     return { ok: true, status: result.status }
   } catch (err: unknown) {

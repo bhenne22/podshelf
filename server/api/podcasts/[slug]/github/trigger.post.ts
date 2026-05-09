@@ -26,7 +26,7 @@ export default defineEventHandler(async (event) => {
   try {
     const result = await dispatchRepositoryEvent(
       config,
-      { reason: 'podshelf:manual', podcast_id: podcastId, fired_at: new Date().toISOString() },
+      { slug, reason: 'podshelf:manual', podcast_id: podcastId, fired_at: new Date().toISOString() },
     )
     // Manual rebuild satisfies any pending changes; clear the dirty window
     // so the banner disappears and the next edit starts a fresh debounce.
