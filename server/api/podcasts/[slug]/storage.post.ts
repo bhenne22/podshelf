@@ -1,6 +1,6 @@
 import { defineEventHandler, readBody, getRouterParam, createError } from 'h3'
 import { requirePodcastAccess } from '../../../utils/auth'
-import { savePodcastStorage, type SftpConfig, type S3Config } from '../../../utils/storage-config'
+import { loadPodcastStorage, savePodcastStorage, type SftpConfig, type S3Config } from '../../../utils/storage-config'
 import { logAudit } from '../../../utils/audit'
 
 /**
@@ -8,7 +8,10 @@ import { logAudit } from '../../../utils/audit'
  *
  * Body: { adapter: 'sftp'|'s3', config: SftpConfig|S3Config }
  *
- * Saves storage credentials encrypted in the podcasts row.
+ * Saves storage credentials encrypted in the podcasts row. Secret fields
+ * (privateKey, passphrase, password, accessKeyId, secretAccessKey) left blank
+ * in the body fall back to the currently saved values, so users can update a
+ * non-secret field (e.g. remoteDir) without re-entering credentials.
  */
 export default defineEventHandler(async (event) => {
   const slug = getRouterParam(event, 'slug') as string
@@ -25,8 +28,20 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'config object is required' })
   }
 
+  const saved = loadPodcastStorage(podcastId)
+
   if (adapter === 'sftp') {
     const c = config as SftpConfig
+    // Fall back to saved secrets when omitted. Only carry them across if the
+    // user is staying on the same adapter — switching s3 → sftp shouldn't
+    // inherit anything.
+    if (saved?.adapter === 'sftp' && saved.sftp) {
+      if (!c.privateKey && !c.password) {
+        c.privateKey = saved.sftp.privateKey
+        c.password = saved.sftp.password
+      }
+      if (!c.passphrase) c.passphrase = saved.sftp.passphrase
+    }
     if (!c.host || !c.username || !c.remoteDir || !c.publicUrlBase) {
       throw createError({ statusCode: 400, statusMessage: 'SFTP requires host, username, remoteDir, publicUrlBase' })
     }
@@ -39,6 +54,10 @@ export default defineEventHandler(async (event) => {
     savePodcastStorage(podcastId, 'sftp', c)
   } else {
     const c = config as S3Config
+    if (saved?.adapter === 's3' && saved.s3) {
+      if (!c.accessKeyId) c.accessKeyId = saved.s3.accessKeyId
+      if (!c.secretAccessKey) c.secretAccessKey = saved.s3.secretAccessKey
+    }
     if (!c.accessKeyId || !c.secretAccessKey || !c.bucketName || !c.publicUrlBase) {
       throw createError({ statusCode: 400, statusMessage: 'S3 requires accessKeyId, secretAccessKey, bucketName, publicUrlBase' })
     }

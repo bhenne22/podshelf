@@ -62,8 +62,9 @@ export default defineEventHandler(async (event) => {
       artworkPrefix: incoming.artworkPrefix ? String(incoming.artworkPrefix) : undefined,
       artworkPublicUrlBase: incoming.artworkPublicUrlBase ? String(incoming.artworkPublicUrlBase) : undefined,
     }
-    if (!config.secretAccessKey && saved?.adapter === 's3' && saved.s3) {
-      config.secretAccessKey = saved.s3.secretAccessKey
+    if (saved?.adapter === 's3' && saved.s3) {
+      if (!config.accessKeyId) config.accessKeyId = saved.s3.accessKeyId
+      if (!config.secretAccessKey) config.secretAccessKey = saved.s3.secretAccessKey
     }
     const result = await testS3Connection(config, 10, kind)
     return result

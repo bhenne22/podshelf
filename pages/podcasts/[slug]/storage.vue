@@ -88,16 +88,16 @@
         </div>
         <div v-if="sftpAuthMode === 'key'" class="form-group">
           <label>Private Key (PEM contents)</label>
-          <textarea v-model="sftp.privateKey" rows="6" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----..." />
-          <p class="hint">Paste the contents of your private key file. Stored encrypted.</p>
+          <textarea v-model="sftp.privateKey" rows="6" :placeholder="hasSavedSftpKey ? '••••••••  (leave blank to keep saved key)' : '-----BEGIN OPENSSH PRIVATE KEY-----...'" />
+          <p class="hint">Paste the contents of your private key file. Stored encrypted.<span v-if="hasSavedSftpKey"> Leave blank to keep the existing key.</span></p>
         </div>
         <div v-if="sftpAuthMode === 'key'" class="form-group">
           <label>Passphrase <span class="hint">(only if your key is encrypted)</span></label>
-          <input v-model="sftp.passphrase" type="password" autocomplete="off" />
+          <input v-model="sftp.passphrase" type="password" autocomplete="off" :placeholder="hasSavedSftpPassphrase ? '••••••••  (leave blank to keep saved)' : ''" />
         </div>
         <div v-else class="form-group">
           <label>Password</label>
-          <input v-model="sftp.password" type="password" />
+          <input v-model="sftp.password" type="password" :placeholder="hasSavedSftpPassword ? '••••••••  (leave blank to keep saved)' : ''" />
         </div>
         <div class="form-group">
           <label>Audio Remote Directory</label>
@@ -152,11 +152,11 @@
         </div>
         <div class="form-group">
           <label>Access Key ID</label>
-          <input v-model="s3.accessKeyId" type="text" required />
+          <input v-model="s3.accessKeyId" type="text" :required="!hasSavedS3" :placeholder="hasSavedS3 ? `${savedS3AccessKeyIdHint}  (leave blank to keep saved)` : ''" />
         </div>
         <div class="form-group">
           <label>Secret Access Key</label>
-          <input v-model="s3.secretAccessKey" type="password" required />
+          <input v-model="s3.secretAccessKey" type="password" :required="!hasSavedS3" :placeholder="hasSavedS3 ? '••••••••  (leave blank to keep saved)' : ''" />
         </div>
         <div class="form-group">
           <label>Bucket Name</label>
@@ -272,6 +272,20 @@ const s3 = reactive({
 })
 
 const testKind = ref<'audio' | 'artwork'>('audio')
+
+// "Has a saved value for adapter X's secret field" — drives placeholder hints
+// and the relaxed `required` attributes once a config exists. Tied to the
+// adapter the user is currently editing so switching adapters resets them.
+const hasSavedSftpKey = computed(() =>
+  !!(current.value?.configured && current.value.adapter === 'sftp' && current.value.fields.hasPrivateKey))
+const hasSavedSftpPassphrase = computed(() =>
+  !!(current.value?.configured && current.value.adapter === 'sftp' && current.value.fields.hasPassphrase))
+const hasSavedSftpPassword = computed(() =>
+  !!(current.value?.configured && current.value.adapter === 'sftp' && current.value.fields.hasPassword))
+const hasSavedS3 = computed(() =>
+  !!(current.value?.configured && current.value.adapter === 's3'))
+const savedS3AccessKeyIdHint = computed(() =>
+  hasSavedS3.value ? String(current.value?.fields.accessKeyId || '••••••••') : '')
 
 // Pre-populate non-secret fields from existing config
 watch(current, (c) => {
