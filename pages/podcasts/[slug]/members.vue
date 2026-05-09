@@ -195,6 +195,10 @@ h1 { margin: 0; font-size: 1.5rem; color: #1a202c; }
 .btn-danger:hover:not(:disabled) { background: #c53030; }
 .btn-danger:disabled { opacity: 0.6; cursor: not-allowed; }
 
+/* If/when this table gets a row hamburger menu, drop `overflow: hidden`
+   and switch to `border-collapse: separate` with per-cell border-radius
+   on the first/last cells (see pages/admin/users/index.vue). overflow:hidden
+   here clips the absolutely-positioned menu panel. */
 .member-table {
   width: 100%;
   background: white;
