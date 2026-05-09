@@ -16,6 +16,22 @@ export interface GitHubConfigDescription {
   event_type: string | null
   has_token: boolean
   auto_trigger: boolean
+  pending: PublishPendingDescription
+}
+
+export interface PublishPendingDescription {
+  /** Timestamp of the first change in the current debounce window (ISO). */
+  first_at: string | null
+  /** Timestamp of the most recent change (ISO). Drives the countdown. */
+  last_at: string | null
+  /**
+   * When the scheduler will fire — `last_at + PUBLISH_DEBOUNCE_MINUTES`.
+   * Null if there's nothing pending. Always populated when last_at is set,
+   * regardless of `auto_trigger` — the UI uses `auto_trigger` separately
+   * to decide whether to show "auto-publishes at X" vs "auto-trigger off."
+   */
+  scheduled_for: string | null
+  debounce_minutes: number
 }
 
 interface PodcastGithubRow {
@@ -60,8 +76,14 @@ export function loadGithubConfig(podcastId: number): GitHubConfig | null {
  */
 export function describeGithubConfig(podcastId: number): GitHubConfigDescription {
   const row = loadRow(podcastId)
+  const pending = describePublishPending(podcastId)
   if (!row) {
-    return { configured: false, owner: null, repo: null, event_type: null, has_token: false, auto_trigger: false }
+    return {
+      configured: false,
+      owner: null, repo: null, event_type: null,
+      has_token: false, auto_trigger: false,
+      pending,
+    }
   }
   const hasToken = !!row.github_token_encrypted
   const allSet = !!(row.github_owner && row.github_repo && row.github_event_type && hasToken)
@@ -72,7 +94,22 @@ export function describeGithubConfig(podcastId: number): GitHubConfigDescription
     event_type: row.github_event_type,
     has_token: hasToken,
     auto_trigger: !!row.github_auto_trigger,
+    pending,
   }
+}
+
+function describePublishPending(podcastId: number): PublishPendingDescription {
+  const { first_at, last_at } = getPublishPending(podcastId)
+  let scheduled_for: string | null = null
+  if (last_at) {
+    // SQLite datetimes are stored as 'YYYY-MM-DD HH:MM:SS' UTC strings.
+    // Parse defensively: append 'Z' if there's no timezone marker so the
+    // browser doesn't interpret it as local time.
+    const iso = last_at.includes('T') ? last_at : last_at.replace(' ', 'T') + 'Z'
+    const t = new Date(iso).getTime() + PUBLISH_DEBOUNCE_MINUTES * 60_000
+    scheduled_for = new Date(t).toISOString()
+  }
+  return { first_at, last_at, scheduled_for, debounce_minutes: PUBLISH_DEBOUNCE_MINUTES }
 }
 
 export interface SaveGithubInput {
@@ -170,20 +207,66 @@ export async function dispatchRepositoryEvent(
 }
 
 /**
- * Fire-and-forget version used by auto-trigger hooks. Catches its own
- * errors so the calling API request isn't blocked or failed by GitHub
- * issues.
+ * Number of minutes of quiet time after the most recent change before the
+ * scheduler fires the auto-publish dispatch. Coalesces flurries of edits
+ * into a single GitHub Actions build.
  */
-export function maybeAutoTrigger(podcastId: number, reason: string) {
+export const PUBLISH_DEBOUNCE_MINUTES = 15
+
+/**
+ * Used by auto-trigger hooks scattered across the API. Instead of firing
+ * a GitHub dispatch immediately, mark the podcast as having pending
+ * changes; the in-process scheduler will fire one consolidated dispatch
+ * PUBLISH_DEBOUNCE_MINUTES after the most recent change. The function
+ * keeps its old name + signature so existing call sites continue to work.
+ */
+export function maybeAutoTrigger(podcastId: number, _reason: string) {
   try {
-    const config = loadGithubConfig(podcastId)
-    if (!config || !config.auto_trigger) return
-    // Don't await — let it run in the background
-    dispatchRepositoryEvent(config, { reason, podcast_id: podcastId, fired_at: new Date().toISOString() })
-      .catch((err) => {
-        console.error(`[github] auto-trigger failed for podcast ${podcastId}: ${err?.message || err}`)
-      })
+    const row = loadRow(podcastId)
+    if (!row || !row.github_auto_trigger) return
+    markPublishDirty(podcastId)
   } catch (err) {
-    console.error(`[github] auto-trigger setup error: ${(err as Error)?.message || err}`)
+    console.error(`[github] mark-dirty error for podcast ${podcastId}: ${(err as Error)?.message || err}`)
   }
+}
+
+/**
+ * Stamps `publish_dirty_last_at = now`. Sets `publish_dirty_first_at`
+ * the first time after a clear, otherwise leaves it pinned at the original
+ * timestamp so the UI can show "dirty since 2:13 PM".
+ */
+export function markPublishDirty(podcastId: number) {
+  getDb().prepare(`
+    UPDATE podcasts
+    SET publish_dirty_first_at = COALESCE(publish_dirty_first_at, datetime('now')),
+        publish_dirty_last_at  = datetime('now')
+    WHERE id = ?
+  `).run(podcastId)
+}
+
+/**
+ * Clears the dirty markers — call after a successful dispatch (manual or
+ * scheduler-driven) so the banner disappears and the next change starts a
+ * fresh window.
+ */
+export function clearPublishDirty(podcastId: number) {
+  getDb().prepare(`
+    UPDATE podcasts
+    SET publish_dirty_first_at = NULL,
+        publish_dirty_last_at  = NULL
+    WHERE id = ?
+  `).run(podcastId)
+}
+
+export interface PublishPendingState {
+  first_at: string | null
+  last_at: string | null
+}
+
+export function getPublishPending(podcastId: number): PublishPendingState {
+  return (getDb().prepare(`
+    SELECT publish_dirty_first_at AS first_at,
+           publish_dirty_last_at  AS last_at
+    FROM podcasts WHERE id = ?
+  `).get(podcastId) as PublishPendingState | undefined) || { first_at: null, last_at: null }
 }

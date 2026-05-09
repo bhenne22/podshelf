@@ -1,6 +1,6 @@
 import { defineEventHandler, getRouterParam, createError } from 'h3'
 import { requireBuildAccess } from '../../../../utils/build-access'
-import { dispatchRepositoryEvent, loadGithubConfig } from '../../../../utils/github'
+import { dispatchRepositoryEvent, loadGithubConfig, clearPublishDirty } from '../../../../utils/github'
 import { logAudit } from '../../../../utils/audit'
 
 /**
@@ -26,6 +26,9 @@ export default defineEventHandler(async (event) => {
       config,
       { reason: 'podshelf:manual', podcast_id: podcastId, fired_at: new Date().toISOString() },
     )
+    // Manual rebuild satisfies any pending changes; clear the dirty window
+    // so the banner disappears and the next edit starts a fresh debounce.
+    clearPublishDirty(podcastId)
     logAudit(event, {
       podcastId,
       userId: user.id,

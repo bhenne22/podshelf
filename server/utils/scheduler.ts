@@ -1,6 +1,12 @@
 import getDb from '../db/index'
 import { firePublishEvent } from './publish-event'
 import { logAudit } from './audit'
+import {
+  PUBLISH_DEBOUNCE_MINUTES,
+  loadGithubConfig,
+  clearPublishDirty,
+  dispatchRepositoryEvent,
+} from './github'
 
 interface ScheduledEpisode {
   id: number
@@ -80,6 +86,57 @@ export function processScheduledFlips(podcastId?: number): number {
   return flipped
 }
 
+/**
+ * Find podcasts with auto-trigger on whose pending-changes window has been
+ * quiet for >= PUBLISH_DEBOUNCE_MINUTES. Fire one consolidated dispatch per
+ * podcast. Errors are logged and don't abort the loop. Returns the number
+ * of dispatches actually attempted.
+ */
+export function processPendingPublishes(): number {
+  const db = getDb()
+  // Interpolating the constant integer is safe (it's our own typed value;
+  // not user input) and lets us use SQLite's datetime() modifier syntax.
+  const rows = db.prepare(`
+    SELECT id FROM podcasts
+    WHERE github_auto_trigger = 1
+      AND publish_dirty_last_at IS NOT NULL
+      AND status = 'active'
+      AND datetime(publish_dirty_last_at, '+${PUBLISH_DEBOUNCE_MINUTES} minutes') <= datetime('now')
+  `).all() as { id: number }[]
+
+  let fired = 0
+  for (const row of rows) {
+    const config = loadGithubConfig(row.id)
+    // Config got removed but auto_trigger is still on. Don't clear the
+    // dirty flag — keep it so the UI banner can show "configure GitHub
+    // and click Rebuild Now."
+    if (!config) continue
+
+    // Clear FIRST so a fast follow-up edit re-marks dirty after we send;
+    // otherwise an edit during dispatch could be lost when we cleared.
+    clearPublishDirty(row.id)
+
+    void dispatchRepositoryEvent(config, {
+      reason: 'podshelf:auto-debounced',
+      podcast_id: row.id,
+      fired_at: new Date().toISOString(),
+    }).catch((err) => {
+      console.error(`[scheduler] auto-publish dispatch failed for podcast ${row.id}: ${err?.message || err}`)
+    })
+
+    logAudit({
+      podcastId: row.id,
+      userId: null,
+      action: 'podcast.github.auto-trigger',
+      entityType: 'podcast',
+      entityId: row.id,
+      summary: `Auto-fired GitHub rebuild after ${PUBLISH_DEBOUNCE_MINUTES}-minute quiet period`,
+    })
+    fired++
+  }
+  return fired
+}
+
 let timerHandle: ReturnType<typeof setInterval> | null = null
 
 /**
@@ -90,15 +147,17 @@ let timerHandle: ReturnType<typeof setInterval> | null = null
 export function startScheduler(intervalMs = 60_000) {
   if (timerHandle) return
   // Fire once immediately so server restart doesn't leave overdue episodes
-  // sitting until the first interval tick.
+  // (or pending publishes) sitting until the first interval tick.
   try {
     processScheduledFlips()
+    processPendingPublishes()
   } catch (err) {
     console.error('[scheduler] initial run failed', err)
   }
   timerHandle = setInterval(() => {
     try {
       processScheduledFlips()
+      processPendingPublishes()
     } catch (err) {
       console.error('[scheduler] tick failed', err)
     }

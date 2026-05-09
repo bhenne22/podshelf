@@ -13,9 +13,41 @@
       <div v-if="successMsg" class="success-msg">{{ successMsg }}</div>
       <div v-if="errorMsg" class="error-msg">{{ errorMsg }}</div>
 
-      <p v-if="current?.configured" class="status">
-        <strong>Configured.</strong> Auto-trigger is
-        <strong>{{ form.auto_trigger ? 'on' : 'off' }}</strong>.
+      <div v-if="hasPending" class="pending-banner" :class="{ off: !current?.auto_trigger }">
+        <div class="pending-info">
+          <div class="pending-title">
+            <span class="pending-dot" />
+            Pending changes
+          </div>
+          <div class="pending-detail">
+            <template v-if="current?.auto_trigger && current?.configured">
+              Auto-publishes <strong>{{ countdownLabel }}</strong> ({{ formatTime(current.pending.scheduled_for) }})
+              — first edit at {{ formatTime(current.pending.first_at) }}, last {{ relative(current.pending.last_at) }}.
+            </template>
+            <template v-else-if="!current?.configured">
+              GitHub isn't fully configured yet — fill in the form below and click
+              <strong>Rebuild Now</strong> to publish, or save and the timer will resume.
+            </template>
+            <template v-else>
+              Auto-publish is off. Click <strong>Rebuild Now</strong> to publish these changes,
+              or turn auto-publish on below.
+            </template>
+          </div>
+        </div>
+        <button
+          type="button"
+          class="btn-rebuild pending-btn"
+          :disabled="triggering || !current?.configured"
+          @click="manualTrigger"
+        >
+          {{ triggering ? 'Triggering…' : 'Rebuild Now' }}
+        </button>
+      </div>
+
+      <p v-else-if="current?.configured" class="status">
+        <strong>Configured.</strong> Auto-publish is
+        <strong>{{ form.auto_trigger ? `on (${PUBLISH_DEBOUNCE_MINUTES}-min debounce)` : 'off' }}</strong>.
+        No pending changes.
       </p>
 
       <form @submit.prevent="save" class="form-section">
@@ -55,12 +87,11 @@
         <div class="form-group">
           <label class="checkbox">
             <input v-model="form.auto_trigger" type="checkbox" />
-            Auto-trigger on feed changes
+            Auto-publish after a {{ PUBLISH_DEBOUNCE_MINUTES }}-minute quiet period
           </label>
           <p class="hint">
-            Fires when an episode's published state or metadata changes, when a published
-            episode is deleted, or when feed-visible podcast settings change. Off by
-            default — flip on once you've verified manual rebuild works.
+            Off by default — flip on once you've verified manual rebuild works. See
+            "How auto-publish works" below for the full picture.
           </p>
         </div>
 
@@ -82,6 +113,7 @@
         <p class="hint">
           Fires a <code>repository_dispatch</code> right now using the saved
           configuration. Use this to deploy without changing anything in the feed.
+          Also clears any pending-changes window if there is one.
         </p>
         <div class="form-actions form-actions-row">
           <span v-if="triggering" class="save-status saving">Triggering…</span>
@@ -90,6 +122,40 @@
             {{ triggering ? 'Triggering…' : 'Rebuild Now' }}
           </button>
         </div>
+      </div>
+
+      <div class="form-section explainer">
+        <h2>How auto-publish works</h2>
+        <ol class="explainer-list">
+          <li>
+            <strong>Any feed-visible change marks this podcast "dirty"</strong> — saving an
+            episode, deleting a published episode, editing podcast settings, RSS/JSON
+            import, attaching people, etc.
+          </li>
+          <li>
+            <strong>Each new change resets a {{ PUBLISH_DEBOUNCE_MINUTES }}-minute timer.</strong>
+            Edit, save, edit again, save — the clock keeps starting over until you stop.
+          </li>
+          <li>
+            <strong>Once it's been quiet for {{ PUBLISH_DEBOUNCE_MINUTES }} minutes, Podshelf fires
+            one <code>repository_dispatch</code></strong> to your GitHub Actions workflow. So 10
+            saves in 5 minutes still equals one build, not ten.
+          </li>
+          <li>
+            <strong>Don't want to wait?</strong> The pending-changes banner at the top of
+            this page shows a <em>Rebuild Now</em> button — that fires immediately and
+            clears the timer.
+          </li>
+          <li>
+            <strong>Auto-publish off?</strong> Pending changes still accumulate (so you can see
+            "5 edits since 2:13 PM") but never fire automatically. You'll need to click
+            <em>Rebuild Now</em> here, or flip auto-publish back on.
+          </li>
+        </ol>
+        <p class="hint explainer-foot">
+          The check runs in-process every 60 seconds. If the Podshelf service restarts,
+          the dirty markers are persisted — the next tick after restart picks them back up.
+        </p>
       </div>
     </div>
   </div>
@@ -101,6 +167,13 @@ definePageMeta({ middleware: 'auth' })
 const route = useRoute()
 const podcastSlug = route.params.slug as string
 
+interface PublishPending {
+  first_at: string | null
+  last_at: string | null
+  scheduled_for: string | null
+  debounce_minutes: number
+}
+
 interface GitHubDescription {
   configured: boolean
   owner: string | null
@@ -108,7 +181,12 @@ interface GitHubDescription {
   event_type: string | null
   has_token: boolean
   auto_trigger: boolean
+  pending: PublishPending
 }
+
+// Hardcoded fallback so the template can render before the first fetch
+// completes; the server returns the actual value via pending.debounce_minutes.
+const PUBLISH_DEBOUNCE_MINUTES = 15
 
 interface MeRow { id: number; email: string; is_admin: boolean }
 interface PodcastBuildRow { build_admin_only: number | null }
@@ -155,6 +233,61 @@ const lastTriggerOk = ref('')
 const canTest = computed(() =>
   !!form.owner && !!form.repo && !!form.event_type && (!!form.token || !!current.value?.has_token),
 )
+
+const hasPending = computed(() => !!current.value?.pending?.last_at)
+
+// Re-render the countdown each second so "in 12 min 34 sec" stays live.
+// Tick only runs while there's something pending.
+const now = ref(Date.now())
+let tickHandle: ReturnType<typeof setInterval> | null = null
+function startTick() {
+  if (tickHandle) return
+  tickHandle = setInterval(() => { now.value = Date.now() }, 1000)
+}
+function stopTick() {
+  if (tickHandle) { clearInterval(tickHandle); tickHandle = null }
+}
+watch(hasPending, (yes) => { if (yes) startTick(); else stopTick() }, { immediate: true })
+onBeforeUnmount(stopTick)
+
+// Periodically re-fetch the github config so the banner stays fresh if the
+// scheduler fired in the background (or if another tab edited things).
+let refreshHandle: ReturnType<typeof setInterval> | null = null
+onMounted(() => {
+  refreshHandle = setInterval(() => { void refresh() }, 30_000)
+})
+onBeforeUnmount(() => {
+  if (refreshHandle) clearInterval(refreshHandle)
+})
+
+const countdownLabel = computed(() => {
+  const target = current.value?.pending?.scheduled_for
+  if (!target) return ''
+  const ms = new Date(target).getTime() - now.value
+  if (ms <= 0) return 'any moment now'
+  const totalSec = Math.floor(ms / 1000)
+  const min = Math.floor(totalSec / 60)
+  const sec = totalSec % 60
+  if (min === 0) return `in ${sec}s`
+  return `in ${min}m ${String(sec).padStart(2, '0')}s`
+})
+
+function formatTime(iso: string | null): string {
+  if (!iso) return ''
+  return new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+}
+
+function relative(iso: string | null): string {
+  if (!iso) return ''
+  const ms = now.value - new Date(iso).getTime()
+  if (ms < 0) return 'just now'
+  const sec = Math.floor(ms / 1000)
+  if (sec < 60) return `${sec}s ago`
+  const min = Math.floor(sec / 60)
+  if (min < 60) return `${min} min ago`
+  const hr = Math.floor(min / 60)
+  return `${hr} hr ago`
+}
 
 async function save() {
   saving.value = true
@@ -206,6 +339,7 @@ async function manualTrigger() {
     successMsg.value = `Rebuild dispatch sent (HTTP ${result.status}).`
     lastTriggerOk.value = `HTTP ${result.status}`
     setTimeout(() => { lastTriggerOk.value = '' }, 4000)
+    await refresh()
   } catch (err: unknown) {
     errorMsg.value = (err as { data?: { statusMessage?: string } })?.data?.statusMessage || 'Trigger failed'
   } finally {
@@ -243,6 +377,84 @@ h1 { margin: 0 0 0.5rem; font-size: 1.5rem; color: #1a202c; }
   padding: 0.6rem 0.9rem;
   border-radius: 6px;
   margin-bottom: 1.25rem;
+}
+
+.pending-banner {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.875rem 1rem;
+  background: #fffaf0;
+  border: 1px solid #f6ad55;
+  border-radius: 8px;
+  margin-bottom: 1.25rem;
+}
+.pending-banner.off {
+  background: #fef5e7;
+  border-color: #ed8936;
+}
+.pending-info { flex: 1; min-width: 0; }
+.pending-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: #7b341e;
+  margin-bottom: 0.2rem;
+}
+.pending-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ed8936;
+  box-shadow: 0 0 0 4px rgba(237, 137, 54, 0.18);
+  animation: pending-pulse 2s ease-in-out infinite;
+}
+@keyframes pending-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.55; }
+}
+.pending-detail {
+  font-size: 0.85rem;
+  color: #744210;
+  line-height: 1.5;
+}
+.pending-btn {
+  flex-shrink: 0;
+}
+
+.explainer h2 {
+  /* Match the existing form-section heading scale; the explainer just
+     happens to host long-form content. */
+}
+.explainer-list {
+  margin: 0;
+  padding-left: 1.25rem;
+  font-size: 0.875rem;
+  color: #2d3748;
+  line-height: 1.6;
+}
+.explainer-list li { margin-bottom: 0.55rem; }
+.explainer-list li:last-child { margin-bottom: 0; }
+.explainer-list code {
+  background: #edf2f7;
+  padding: 0.1em 0.35em;
+  border-radius: 3px;
+  font-family: ui-monospace, monospace;
+  font-size: 0.85em;
+  color: #4a5568;
+}
+.explainer-list em {
+  color: #4c51bf;
+  font-style: normal;
+  font-weight: 500;
+}
+.explainer-foot {
+  margin-top: 1rem;
+  margin-bottom: 0;
+  padding-top: 0.75rem;
+  border-top: 1px solid #f0f4f8;
 }
 
 .form-section {
@@ -367,5 +579,11 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
     gap: 0.5rem;
   }
   .form-actions button { flex: 1 1 auto; min-height: 44px; }
+  .pending-banner {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+  }
+  .pending-btn { width: 100%; min-height: 44px; }
 }
 </style>

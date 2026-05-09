@@ -37,6 +37,8 @@ CREATE TABLE IF NOT EXISTS podcasts (
   github_event_type        TEXT,
   github_token_encrypted   TEXT,
   github_auto_trigger      INTEGER NOT NULL DEFAULT 0,
+  publish_dirty_first_at   TEXT,
+  publish_dirty_last_at    TEXT,
   build_admin_only         INTEGER NOT NULL DEFAULT 1,
   status                   TEXT NOT NULL DEFAULT 'active',
   lifecycle                TEXT NOT NULL DEFAULT 'active',
@@ -356,6 +358,12 @@ function applyMigrations(db: Database.Database) {
   }
   if (!podcastCols.includes('build_admin_only')) {
     db.exec('ALTER TABLE podcasts ADD COLUMN build_admin_only INTEGER NOT NULL DEFAULT 1')
+  }
+  if (!podcastCols.includes('publish_dirty_first_at')) {
+    db.exec('ALTER TABLE podcasts ADD COLUMN publish_dirty_first_at TEXT')
+  }
+  if (!podcastCols.includes('publish_dirty_last_at')) {
+    db.exec('ALTER TABLE podcasts ADD COLUMN publish_dirty_last_at TEXT')
   }
 
   const auditCols = cols('audit_log')
