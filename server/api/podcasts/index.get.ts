@@ -15,7 +15,7 @@ export default defineEventHandler((event) => {
   const db = getDb()
 
   const restricted = ctx.restrictedPodcastIds
-  const fields = `id, slug, title, description, image_url, website, status, deleted_at, created_at, updated_at`
+  const fields = `id, slug, title, description, image_url, website, status, lifecycle, deleted_at, created_at, updated_at`
 
   if (ctx.user.is_admin) {
     if (restricted !== null) {
@@ -43,7 +43,7 @@ export default defineEventHandler((event) => {
 
   return db.prepare(`
     SELECT p.id, p.slug, p.title, p.description, p.image_url, p.website,
-           p.status, p.deleted_at, p.created_at, p.updated_at
+           p.status, p.lifecycle, p.deleted_at, p.created_at, p.updated_at
     FROM podcasts p
     JOIN podcast_users pu ON pu.podcast_id = p.id
     WHERE pu.user_id = ?${scopeClause}

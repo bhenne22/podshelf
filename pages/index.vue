@@ -14,37 +14,42 @@
         <p v-else>You don't have access to any podcasts. Ask an admin to grant you access.</p>
       </div>
 
-      <ul v-else class="podcast-list">
-        <li v-for="p in podcasts" :key="p.id" :class="{ 'inactive-row': p.status === 'inactive' }">
-          <NuxtLink :to="`/podcasts/${p.slug}/episodes`" class="podcast-card">
-            <img v-if="p.image_url" :src="p.image_url" :alt="p.title" class="podcast-art" />
-            <div v-else class="podcast-art placeholder" />
-            <div class="podcast-info">
-              <div class="podcast-title">
-                {{ p.title }}
-                <span v-if="p.status === 'inactive'" class="badge-awaiting">Awaiting Purge</span>
-              </div>
-              <div class="podcast-desc">{{ p.description || '—' }}</div>
-              <div class="podcast-meta">
-                <span class="slug">/{{ p.slug }}</span>
-                <span v-if="p.website">· {{ p.website }}</span>
-                <span v-if="p.status === 'inactive' && p.deleted_at">
-                  · deleted {{ formatDate(p.deleted_at) }}
-                </span>
-              </div>
-            </div>
-          </NuxtLink>
-          <button
-            v-if="p.status === 'inactive'"
-            type="button"
-            class="restore-btn"
-            :disabled="restoring === p.id"
-            @click="restorePodcast(p)"
-          >
-            {{ restoring === p.id ? 'Restoring…' : 'Restore' }}
-          </button>
-        </li>
-      </ul>
+      <template v-else>
+        <section v-for="group in groups" :key="group.key" v-show="group.items.length" class="podcast-group">
+          <h2 class="group-heading">{{ group.label }} <span class="group-count">{{ group.items.length }}</span></h2>
+          <ul class="podcast-list">
+            <li v-for="p in group.items" :key="p.id" :class="{ 'inactive-row': p.status === 'inactive' }">
+              <NuxtLink :to="`/podcasts/${p.slug}/episodes`" class="podcast-card">
+                <img v-if="p.image_url" :src="p.image_url" :alt="p.title" class="podcast-art" />
+                <div v-else class="podcast-art placeholder" />
+                <div class="podcast-info">
+                  <div class="podcast-title">
+                    {{ p.title }}
+                    <span v-if="p.status === 'inactive'" class="badge-awaiting">Awaiting Purge</span>
+                  </div>
+                  <div class="podcast-desc">{{ p.description || '—' }}</div>
+                  <div class="podcast-meta">
+                    <span class="slug">/{{ p.slug }}</span>
+                    <span v-if="p.website">· {{ p.website }}</span>
+                    <span v-if="p.status === 'inactive' && p.deleted_at">
+                      · deleted {{ formatDate(p.deleted_at) }}
+                    </span>
+                  </div>
+                </div>
+              </NuxtLink>
+              <button
+                v-if="p.status === 'inactive'"
+                type="button"
+                class="restore-btn"
+                :disabled="restoring === p.id"
+                @click="restorePodcast(p)"
+              >
+                {{ restoring === p.id ? 'Restoring…' : 'Restore' }}
+              </button>
+            </li>
+          </ul>
+        </section>
+      </template>
 
       <p v-if="me?.is_admin && podcasts && podcasts.some((p) => p.status === 'inactive')" class="admin-purge-link">
         <NuxtLink to="/admin/inactive-podcasts">→ Manage inactive podcasts (admin)</NuxtLink>
@@ -67,12 +72,32 @@ interface Podcast {
   image_url: string | null
   website: string | null
   status: string
+  lifecycle: string | null
   deleted_at: string | null
 }
 interface Me { id: number; email: string; is_admin: boolean }
 
 const { data: me } = await useFetch<Me>('/api/me')
 const { data: podcasts, pending, refresh } = await useFetch<Podcast[]>('/api/podcasts')
+
+interface Group { key: string; label: string; items: Podcast[] }
+
+const groups = computed<Group[]>(() => {
+  const list = podcasts.value || []
+  const byKey: Record<string, Podcast[]> = { active: [], inactive: [], retired: [], deleted: [] }
+  for (const p of list) {
+    if (p.status === 'inactive') byKey.deleted.push(p)
+    else if (p.lifecycle === 'retired') byKey.retired.push(p)
+    else if (p.lifecycle === 'inactive') byKey.inactive.push(p)
+    else byKey.active.push(p)
+  }
+  return [
+    { key: 'active', label: 'Active', items: byKey.active },
+    { key: 'inactive', label: 'Inactive', items: byKey.inactive },
+    { key: 'retired', label: 'Retired', items: byKey.retired },
+    { key: 'deleted', label: 'Awaiting Purge', items: byKey.deleted },
+  ]
+})
 
 const restoring = ref<number | null>(null)
 
@@ -142,6 +167,34 @@ h1 {
   text-align: center;
   color: #718096;
   padding: 3rem;
+}
+
+.podcast-group {
+  margin-bottom: 1.75rem;
+}
+.podcast-group:last-child {
+  margin-bottom: 0;
+}
+
+.group-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin: 0 0 0.625rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #4a5568;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.group-count {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #718096;
+  background: #edf2f7;
+  padding: 0.05rem 0.5rem;
+  border-radius: 999px;
+  letter-spacing: 0;
 }
 
 .podcast-list {

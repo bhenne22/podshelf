@@ -90,6 +90,7 @@ included so owners can restore them — check `status`.
     "image_url": "https://...",
     "website": "https://yousaid100miles.com",
     "status": "active",
+    "lifecycle": "active",
     "deleted_at": null,
     "created_at": "2026-05-01T12:00:00.000Z",
     "updated_at": "2026-05-01T12:00:00.000Z"
@@ -126,7 +127,11 @@ fields: `slug`, `title`, `description`, `author`, `email`, `image_url`,
 `itunes_block`, `funding_url`, `funding_label`, `verify_txt`,
 `license_identifier`, `license_url`, `episode_title_template`,
 `episode_description_template`, `storage_adapter`, `github_owner`,
-`github_repo`, `github_event_type`.
+`github_repo`, `github_event_type`, `lifecycle`.
+
+`lifecycle` is a Podshelf-only publishing lifecycle indicator: `active`,
+`inactive`, or `retired`. It's exposed via the API for static-site builds and
+shown on the dashboard, but is **not** surfaced in the RSS feed.
 
 ### `DELETE /api/podcasts/[slug]`
 

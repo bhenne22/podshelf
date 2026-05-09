@@ -332,6 +332,24 @@
           </div>
         </div>
 
+        <div class="form-section">
+          <h2>Publishing Lifecycle</h2>
+          <p class="hint section-hint">
+            A Podshelf-only label for where this show stands. Surfaced via the
+            API (so static-site builds can group / hide retired shows) and used
+            to organize the dashboard. <strong>Not</strong> shown in the RSS feed.
+          </p>
+
+          <div class="form-group">
+            <label for="lifecycle">Status</label>
+            <select id="lifecycle" v-model="form.lifecycle">
+              <option value="active">Active — currently publishing</option>
+              <option value="inactive">Inactive — on hiatus, may return</option>
+              <option value="retired">Retired — done, archive only</option>
+            </select>
+          </div>
+        </div>
+
         <div class="form-actions">
           <span v-if="saving" class="save-status saving">Saving…</span>
           <span v-else-if="justSaved" class="save-status ok">✓ Saved</span>
@@ -424,6 +442,7 @@ interface PodcastRow {
   seasons_enabled: number | null
   episode_numbers_enabled: number | null
   status: string
+  lifecycle: string | null
   deleted_at: string | null
 }
 
@@ -457,6 +476,7 @@ const form = reactive({
   episode_description_template: '',
   seasons_enabled: true,
   episode_numbers_enabled: true,
+  lifecycle: 'active',
 })
 
 const originalSlug = ref(podcastSlug)
@@ -649,6 +669,7 @@ watch(initial, (p) => {
   form.episode_description_template = p.episode_description_template || ''
   form.seasons_enabled = p.seasons_enabled == null ? true : !!p.seasons_enabled
   form.episode_numbers_enabled = p.episode_numbers_enabled == null ? true : !!p.episode_numbers_enabled
+  form.lifecycle = p.lifecycle || 'active'
 }, { immediate: true })
 
 async function saveSettings() {

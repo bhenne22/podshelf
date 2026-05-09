@@ -21,7 +21,7 @@ export default defineEventHandler((event) => {
       episode_title_template, episode_description_template,
       seasons_enabled, episode_numbers_enabled,
       storage_adapter, github_owner, github_repo, github_event_type,
-      status, deleted_at, created_at, updated_at
+      status, lifecycle, deleted_at, created_at, updated_at
     FROM podcasts
     WHERE slug = ?
   `).get(slug)

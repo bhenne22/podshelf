@@ -183,7 +183,8 @@ paths:
                 `funding_label`, `verify_txt`, `license_identifier`,
                 `license_url`, `episode_title_template`,
                 `episode_description_template`, `storage_adapter`,
-                `github_owner`, `github_repo`, `github_event_type`.
+                `github_owner`, `github_repo`, `github_event_type`,
+                `lifecycle` (one of `active`, `inactive`, `retired`).
 
                 Changing `slug` adds the previous slug to `slug_aliases`
                 so old subscribers continue to receive the feed (with an
@@ -1162,6 +1163,10 @@ components:
         github_repo: { type: string, nullable: true }
         github_event_type: { type: string, nullable: true }
         status: { type: string, enum: [active, inactive] }
+        lifecycle:
+          type: string
+          enum: [active, inactive, retired]
+          description: 'Podshelf-only publishing lifecycle (Active / Inactive / Retired). Independent of soft-delete `status`; not surfaced in the RSS feed.'
         deleted_at: { type: string, format: date-time, nullable: true }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }

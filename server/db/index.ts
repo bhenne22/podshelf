@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS podcasts (
   github_token_encrypted   TEXT,
   github_auto_trigger      INTEGER NOT NULL DEFAULT 0,
   status                   TEXT NOT NULL DEFAULT 'active',
+  lifecycle                TEXT NOT NULL DEFAULT 'active',
   deleted_at               TEXT,
   guid                     TEXT,
   itunes_type              TEXT NOT NULL DEFAULT 'episodic',
@@ -338,6 +339,9 @@ function applyMigrations(db: Database.Database) {
   }
   if (!podcastCols.includes('episode_numbers_enabled')) {
     db.exec('ALTER TABLE podcasts ADD COLUMN episode_numbers_enabled INTEGER NOT NULL DEFAULT 1')
+  }
+  if (!podcastCols.includes('lifecycle')) {
+    db.exec("ALTER TABLE podcasts ADD COLUMN lifecycle TEXT NOT NULL DEFAULT 'active'")
   }
 
   const auditCols = cols('audit_log')

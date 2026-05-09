@@ -25,9 +25,12 @@ const UPDATABLE = [
   'episode_title_template', 'episode_description_template',
   'seasons_enabled', 'episode_numbers_enabled',
   'storage_adapter', 'github_owner', 'github_repo', 'github_event_type',
+  'lifecycle',
 ]
 
 const BOOL_INT_FIELDS = new Set(['seasons_enabled', 'episode_numbers_enabled'])
+
+const LIFECYCLE_VALUES = new Set(['active', 'inactive', 'retired'])
 
 const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 
@@ -56,7 +59,8 @@ export default defineEventHandler(async (event) => {
            funding_url, funding_label, verify_txt, license_identifier, license_url,
            episode_title_template, episode_description_template,
            seasons_enabled, episode_numbers_enabled,
-           storage_adapter, github_owner, github_repo, github_event_type
+           storage_adapter, github_owner, github_repo, github_event_type,
+           lifecycle
     FROM podcasts WHERE id = ?
   `).get(podcastId) as Record<string, unknown>
 
@@ -95,6 +99,17 @@ export default defineEventHandler(async (event) => {
       aliasInsert = { oldSlug: slug }
     }
     body.slug = newSlug
+  }
+
+  if ('lifecycle' in body) {
+    const v = typeof body.lifecycle === 'string' ? body.lifecycle.trim() : ''
+    if (!LIFECYCLE_VALUES.has(v)) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: `lifecycle must be one of: active, inactive, retired`,
+      })
+    }
+    body.lifecycle = v
   }
 
   const updates: string[] = []
@@ -137,6 +152,7 @@ export default defineEventHandler(async (event) => {
       episode_title_template, episode_description_template,
       seasons_enabled, episode_numbers_enabled,
       storage_adapter, github_owner, github_repo, github_event_type,
+      lifecycle,
       created_at, updated_at
     FROM podcasts WHERE id = ?
   `).get(podcastId) as Record<string, unknown>
