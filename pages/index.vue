@@ -52,10 +52,10 @@
       </template>
 
       <p v-if="me?.is_admin && podcasts && podcasts.some((p) => p.status === 'inactive')" class="admin-purge-link">
-        <NuxtLink to="/admin/inactive-podcasts">→ Manage inactive podcasts (admin)</NuxtLink>
+        <NuxtLink to="/admin/inactive-podcasts">→ Manage podcasts marked for deletion (admin)</NuxtLink>
       </p>
       <p v-else-if="me?.is_admin" class="admin-purge-link">
-        <NuxtLink to="/admin/inactive-podcasts">→ Inactive podcasts (admin)</NuxtLink>
+        <NuxtLink to="/admin/inactive-podcasts">→ Podcasts marked for deletion (admin)</NuxtLink>
       </p>
     </div>
   </div>

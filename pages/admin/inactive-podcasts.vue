@@ -2,15 +2,15 @@
   <div class="admin-page">
     <AdminNav />
     <div class="container">
-      <h1>Inactive Podcasts</h1>
-      <p class="hint">Soft-deleted podcasts. Restore brings the RSS feed back online; Permanently Delete cascades to episodes, downloads, and members.</p>
+      <h1>Podcasts Marked for Deletion</h1>
+      <p class="hint">Soft-deleted podcasts awaiting purge. Restore brings the RSS feed back online; Permanently Delete cascades to episodes, downloads, and members.</p>
 
       <div v-if="pending" class="loading">Loading…</div>
 
       <div v-else-if="!isAdmin" class="error-msg">Admin access required.</div>
 
       <div v-else-if="!podcasts || !podcasts.length" class="empty">
-        <p>No inactive podcasts.</p>
+        <p>No podcasts marked for deletion.</p>
       </div>
 
       <ul v-else class="podcast-list">
@@ -98,7 +98,7 @@ function formatDate(iso: string): string {
   })
 }
 
-useHead({ title: 'Inactive Podcasts — Podshelf Admin' })
+useHead({ title: 'Podcasts Marked for Deletion — Podshelf Admin' })
 </script>
 
 <style scoped>
