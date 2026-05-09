@@ -1,4 +1,5 @@
 <template>
+  <div class="admin-nav-shell">
   <nav class="admin-nav" :class="{ 'menu-open': menuOpen }">
     <div class="nav-brand">
       <NuxtLink to="/">Podshelf</NuxtLink>
@@ -75,6 +76,15 @@
       <span></span><span></span><span></span>
     </button>
   </nav>
+  <!-- Pending-changes banner — visible to every podcast member regardless
+       of build_admin_only, since non-admins still need to see "what's
+       publishing when" and have a Rebuild Now button. -->
+  <PublishPendingBanner
+    v-if="podcastSlug"
+    :podcast-slug="podcastSlug"
+    :podcast-title="podcast?.title || podcastSlug"
+  />
+  </div>
 </template>
 
 <script setup lang="ts">

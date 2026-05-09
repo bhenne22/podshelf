@@ -13,41 +13,10 @@
       <div v-if="successMsg" class="success-msg">{{ successMsg }}</div>
       <div v-if="errorMsg" class="error-msg">{{ errorMsg }}</div>
 
-      <div v-if="hasPending" class="pending-banner" :class="{ off: !current?.auto_trigger }">
-        <div class="pending-info">
-          <div class="pending-title">
-            <span class="pending-dot" />
-            Pending changes
-          </div>
-          <div class="pending-detail">
-            <template v-if="current?.auto_trigger && current?.configured">
-              Auto-publishes <strong>{{ countdownLabel }}</strong> ({{ formatTime(current.pending.scheduled_for) }})
-              — first edit at {{ formatTime(current.pending.first_at) }}, last {{ relative(current.pending.last_at) }}.
-            </template>
-            <template v-else-if="!current?.configured">
-              GitHub isn't fully configured yet — fill in the form below and click
-              <strong>Rebuild Now</strong> to publish, or save and the timer will resume.
-            </template>
-            <template v-else>
-              Auto-publish is off. Click <strong>Rebuild Now</strong> to publish these changes,
-              or turn auto-publish on below.
-            </template>
-          </div>
-        </div>
-        <button
-          type="button"
-          class="btn-rebuild pending-btn"
-          :disabled="triggering || !current?.configured"
-          @click="manualTrigger"
-        >
-          {{ triggering ? 'Triggering…' : 'Rebuild Now' }}
-        </button>
-      </div>
-
-      <p v-else-if="current?.configured" class="status">
+      <p v-if="current?.configured" class="status">
         <strong>Configured.</strong> Auto-publish is
         <strong>{{ form.auto_trigger ? `on (${PUBLISH_DEBOUNCE_MINUTES}-min debounce)` : 'off' }}</strong>.
-        No pending changes.
+        Pending changes show in the banner above the nav and on every podcast page.
       </p>
 
       <form @submit.prevent="save" class="form-section">
@@ -235,61 +204,6 @@ const canTest = computed(() =>
   !!form.owner && !!form.repo && !!form.event_type && (!!form.token || !!current.value?.has_token),
 )
 
-const hasPending = computed(() => !!current.value?.pending?.last_at)
-
-// Re-render the countdown each second so "in 12 min 34 sec" stays live.
-// Tick only runs while there's something pending.
-const now = ref(Date.now())
-let tickHandle: ReturnType<typeof setInterval> | null = null
-function startTick() {
-  if (tickHandle) return
-  tickHandle = setInterval(() => { now.value = Date.now() }, 1000)
-}
-function stopTick() {
-  if (tickHandle) { clearInterval(tickHandle); tickHandle = null }
-}
-watch(hasPending, (yes) => { if (yes) startTick(); else stopTick() }, { immediate: true })
-onBeforeUnmount(stopTick)
-
-// Periodically re-fetch the github config so the banner stays fresh if the
-// scheduler fired in the background (or if another tab edited things).
-let refreshHandle: ReturnType<typeof setInterval> | null = null
-onMounted(() => {
-  refreshHandle = setInterval(() => { void refresh() }, 30_000)
-})
-onBeforeUnmount(() => {
-  if (refreshHandle) clearInterval(refreshHandle)
-})
-
-const countdownLabel = computed(() => {
-  const target = current.value?.pending?.scheduled_for
-  if (!target) return ''
-  const ms = new Date(target).getTime() - now.value
-  if (ms <= 0) return 'any moment now'
-  const totalSec = Math.floor(ms / 1000)
-  const min = Math.floor(totalSec / 60)
-  const sec = totalSec % 60
-  if (min === 0) return `in ${sec}s`
-  return `in ${min}m ${String(sec).padStart(2, '0')}s`
-})
-
-function formatTime(iso: string | null): string {
-  if (!iso) return ''
-  return new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
-}
-
-function relative(iso: string | null): string {
-  if (!iso) return ''
-  const ms = now.value - new Date(iso).getTime()
-  if (ms < 0) return 'just now'
-  const sec = Math.floor(ms / 1000)
-  if (sec < 60) return `${sec}s ago`
-  const min = Math.floor(sec / 60)
-  if (min < 60) return `${min} min ago`
-  const hr = Math.floor(min / 60)
-  return `${hr} hr ago`
-}
-
 async function save() {
   saving.value = true
   successMsg.value = ''
@@ -378,51 +292,6 @@ h1 { margin: 0 0 0.5rem; font-size: 1.5rem; color: #1a202c; }
   padding: 0.6rem 0.9rem;
   border-radius: 6px;
   margin-bottom: 1.25rem;
-}
-
-.pending-banner {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: 0.875rem 1rem;
-  background: #fffaf0;
-  border: 1px solid #f6ad55;
-  border-radius: 8px;
-  margin-bottom: 1.25rem;
-}
-.pending-banner.off {
-  background: #fef5e7;
-  border-color: #ed8936;
-}
-.pending-info { flex: 1; min-width: 0; }
-.pending-title {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-weight: 600;
-  font-size: 0.95rem;
-  color: #7b341e;
-  margin-bottom: 0.2rem;
-}
-.pending-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #ed8936;
-  box-shadow: 0 0 0 4px rgba(237, 137, 54, 0.18);
-  animation: pending-pulse 2s ease-in-out infinite;
-}
-@keyframes pending-pulse {
-  0%, 100% { opacity: 1; }
-  50%      { opacity: 0.55; }
-}
-.pending-detail {
-  font-size: 0.85rem;
-  color: #744210;
-  line-height: 1.5;
-}
-.pending-btn {
-  flex-shrink: 0;
 }
 
 .explainer h2 {
@@ -580,11 +449,5 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
     gap: 0.5rem;
   }
   .form-actions button { flex: 1 1 auto; min-height: 44px; }
-  .pending-banner {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 0.75rem;
-  }
-  .pending-btn { width: 100%; min-height: 44px; }
 }
 </style>

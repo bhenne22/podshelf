@@ -1,5 +1,5 @@
 import { defineEventHandler, getRouterParam, createError } from 'h3'
-import { requireBuildAccess } from '../../../../utils/build-access'
+import { requirePodcastAccess } from '../../../../utils/auth'
 import { dispatchRepositoryEvent, loadGithubConfig, clearPublishDirty } from '../../../../utils/github'
 import { logAudit } from '../../../../utils/audit'
 
@@ -7,11 +7,13 @@ import { logAudit } from '../../../../utils/audit'
  * POST /api/podcasts/[slug]/github/trigger
  *
  * Manually fire a repository_dispatch using the saved config. Used by
- * the "Rebuild now" button.
+ * the "Rebuild Now" button. Open to any podcast member — non-admins can't
+ * see/edit the GitHub config, but they can fire whatever's already saved.
+ * That's the point of having a per-podcast pending-changes banner.
  */
 export default defineEventHandler(async (event) => {
   const slug = getRouterParam(event, 'slug') as string
-  const { user, podcastId } = requireBuildAccess(event, slug)
+  const { user, podcastId } = requirePodcastAccess(event, slug)
 
   const config = loadGithubConfig(podcastId)
   if (!config) {
