@@ -14,7 +14,7 @@
       <table v-if="members && members.length" class="member-table">
         <thead>
           <tr>
-            <th>Email</th>
+            <th>Member</th>
             <th>Admin</th>
             <th>Added</th>
             <th v-if="me?.is_admin">Actions</th>
@@ -22,7 +22,10 @@
         </thead>
         <tbody>
           <tr v-for="m in members" :key="m.id">
-            <td>{{ m.email }}</td>
+            <td>
+              <div class="member-primary">{{ m.display_name || m.full_name || m.email }}</div>
+              <div v-if="(m.display_name || m.full_name)" class="member-secondary">{{ m.email }}</div>
+            </td>
             <td>{{ m.is_admin ? 'Yes' : 'No' }}</td>
             <td class="dim">{{ formatDate(m.created_at) }}</td>
             <td v-if="me?.is_admin">
@@ -35,17 +38,28 @@
     </div>
 
     <!-- Add member modal -->
-    <div v-if="showAdd" class="modal-overlay" @click.self="showAdd = false">
+    <div v-if="showAdd" class="modal-overlay" @click.self="closeAdd">
       <div class="modal">
         <h3>Grant Access</h3>
         <div class="form-group">
-          <label>User Email</label>
-          <input v-model="addEmail" type="email" placeholder="user@example.com" />
+          <label>Find user</label>
+          <UserTypeahead
+            placeholder="Search by name or email…"
+            :exclude-ids="memberIds"
+            @select="onPickUser"
+          />
           <p class="hint">User must already exist. Create them under Users first.</p>
         </div>
+        <div v-if="pickedUser" class="picked">
+          <div class="picked-info">
+            <div class="picked-primary">{{ pickedUser.display_name || pickedUser.full_name || pickedUser.email }}</div>
+            <div v-if="(pickedUser.display_name || pickedUser.full_name)" class="picked-secondary">{{ pickedUser.email }}</div>
+          </div>
+          <button type="button" class="picked-clear" @click="pickedUser = null" aria-label="Clear">×</button>
+        </div>
         <div class="modal-actions">
-          <button class="btn-secondary" @click="showAdd = false">Cancel</button>
-          <button class="btn-primary" :disabled="adding" @click="doAdd">
+          <button class="btn-secondary" @click="closeAdd">Cancel</button>
+          <button class="btn-primary" :disabled="adding || !pickedUser" @click="doAdd">
             {{ adding ? 'Adding…' : 'Add' }}
           </button>
         </div>
@@ -78,7 +92,15 @@ interface Member {
   id: number
   email: string
   is_admin: number
+  full_name: string | null
+  display_name: string | null
   created_at: string
+}
+interface PickedUser {
+  id: number
+  email: string
+  full_name: string | null
+  display_name: string | null
 }
 interface Me { id: number; email: string; is_admin: boolean }
 
@@ -88,23 +110,34 @@ const { data: members, refresh } = await useFetch<Member[]>(`/api/podcasts/${pod
 const errorMsg = ref('')
 const showAdd = ref(false)
 const adding = ref(false)
-const addEmail = ref('')
+const pickedUser = ref<PickedUser | null>(null)
+
+const memberIds = computed(() => (members.value || []).map((m) => m.id))
 
 const removeTarget = ref<Member | null>(null)
 const removing = ref(false)
 
 function formatDate(iso: string) { return new Date(iso).toLocaleDateString() }
 
+function onPickUser(u: PickedUser) {
+  pickedUser.value = u
+}
+
+function closeAdd() {
+  showAdd.value = false
+  pickedUser.value = null
+}
+
 async function doAdd() {
+  if (!pickedUser.value) return
   adding.value = true
   errorMsg.value = ''
   try {
     await $fetch(`/api/podcasts/${podcastSlug}/members`, {
       method: 'POST',
-      body: { email: addEmail.value },
+      body: { user_id: pickedUser.value.id },
     })
-    showAdd.value = false
-    addEmail.value = ''
+    closeAdd()
     await refresh()
   } catch (err: unknown) {
     errorMsg.value = (err as { data?: { statusMessage?: string } })?.data?.statusMessage || 'Failed to grant access'
@@ -188,6 +221,35 @@ h1 { margin: 0; font-size: 1.5rem; color: #1a202c; }
   font-size: 0.8rem; cursor: pointer;
 }
 .action-btn.danger:hover { border-color: #fc8181; color: #c53030; }
+
+.member-primary { color: #1a202c; font-weight: 500; }
+.member-secondary { color: #718096; font-size: 0.78rem; margin-top: 0.1rem; }
+
+.picked {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.55rem 0.75rem;
+  background: #ebf4ff;
+  border: 1px solid #c3dafe;
+  border-radius: 6px;
+  margin-bottom: 1rem;
+}
+.picked-info { min-width: 0; }
+.picked-primary { color: #2c5282; font-weight: 500; font-size: 0.9rem; }
+.picked-secondary { color: #4c51bf; font-size: 0.78rem; }
+.picked-clear {
+  flex-shrink: 0;
+  width: 24px; height: 24px;
+  border: none;
+  background: transparent;
+  color: #4c51bf;
+  font-size: 1.1rem;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.picked-clear:hover { background: rgba(76, 81, 191, 0.12); }
 
 .modal-overlay {
   position: fixed; inset: 0;

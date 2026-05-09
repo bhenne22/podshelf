@@ -16,6 +16,8 @@ export default defineEventHandler(async (event) => {
   const email = String(body?.email || '').trim().toLowerCase()
   const password = String(body?.password || '')
   const isAdmin = body?.is_admin ? 1 : 0
+  const fullName = body?.full_name == null ? null : String(body.full_name).trim() || null
+  const displayName = body?.display_name == null ? null : String(body.display_name).trim() || null
 
   if (!email || !email.includes('@')) {
     throw createError({ statusCode: 400, statusMessage: 'Valid email is required' })
@@ -30,11 +32,12 @@ export default defineEventHandler(async (event) => {
   }
 
   const result = db.prepare(`
-    INSERT INTO users (email, password_hash, is_admin) VALUES (?, ?, ?)
-  `).run(email, hashPassword(password), isAdmin)
+    INSERT INTO users (email, password_hash, is_admin, full_name, display_name)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(email, hashPassword(password), isAdmin, fullName, displayName)
 
   event.node.res.statusCode = 201
   return db.prepare(`
-    SELECT id, email, is_admin, created_at, updated_at FROM users WHERE id = ?
+    SELECT id, email, is_admin, full_name, display_name, created_at, updated_at FROM users WHERE id = ?
   `).get(result.lastInsertRowid)
 })

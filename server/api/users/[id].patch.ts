@@ -42,6 +42,16 @@ export default defineEventHandler(async (event) => {
     updates.push('is_admin = @is_admin')
     values.is_admin = body.is_admin ? 1 : 0
   }
+  if ('full_name' in (body || {})) {
+    const v = body.full_name == null ? null : String(body.full_name).trim()
+    updates.push('full_name = @full_name')
+    values.full_name = v && v.length ? v : null
+  }
+  if ('display_name' in (body || {})) {
+    const v = body.display_name == null ? null : String(body.display_name).trim()
+    updates.push('display_name = @display_name')
+    values.display_name = v && v.length ? v : null
+  }
 
   if (!updates.length) {
     throw createError({ statusCode: 400, statusMessage: 'No valid fields to update' })
@@ -51,6 +61,6 @@ export default defineEventHandler(async (event) => {
   db.prepare(`UPDATE users SET ${updates.join(', ')} WHERE id = @id`).run(values)
 
   return db.prepare(`
-    SELECT id, email, is_admin, created_at, updated_at FROM users WHERE id = ?
+    SELECT id, email, is_admin, full_name, display_name, created_at, updated_at FROM users WHERE id = ?
   `).get(id)
 })

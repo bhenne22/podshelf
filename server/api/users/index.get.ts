@@ -12,7 +12,7 @@ export default defineEventHandler((event) => {
 
   const db = getDb()
   return db.prepare(`
-    SELECT id, email, is_admin, created_at, updated_at
+    SELECT id, email, is_admin, full_name, display_name, created_at, updated_at
     FROM users
     ORDER BY email
   `).all()

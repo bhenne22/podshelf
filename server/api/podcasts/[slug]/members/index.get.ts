@@ -13,10 +13,10 @@ export default defineEventHandler((event) => {
 
   const db = getDb()
   return db.prepare(`
-    SELECT u.id, u.email, u.is_admin, pu.created_at
+    SELECT u.id, u.email, u.is_admin, u.full_name, u.display_name, pu.created_at
     FROM podcast_users pu
     JOIN users u ON u.id = pu.user_id
     WHERE pu.podcast_id = ?
-    ORDER BY u.email
+    ORDER BY COALESCE(u.display_name, u.full_name, u.email)
   `).all(podcastId)
 })

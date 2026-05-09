@@ -8,6 +8,8 @@ CREATE TABLE IF NOT EXISTS users (
   email          TEXT UNIQUE NOT NULL,
   password_hash  TEXT NOT NULL,
   is_admin       INTEGER NOT NULL DEFAULT 0,
+  full_name      TEXT,
+  display_name   TEXT,
   created_at     TEXT DEFAULT (datetime('now')),
   updated_at     TEXT DEFAULT (datetime('now'))
 );

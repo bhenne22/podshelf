@@ -13,6 +13,7 @@
       <div v-else class="table-wrap"><table class="user-table">
         <thead>
           <tr>
+            <th>Name</th>
             <th>Email</th>
             <th>Admin</th>
             <th>Created</th>
@@ -21,7 +22,11 @@
         </thead>
         <tbody>
           <tr v-for="u in users" :key="u.id">
-            <td class="col-email">{{ u.email }}</td>
+            <td class="col-name">
+              <div class="name-primary">{{ u.display_name || u.full_name || '—' }}</div>
+              <div v-if="u.full_name && u.display_name && u.display_name !== u.full_name" class="name-secondary">{{ u.full_name }}</div>
+            </td>
+            <td class="col-email" data-label="Email">{{ u.email }}</td>
             <td class="col-admin" data-label="Admin">{{ u.is_admin ? 'Yes' : 'No' }}</td>
             <td class="col-created dim" data-label="Created">{{ formatDate(u.created_at) }}</td>
             <td class="col-actions">
@@ -36,6 +41,18 @@
                   @click.stop="toggleMenu(u.id, $event)"
                 >⋯</button>
                 <div v-if="openMenuId === u.id" class="row-menu-panel" :class="{ up: menuDirection === 'up' }" role="menu" @click.stop>
+                  <button
+                    type="button"
+                    class="row-menu-item"
+                    role="menuitem"
+                    @click="editProfile(u); closeMenu()"
+                  >Edit profile</button>
+                  <button
+                    type="button"
+                    class="row-menu-item"
+                    role="menuitem"
+                    @click="manageAccess(u); closeMenu()"
+                  >Manage podcast access</button>
                   <button
                     type="button"
                     class="row-menu-item"
@@ -73,6 +90,16 @@
           <label>Email</label>
           <input v-model="newUser.email" type="email" placeholder="user@example.com" />
         </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Full name</label>
+            <input v-model="newUser.full_name" type="text" placeholder="Jane Doe" />
+          </div>
+          <div class="form-group">
+            <label>Display name</label>
+            <input v-model="newUser.display_name" type="text" placeholder="Optional pod handle" />
+          </div>
+        </div>
         <div class="form-group">
           <label>Password</label>
           <input v-model="newUser.password" type="password" placeholder="min 8 chars" />
@@ -86,6 +113,64 @@
           <button class="btn-secondary" @click="showCreate = false">Cancel</button>
           <button class="btn-primary" :disabled="creating" @click="doCreate">
             {{ creating ? 'Creating…' : 'Create' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Edit profile modal -->
+    <div v-if="profileTarget" class="modal-overlay" @click.self="profileTarget = null">
+      <div class="modal">
+        <h3>Edit Profile — {{ profileTarget.email }}</h3>
+        <div class="form-group">
+          <label>Full name</label>
+          <input v-model="profileForm.full_name" type="text" placeholder="Jane Doe" />
+          <p class="hint">Real / billing name.</p>
+        </div>
+        <div class="form-group">
+          <label>Display name</label>
+          <input v-model="profileForm.display_name" type="text" placeholder="Bucket Hat Bob" />
+          <p class="hint">How they're known on the pod. Shown in member lists when set.</p>
+        </div>
+        <div class="modal-actions">
+          <button class="btn-secondary" @click="profileTarget = null">Cancel</button>
+          <button class="btn-primary" :disabled="savingProfile" @click="saveProfile">
+            {{ savingProfile ? 'Saving…' : 'Save' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Manage podcast access modal -->
+    <div v-if="accessTarget" class="modal-overlay" @click.self="accessTarget = null">
+      <div class="modal access-modal">
+        <h3>Podcast Access — {{ accessTargetName }}</h3>
+        <p class="hint">Toggle which podcasts {{ accessTargetName }} can manage. Admins always have access regardless of these checkboxes.</p>
+        <div v-if="accessLoading" class="loading">Loading…</div>
+        <div v-else-if="!allPodcasts.length" class="empty">No podcasts exist yet.</div>
+        <ul v-else class="podcast-checklist">
+          <li v-for="p in allPodcasts" :key="p.id">
+            <label>
+              <input
+                type="checkbox"
+                :checked="accessSelected.has(p.id)"
+                @change="toggleAccess(p.id, ($event.target as HTMLInputElement).checked)"
+              />
+              <img v-if="p.image_url" :src="p.image_url" :alt="p.title" class="checklist-art" />
+              <span v-else class="checklist-art placeholder" />
+              <span class="checklist-title">
+                {{ p.title }}
+                <span v-if="p.lifecycle === 'retired'" class="checklist-tag">retired</span>
+                <span v-else-if="p.lifecycle === 'inactive'" class="checklist-tag">inactive</span>
+                <span v-if="p.status === 'inactive'" class="checklist-tag warn">awaiting purge</span>
+              </span>
+            </label>
+          </li>
+        </ul>
+        <div class="modal-actions">
+          <button class="btn-secondary" @click="accessTarget = null">Cancel</button>
+          <button class="btn-primary" :disabled="savingAccess || accessLoading" @click="saveAccess">
+            {{ savingAccess ? 'Saving…' : 'Save' }}
           </button>
         </div>
       </div>
@@ -131,10 +216,21 @@ interface User {
   id: number
   email: string
   is_admin: number
+  full_name: string | null
+  display_name: string | null
   created_at: string
   updated_at: string
 }
 interface Me { id: number; email: string; is_admin: boolean }
+
+interface PodcastBrief {
+  id: number
+  slug: string
+  title: string
+  image_url: string | null
+  status: string
+  lifecycle: string | null
+}
 
 const { data: me } = await useFetch<Me>('/api/me')
 const { data: users, refresh, pending } = await useFetch<User[]>('/api/users')
@@ -143,7 +239,7 @@ const errorMsg = ref('')
 
 const showCreate = ref(false)
 const creating = ref(false)
-const newUser = reactive({ email: '', password: '', is_admin: false })
+const newUser = reactive({ email: '', password: '', is_admin: false, full_name: '', display_name: '' })
 
 const resetTarget = ref<User | null>(null)
 const resetting = ref(false)
@@ -151,6 +247,23 @@ const newPassword = ref('')
 
 const deleteTarget = ref<User | null>(null)
 const deleting = ref(false)
+
+const profileTarget = ref<User | null>(null)
+const profileForm = reactive({ full_name: '', display_name: '' })
+const savingProfile = ref(false)
+
+const accessTarget = ref<User | null>(null)
+const accessLoading = ref(false)
+const savingAccess = ref(false)
+const allPodcasts = ref<PodcastBrief[]>([])
+const accessSelected = reactive(new Set<number>())
+const accessOriginal = reactive(new Set<number>())
+
+const accessTargetName = computed(() => {
+  const u = accessTarget.value
+  if (!u) return ''
+  return u.display_name || u.full_name || u.email
+})
 
 const { openMenuId, menuDirection, toggleMenu, closeMenu } = useRowMenu()
 
@@ -164,12 +277,84 @@ async function doCreate() {
   try {
     await $fetch('/api/users', { method: 'POST', body: { ...newUser } })
     showCreate.value = false
-    Object.assign(newUser, { email: '', password: '', is_admin: false })
+    Object.assign(newUser, { email: '', password: '', is_admin: false, full_name: '', display_name: '' })
     await refresh()
   } catch (err: unknown) {
     errorMsg.value = (err as { data?: { statusMessage?: string } })?.data?.statusMessage || 'Failed to create user'
   } finally {
     creating.value = false
+  }
+}
+
+function editProfile(u: User) {
+  profileTarget.value = u
+  profileForm.full_name = u.full_name || ''
+  profileForm.display_name = u.display_name || ''
+}
+
+async function saveProfile() {
+  if (!profileTarget.value) return
+  savingProfile.value = true
+  errorMsg.value = ''
+  try {
+    await $fetch(`/api/users/${profileTarget.value.id}`, {
+      method: 'PATCH',
+      body: {
+        full_name: profileForm.full_name.trim() || null,
+        display_name: profileForm.display_name.trim() || null,
+      },
+    })
+    profileTarget.value = null
+    await refresh()
+  } catch (err: unknown) {
+    errorMsg.value = (err as { data?: { statusMessage?: string } })?.data?.statusMessage || 'Failed to save profile'
+  } finally {
+    savingProfile.value = false
+  }
+}
+
+async function manageAccess(u: User) {
+  accessTarget.value = u
+  accessLoading.value = true
+  accessSelected.clear()
+  accessOriginal.clear()
+  try {
+    const [podcasts, current] = await Promise.all([
+      $fetch<PodcastBrief[]>('/api/podcasts'),
+      $fetch<PodcastBrief[]>(`/api/users/${u.id}/podcasts`),
+    ])
+    allPodcasts.value = podcasts || []
+    for (const p of current || []) {
+      accessSelected.add(p.id)
+      accessOriginal.add(p.id)
+    }
+  } catch (err: unknown) {
+    errorMsg.value = (err as { data?: { statusMessage?: string } })?.data?.statusMessage || 'Failed to load podcast access'
+    accessTarget.value = null
+  } finally {
+    accessLoading.value = false
+  }
+}
+
+function toggleAccess(podcastId: number, checked: boolean) {
+  if (checked) accessSelected.add(podcastId)
+  else accessSelected.delete(podcastId)
+}
+
+async function saveAccess() {
+  if (!accessTarget.value) return
+  savingAccess.value = true
+  errorMsg.value = ''
+  try {
+    await $fetch(`/api/users/${accessTarget.value.id}/podcasts`, {
+      method: 'PUT',
+      body: { podcast_ids: [...accessSelected] },
+    })
+    accessTarget.value = null
+  } catch (err: unknown) {
+    errorMsg.value = (err as { data?: { statusMessage?: string } })?.data?.statusMessage || 'Failed to save access'
+  } finally {
+    savingAccess.value = false
   }
 }
 
@@ -264,8 +449,8 @@ h1 { margin: 0; font-size: 1.5rem; color: #1a202c; }
   background: white;
   border: 1px solid #e2e8f0;
   border-radius: 10px;
-  border-collapse: collapse;
-  overflow: hidden;
+  border-collapse: separate;
+  border-spacing: 0;
 }
 .user-table th {
   background: #f7fafc; text-align: left;
@@ -274,11 +459,90 @@ h1 { margin: 0; font-size: 1.5rem; color: #1a202c; }
   text-transform: uppercase; letter-spacing: 0.05em;
   border-bottom: 1px solid #e2e8f0;
 }
+.user-table th:first-child { border-top-left-radius: 10px; }
+.user-table th:last-child  { border-top-right-radius: 10px; }
+.user-table tbody tr:last-child td:first-child { border-bottom-left-radius: 10px; }
+.user-table tbody tr:last-child td:last-child  { border-bottom-right-radius: 10px; }
 .user-table td { padding: 0.875rem 1rem; border-bottom: 1px solid #f0f4f8; }
 .user-table tr:last-child td { border-bottom: none; }
 .dim { color: #718096; font-size: 0.85rem; }
 
 .col-actions { width: 64px; text-align: right; }
+.col-name { min-width: 180px; }
+.name-primary { color: #1a202c; font-weight: 500; font-size: 0.92rem; }
+.name-secondary { color: #718096; font-size: 0.78rem; margin-top: 0.1rem; }
+
+.form-row { display: flex; gap: 0.75rem; }
+.form-row .form-group { flex: 1; }
+.form-group .hint {
+  margin-top: 0.3rem;
+  font-size: 0.78rem;
+  color: #718096;
+}
+
+.access-modal { max-width: 520px; }
+.podcast-checklist {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+  max-height: 360px;
+  overflow-y: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+.podcast-checklist li + li {
+  border-top: 1px solid #f0f4f8;
+}
+.podcast-checklist label {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.55rem 0.75rem;
+  cursor: pointer;
+  font-weight: 400;
+  margin: 0;
+}
+.podcast-checklist label:hover { background: #f7fafc; }
+.podcast-checklist input[type="checkbox"] { flex-shrink: 0; }
+.checklist-art {
+  width: 36px;
+  height: 36px;
+  object-fit: cover;
+  border-radius: 5px;
+  background: #edf2f7;
+  flex-shrink: 0;
+}
+.checklist-art.placeholder { background: #edf2f7; }
+.checklist-title {
+  flex: 1;
+  font-size: 0.9rem;
+  color: #2d3748;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+.checklist-tag {
+  font-size: 0.7rem;
+  background: #edf2f7;
+  color: #4a5568;
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 600;
+}
+.checklist-tag.warn {
+  background: #fffaf0;
+  color: #b7791f;
+  border: 1px solid #f6ad55;
+}
+.empty {
+  padding: 1.25rem;
+  text-align: center;
+  color: #718096;
+  font-size: 0.9rem;
+}
 
 /* Row hamburger menu — matches the episodes table pattern. */
 .row-menu { position: relative; display: inline-block; }
@@ -383,9 +647,11 @@ h1 { margin: 0; font-size: 1.5rem; color: #1a202c; }
 
 .table-wrap {
   width: 100%;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
   border-radius: 10px;
+  /* No overflow constraint at desktop widths — keeps the row hamburger
+     menu from being clipped when it drops down past the table. The
+     horizontal-scroll constraint is only needed at narrow widths and is
+     applied in the media query below. */
 }
 
 @media (max-width: 720px) {
@@ -399,6 +665,10 @@ h1 { margin: 0; font-size: 1.5rem; color: #1a202c; }
     text-align: center;
     min-height: 44px;
     padding: 0.6rem 1rem;
+  }
+  .table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
   }
   .user-table { min-width: 640px; }
   .user-table th,
@@ -473,19 +743,22 @@ h1 { margin: 0; font-size: 1.5rem; color: #1a202c; }
     width: 64px;
     flex-shrink: 0;
   }
-  .col-email {
+  .col-name {
     order: 1;
     padding: 0 0 0.5rem;
     margin-bottom: 0.5rem;
     border-bottom: 1px solid #f0f4f8;
-    font-size: 1rem;
-    font-weight: 600;
-    word-break: break-all;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.15rem;
+    min-width: 0;
   }
-  .col-admin { order: 2; }
-  .col-created { order: 3; }
+  .col-name .name-primary { font-size: 1rem; font-weight: 600; word-break: break-word; }
+  .col-email { order: 2; word-break: break-all; }
+  .col-admin { order: 3; }
+  .col-created { order: 4; }
   .col-actions {
-    order: 4;
+    order: 5;
     justify-content: flex-end;
     padding-top: 0.625rem;
     margin-top: 0.5rem;

@@ -10,6 +10,8 @@ CREATE TABLE IF NOT EXISTS users (
   email          TEXT UNIQUE NOT NULL,
   password_hash  TEXT NOT NULL,
   is_admin       INTEGER NOT NULL DEFAULT 0,
+  full_name      TEXT,
+  display_name   TEXT,
   created_at     TEXT DEFAULT (datetime('now')),
   updated_at     TEXT DEFAULT (datetime('now'))
 );
@@ -261,6 +263,14 @@ function initDb(): Database.Database {
 function applyMigrations(db: Database.Database) {
   const cols = (table: string) =>
     (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map((c) => c.name)
+
+  const userCols = cols('users')
+  if (!userCols.includes('full_name')) {
+    db.exec('ALTER TABLE users ADD COLUMN full_name TEXT')
+  }
+  if (!userCols.includes('display_name')) {
+    db.exec('ALTER TABLE users ADD COLUMN display_name TEXT')
+  }
 
   const apiKeyCols = cols('api_keys')
   if (!apiKeyCols.includes('expires_at')) {
