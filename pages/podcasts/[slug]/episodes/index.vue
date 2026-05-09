@@ -124,6 +124,11 @@
             <td class="col-title">
               <NuxtLink :to="`/podcasts/${podcastSlug}/episodes/${ep.id}`" class="ep-title">
                 {{ ep.title }}
+                <span
+                  v-if="ep.episode_type && ep.episode_type !== 'full'"
+                  :class="['ep-type-badge', ep.episode_type]"
+                  :title="`${ep.episode_type[0].toUpperCase() + ep.episode_type.slice(1)} episode`"
+                >{{ ep.episode_type }}</span>
               </NuxtLink>
             </td>
             <td class="col-status">
@@ -681,6 +686,29 @@ h1 {
 .status-badge.scheduled {
   background: #ebf4ff;
   color: #4c51bf;
+}
+
+.ep-type-badge {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  vertical-align: 1px;
+  border: 1px solid transparent;
+}
+.ep-type-badge.bonus {
+  background: #faf5ff;
+  color: #6b46c1;
+  border-color: #d6bcfa;
+}
+.ep-type-badge.trailer {
+  background: #fffaf0;
+  color: #9c4221;
+  border-color: #fbd38d;
 }
 
 .scheduled-date {
