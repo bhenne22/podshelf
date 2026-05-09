@@ -1,5 +1,5 @@
 import { defineEventHandler, readBody, getRouterParam, createError } from 'h3'
-import { requirePodcastAccess } from '../../../../utils/auth'
+import { requireBuildAccess } from '../../../../utils/build-access'
 import { dispatchRepositoryEvent, loadGithubConfig, type GitHubConfig } from '../../../../utils/github'
 
 /**
@@ -16,7 +16,7 @@ import { dispatchRepositoryEvent, loadGithubConfig, type GitHubConfig } from '..
  */
 export default defineEventHandler(async (event) => {
   const slug = getRouterParam(event, 'slug') as string
-  const { podcastId } = requirePodcastAccess(event, slug)
+  const { podcastId } = requireBuildAccess(event, slug)
 
   const body = await readBody(event)
   const incoming = (body || {}) as Record<string, unknown>

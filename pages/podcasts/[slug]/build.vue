@@ -110,6 +110,21 @@ interface GitHubDescription {
   auto_trigger: boolean
 }
 
+interface MeRow { id: number; email: string; is_admin: boolean }
+interface PodcastBuildRow { build_admin_only: number | null }
+
+// Bounce non-admins away when this podcast restricts the Build page to admins.
+const [{ data: meData }, { data: podcastRow }] = await Promise.all([
+  useFetch<MeRow>('/api/me'),
+  useFetch<PodcastBuildRow>(`/api/podcasts/${podcastSlug}`),
+])
+if (
+  meData.value && !meData.value.is_admin
+  && podcastRow.value?.build_admin_only
+) {
+  await navigateTo(`/podcasts/${podcastSlug}/episodes`)
+}
+
 const { data: current, refresh } = await useFetch<GitHubDescription>(`/api/podcasts/${podcastSlug}/github`)
 
 const form = reactive({

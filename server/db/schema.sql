@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS podcasts (
   github_event_type        TEXT,
   github_token_encrypted   TEXT,
   github_auto_trigger      INTEGER NOT NULL DEFAULT 0,
+  build_admin_only         INTEGER NOT NULL DEFAULT 1,
   status                   TEXT NOT NULL DEFAULT 'active',
   lifecycle                TEXT NOT NULL DEFAULT 'active',
   deleted_at               TEXT,

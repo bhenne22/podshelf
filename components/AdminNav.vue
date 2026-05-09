@@ -42,7 +42,9 @@
             <li><NuxtLink :to="`/podcasts/${podcastSlug}/preview`" active-class="active">Preview</NuxtLink></li>
             <li><NuxtLink :to="`/podcasts/${podcastSlug}/storage`" active-class="active">Storage</NuxtLink></li>
             <li><NuxtLink :to="`/podcasts/${podcastSlug}/distribution`" active-class="active">Distribution</NuxtLink></li>
-            <li><NuxtLink :to="`/podcasts/${podcastSlug}/build`" active-class="active">Build</NuxtLink></li>
+            <li v-if="me?.is_admin || !podcast?.build_admin_only">
+              <NuxtLink :to="`/podcasts/${podcastSlug}/build`" active-class="active">Build</NuxtLink>
+            </li>
             <li><NuxtLink :to="`/podcasts/${podcastSlug}/import-rss`" active-class="active">Import / Export</NuxtLink></li>
             <li><NuxtLink :to="`/podcasts/${podcastSlug}/members`" active-class="active">Members</NuxtLink></li>
             <li><NuxtLink :to="`/podcasts/${podcastSlug}/audit`" active-class="active">Audit Log</NuxtLink></li>
@@ -81,7 +83,13 @@ const props = defineProps<{
 }>()
 
 interface Me { id: number; email: string; is_admin: boolean }
-interface Podcast { id: number; slug: string; title: string; image_url: string | null }
+interface Podcast {
+  id: number
+  slug: string
+  title: string
+  image_url: string | null
+  build_admin_only?: number | null
+}
 
 const { data: me } = await useFetch<Me>('/api/me', { default: () => null })
 

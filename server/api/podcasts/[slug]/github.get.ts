@@ -1,5 +1,5 @@
 import { defineEventHandler, getRouterParam } from 'h3'
-import { requirePodcastAccess } from '../../../utils/auth'
+import { requireBuildAccess } from '../../../utils/build-access'
 import { describeGithubConfig } from '../../../utils/github'
 
 /**
@@ -9,6 +9,6 @@ import { describeGithubConfig } from '../../../utils/github'
  */
 export default defineEventHandler((event) => {
   const slug = getRouterParam(event, 'slug') as string
-  const { podcastId } = requirePodcastAccess(event, slug)
+  const { podcastId } = requireBuildAccess(event, slug)
   return describeGithubConfig(podcastId)
 })

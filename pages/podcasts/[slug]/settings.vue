@@ -332,6 +332,24 @@
           </div>
         </div>
 
+        <div v-if="me?.is_admin" class="form-section">
+          <h2>Build Page Access</h2>
+          <p class="hint section-hint">
+            Who can view this podcast's Build page (GitHub config + manual
+            rebuild). When set to admins-only, the link is hidden from member
+            navigation and the underlying API endpoints 403. Only admins can
+            change this setting.
+          </p>
+
+          <div class="form-group">
+            <label for="build_admin_only">Build page</label>
+            <select id="build_admin_only" v-model="form.build_admin_only">
+              <option :value="true">Admins only (default)</option>
+              <option :value="false">All podcast members</option>
+            </select>
+          </div>
+        </div>
+
         <div class="form-section">
           <h2>Publishing Lifecycle</h2>
           <p class="hint section-hint">
@@ -443,12 +461,15 @@ interface PodcastRow {
   episode_numbers_enabled: number | null
   status: string
   lifecycle: string | null
+  build_admin_only: number | null
   deleted_at: string | null
 }
+interface Me { id: number; email: string; is_admin: boolean }
 
 const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 
 const { data: initial, pending } = await useFetch<PodcastRow>(`/api/podcasts/${podcastSlug}`)
+const { data: me } = await useFetch<Me>('/api/me')
 
 const form = reactive({
   slug: podcastSlug,
@@ -477,6 +498,7 @@ const form = reactive({
   seasons_enabled: true,
   episode_numbers_enabled: true,
   lifecycle: 'active',
+  build_admin_only: true,
 })
 
 const originalSlug = ref(podcastSlug)
@@ -670,6 +692,7 @@ watch(initial, (p) => {
   form.seasons_enabled = p.seasons_enabled == null ? true : !!p.seasons_enabled
   form.episode_numbers_enabled = p.episode_numbers_enabled == null ? true : !!p.episode_numbers_enabled
   form.lifecycle = p.lifecycle || 'active'
+  form.build_admin_only = p.build_admin_only == null ? true : !!p.build_admin_only
 }, { immediate: true })
 
 async function saveSettings() {
@@ -695,9 +718,13 @@ async function saveSettings() {
 
   saving.value = true
   try {
+    const body: Record<string, unknown> = { ...form, slug: trimmedSlug }
+    // Non-admins can't change build_admin_only; drop it from the body
+    // rather than letting the API 403 the whole save.
+    if (!me.value?.is_admin) delete body.build_admin_only
     await $fetch(`/api/podcasts/${podcastSlug}`, {
       method: 'PATCH',
-      body: { ...form, slug: trimmedSlug },
+      body,
     })
     if (slugChanged.value) {
       await navigateTo(`/podcasts/${trimmedSlug}/settings`)

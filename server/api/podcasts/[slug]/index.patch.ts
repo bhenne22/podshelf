@@ -26,9 +26,10 @@ const UPDATABLE = [
   'seasons_enabled', 'episode_numbers_enabled',
   'storage_adapter', 'github_owner', 'github_repo', 'github_event_type',
   'lifecycle',
+  'build_admin_only',
 ]
 
-const BOOL_INT_FIELDS = new Set(['seasons_enabled', 'episode_numbers_enabled'])
+const BOOL_INT_FIELDS = new Set(['seasons_enabled', 'episode_numbers_enabled', 'build_admin_only'])
 
 const LIFECYCLE_VALUES = new Set(['active', 'inactive', 'retired'])
 
@@ -50,6 +51,12 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Body must be a key/value object' })
   }
 
+  // build_admin_only gates non-admin members away from the Build page;
+  // only admins can flip the gate.
+  if ('build_admin_only' in body && !user.is_admin) {
+    throw createError({ statusCode: 403, statusMessage: 'Only admins can change Build page access' })
+  }
+
   const db = getDb()
 
   const before = db.prepare(`
@@ -60,7 +67,7 @@ export default defineEventHandler(async (event) => {
            episode_title_template, episode_description_template,
            seasons_enabled, episode_numbers_enabled,
            storage_adapter, github_owner, github_repo, github_event_type,
-           lifecycle
+           lifecycle, build_admin_only
     FROM podcasts WHERE id = ?
   `).get(podcastId) as Record<string, unknown>
 
@@ -152,7 +159,7 @@ export default defineEventHandler(async (event) => {
       episode_title_template, episode_description_template,
       seasons_enabled, episode_numbers_enabled,
       storage_adapter, github_owner, github_repo, github_event_type,
-      lifecycle,
+      lifecycle, build_admin_only,
       created_at, updated_at
     FROM podcasts WHERE id = ?
   `).get(podcastId) as Record<string, unknown>
