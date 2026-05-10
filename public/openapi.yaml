@@ -184,7 +184,8 @@ paths:
                 `license_url`, `episode_title_template`,
                 `episode_description_template`, `storage_adapter`,
                 `github_owner`, `github_repo`, `github_event_type`,
-                `lifecycle` (one of `active`, `inactive`, `retired`).
+                `lifecycle` (one of `active`, `inactive`, `retired`),
+                `build_admin_only` (admin-only field; non-admins get 403).
 
                 Changing `slug` adds the previous slug to `slug_aliases`
                 so old subscribers continue to receive the feed (with an
@@ -897,9 +898,41 @@ paths:
     post:
       tags: [Webhook & build]
       summary: Manually fire a repository_dispatch
+      description: |
+        Open to any podcast member (the configuration form is admin-gated
+        when `build_admin_only=true`, but firing the saved config is not).
+        Also clears any pending-changes window so the banner disappears.
       responses:
         '200':
           description: Dispatched.
+
+  /api/podcasts/{slug}/publish-status:
+    parameters:
+      - { $ref: '#/components/parameters/Slug' }
+    get:
+      tags: [Webhook & build]
+      summary: Pending-changes / build state for the global banner
+      description: |
+        Read-only view available to any podcast member regardless of
+        `build_admin_only`. No secrets exposed (no token, no owner/repo
+        details for unconfigured podcasts).
+      responses:
+        '200':
+          description: Pending state.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  configured: { type: boolean }
+                  auto_trigger: { type: boolean }
+                  pending:
+                    type: object
+                    properties:
+                      first_at:       { type: string, format: date-time, nullable: true }
+                      last_at:        { type: string, format: date-time, nullable: true }
+                      scheduled_for:  { type: string, format: date-time, nullable: true }
+                      debounce_minutes: { type: integer }
 
   /api/podcasts/{slug}/webhook:
     parameters:
@@ -1167,6 +1200,13 @@ components:
           type: string
           enum: [active, inactive, retired]
           description: 'Podshelf-only publishing lifecycle (Active / Inactive / Retired). Independent of soft-delete `status`; not surfaced in the RSS feed.'
+        build_admin_only:
+          type: boolean
+          description: |
+            When true (default), the Build page configuration form is gated
+            to admins. The Rebuild Now banner / `/github/trigger` endpoint
+            stay open to all podcast members regardless. Only admins can
+            change this field.
         deleted_at: { type: string, format: date-time, nullable: true }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }

@@ -67,8 +67,17 @@ UI) always has full access.
 Who am I?
 
 ```json
-{ "id": 1, "email": "you@example.com", "is_admin": true }
+{
+  "id": 1,
+  "email": "you@example.com",
+  "is_admin": true,
+  "full_name": "Bob Henne",
+  "display_name": "Bucket Hat Bob"
+}
 ```
+
+`full_name` / `display_name` may be `null`. Display name is the one to show
+in member-list contexts when set; fall back to `full_name` then `email`.
 
 ---
 
@@ -127,11 +136,16 @@ fields: `slug`, `title`, `description`, `author`, `email`, `image_url`,
 `itunes_block`, `funding_url`, `funding_label`, `verify_txt`,
 `license_identifier`, `license_url`, `episode_title_template`,
 `episode_description_template`, `storage_adapter`, `github_owner`,
-`github_repo`, `github_event_type`, `lifecycle`.
+`github_repo`, `github_event_type`, `lifecycle`, `build_admin_only`.
 
 `lifecycle` is a Podshelf-only publishing lifecycle indicator: `active`,
 `inactive`, or `retired`. It's exposed via the API for static-site builds and
 shown on the dashboard, but is **not** surfaced in the RSS feed.
+
+`build_admin_only` (default `true`) gates the GitHub-config form to admins
+only. The Rebuild Now banner and `/github/trigger` endpoint stay open to all
+podcast members regardless. **Only admins can flip this field**; non-admins
+get a 403 if they include it in the body.
 
 ### `DELETE /api/podcasts/[slug]`
 
@@ -632,9 +646,30 @@ These exist but are mostly used by the admin UI:
   `{ adapter, config, kind?: 'audio'|'artwork' }`; `kind` controls which
   directory/prefix is listed (defaults to `audio`).
 - `GET /api/podcasts/[slug]/stats` — download counts (when GeoIP DB is configured)
-- `GET/POST/DELETE /api/podcasts/[slug]/members/...` — admin grants user access
+- `GET/POST/DELETE /api/podcasts/[slug]/members/...` — grants/revokes user
+  access. POST accepts `{ user_id }` or `{ email }`.
 
 See the source for full schemas — they're not the typical handoff path.
+
+## Users *(admin only)*
+
+User records carry `email`, `is_admin`, and two optional name fields:
+`full_name` (real / billing name) and `display_name` (pod handle, e.g.
+"Bucket Hat Bob"). Display name takes precedence in member lists when set.
+
+- `GET /api/users` — list everyone (no password hashes).
+- `POST /api/users` — body `{ email, password, is_admin?, full_name?, display_name? }`.
+- `PATCH /api/users/[id]` — accepts any of `email`, `password`, `is_admin`,
+  `full_name`, `display_name`. Pass `null` or `""` to clear a name.
+- `DELETE /api/users/[id]` — cascades to `podcast_users` and `api_keys`.
+- `GET /api/users/search?q=…` — typeahead. Substring match on email,
+  full_name, or display_name; capped at 10 results. Powers the Grant Access
+  modal on the podcast Members page.
+- `GET /api/users/[id]/podcasts` — podcasts this user is a member of.
+- `PUT /api/users/[id]/podcasts` — body `{ podcast_ids: number[] }`.
+  Replaces the user's full membership set; diffs against current and emits
+  per-affected-podcast `podcast.member.add` / `podcast.member.remove` audit
+  entries. Used by the "Manage podcast access" item in the users hamburger.
 
 ---
 
@@ -655,7 +690,38 @@ Returns redacted config (no token):
   "repo": "yousaid100miles.com",
   "event_type": "podshelf-feed-update",
   "has_token": true,
-  "auto_trigger": true
+  "auto_trigger": true,
+  "pending": {
+    "first_at": "2026-05-09T19:13:00.000Z",
+    "last_at": "2026-05-09T19:18:00.000Z",
+    "scheduled_for": "2026-05-09T19:33:00.000Z",
+    "debounce_minutes": 15
+  }
+}
+```
+
+`pending.last_at` is non-null when the podcast has feed-visible changes that
+haven't been published yet. `scheduled_for` = `last_at + debounce_minutes`.
+
+This endpoint is admin-gated when the podcast has `build_admin_only=true`
+(default). Non-admin members read the same `pending` block via
+`GET /api/podcasts/[slug]/publish-status` (next).
+
+### `GET /api/podcasts/[slug]/publish-status`
+
+Read-only view of build state for the pending-changes banner. Open to any
+podcast member regardless of `build_admin_only` — no secrets exposed.
+
+```json
+{
+  "configured": true,
+  "auto_trigger": true,
+  "pending": {
+    "first_at": "2026-05-09T19:13:00.000Z",
+    "last_at": "2026-05-09T19:18:00.000Z",
+    "scheduled_for": "2026-05-09T19:33:00.000Z",
+    "debounce_minutes": 15
+  }
 }
 ```
 
@@ -686,10 +752,19 @@ encrypted token when omitted.
 
 Manual rebuild — fires using the saved config. Returns `{ ok: true, status }`
 on success, where `status` is GitHub's HTTP status code (typically 204).
+Also clears any pending-changes window so the banner disappears. **Open to
+any podcast member**; only the configuration form (above) is admin-only when
+`build_admin_only=true`.
 
 ### Auto-trigger semantics
 
-When `auto_trigger` is on, Podshelf fires automatically after:
+`auto_trigger` is **debounced** — feed-visible changes mark the podcast
+"dirty" and the in-process scheduler fires one consolidated dispatch
+**15 minutes after the most recent change**. A flurry of edits (10 saves
+in 5 minutes) coalesces into one build, not ten. Each new change resets
+the timer.
+
+Changes that mark a podcast dirty:
 
 - Episode created with `status=published`
 - Episode updated where the previous OR new state was published
@@ -701,6 +776,10 @@ When `auto_trigger` is on, Podshelf fires automatically after:
 
 Drafts and storage/GitHub config edits never fire — only changes that
 actually affect the published RSS feed.
+
+When `auto_trigger=false`, dirty markers still accumulate (the banner shows
+"5 edits since 2:13 PM") but the scheduler won't fire — the user must hit
+**Rebuild Now**.
 
 ### Workflow snippet
 
@@ -723,8 +802,15 @@ jobs:
       # … then SFTP / wherever your deploy goes
 ```
 
-The `client_payload` Podshelf sends includes `{ reason, podcast_id, fired_at }`
-if your workflow wants to know what kicked the build.
+The `client_payload` Podshelf sends includes
+`{ slug, reason, podcast_id, fired_at }`. `slug` is the Podshelf slug of the
+podcast that triggered the build (e.g. `ys100m`, `ywiw`); `reason` is one of
+`podshelf:manual` / `podshelf:test` / `podshelf:auto-debounced`. Receiving
+workflows can label runs with the slug:
+
+```yaml
+run-name: ${{ github.event.client_payload.slug || 'manual' }}
+```
 
 ---
 
