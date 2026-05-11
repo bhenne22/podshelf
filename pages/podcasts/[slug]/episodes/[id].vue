@@ -56,36 +56,48 @@
       <div v-if="pending" class="loading">Loading episode…</div>
 
       <template v-else-if="form.title !== undefined">
-        <!-- Publish toggle banner -->
-        <div :class="['publish-banner', form.status]">
-          <span>
-            Status: <strong>{{ statusLabel }}</strong>
-            <span v-if="form.status === 'published' && form.published_at">
-              on {{ publishedDateDisplay }}
-            </span>
-            <span v-else-if="form.status === 'scheduled' && form.published_at">
-              for {{ publishedDateTimeDisplay }}
-            </span>
-          </span>
-          <button
-            v-if="form.status === 'draft'"
-            @click="togglePublish"
-            class="btn-publish-toggle"
-            :disabled="saving"
-          >
-            {{ publishedAtIsFuture ? 'Schedule' : 'Publish Now' }}
-          </button>
-          <button
-            v-else
-            @click="togglePublish"
-            class="btn-unpublish-toggle"
-            :disabled="saving"
-          >
-            Revert to Draft
-          </button>
-        </div>
+        <form @submit.prevent="onSubmit" class="episode-form">
+          <div class="form-actions form-actions-top">
+            <span v-if="saving" class="save-status saving">Saving…</span>
+            <span v-else-if="justSaved" class="save-status ok">✓ Saved</span>
+            <span v-else-if="errorMsg" class="save-status err">✗ {{ errorMsg }}</span>
+            <NuxtLink :to="`/podcasts/${podcastSlug}/episodes`" class="btn-secondary">Cancel</NuxtLink>
+            <button
+              v-for="a in availableActions"
+              :key="`top-${a.key}`"
+              type="button"
+              :class="a.style"
+              :disabled="saving || a.disabled"
+              @click="saveEpisode(a.key)"
+            >
+              {{ a.label }}
+            </button>
+          </div>
 
-        <form @submit.prevent="saveEpisode" class="episode-form">
+          <div class="form-section publishing-section">
+            <div class="publishing-header">
+              <h2>Publishing</h2>
+              <span :class="['status-pill', form.status]">{{ statusLabel }}</span>
+            </div>
+            <p v-if="form.status === 'published' && form.published_at" class="hint section-hint">
+              Live since {{ publishedDateDisplay }}.
+            </p>
+            <p v-else-if="form.status === 'scheduled' && form.published_at" class="hint section-hint">
+              Scheduled for {{ publishedDateTimeDisplay }}.
+            </p>
+            <p v-else class="hint section-hint">
+              Currently a draft. Set a publish date to schedule, or publish immediately.
+            </p>
+
+            <div class="form-row">
+              <div class="form-group flex-2">
+                <label for="published_at_top">Publish Date</label>
+                <input id="published_at_top" v-model="form.published_at" type="datetime-local" />
+                <p class="hint">Times are in the podcast's timezone: <strong>{{ podcastTz }}</strong> ({{ tzAbbr }}).</p>
+              </div>
+            </div>
+          </div>
+
           <div class="form-section">
             <h2>Basic Info</h2>
             <div class="form-row">
@@ -433,33 +445,20 @@
             </div>
           </div>
 
-          <div class="form-section">
-            <h2>Publishing</h2>
-            <div class="form-row">
-              <div class="form-group">
-                <label for="status">Status</label>
-                <select id="status" v-model="form.status">
-                  <option value="draft">Draft</option>
-                  <option value="scheduled" :disabled="!publishedAtIsFuture">Scheduled</option>
-                  <option value="published">Published</option>
-                </select>
-                <p class="hint">Setting status to "Published" with a future date saves as Scheduled and auto-publishes at the chosen time.</p>
-              </div>
-              <div class="form-group flex-2">
-                <label for="published_at">Publish Date</label>
-                <input id="published_at" v-model="form.published_at" type="datetime-local" />
-                <p class="hint">Times are in the podcast's timezone: <strong>{{ podcastTz }}</strong> ({{ tzAbbr }}).</p>
-              </div>
-            </div>
-          </div>
-
           <div class="form-actions">
             <span v-if="saving" class="save-status saving">Saving…</span>
             <span v-else-if="justSaved" class="save-status ok">✓ Saved</span>
             <span v-else-if="errorMsg" class="save-status err">✗ {{ errorMsg }}</span>
             <NuxtLink :to="`/podcasts/${podcastSlug}/episodes`" class="btn-secondary">Cancel</NuxtLink>
-            <button type="submit" class="btn-primary" :disabled="saving">
-              {{ saving ? 'Saving…' : 'Save Changes' }}
+            <button
+              v-for="a in availableActions"
+              :key="`bot-${a.key}`"
+              type="button"
+              :class="a.style"
+              :disabled="saving || a.disabled"
+              @click="saveEpisode(a.key)"
+            >
+              {{ a.label }}
             </button>
           </div>
         </form>
@@ -819,76 +818,7 @@ onBeforeRouteLeave(() => {
   }
 })
 
-async function saveEpisode() {
-  saving.value = true
-  errorMsg.value = ''
-  successMsg.value = ''
-
-  // The form holds a tz-naive datetime-local string in the podcast's TZ.
-  // When the user didn't touch the field we preserve the original UTC ISO
-  // (full precision); otherwise we convert podcast-TZ wall clock → UTC for
-  // the server.
-  let publishedAtToSend: string | null = null
-  if (form.published_at) {
-    const originalAsLocalInput = utcIsoToLocalInput(originalPublishedAt.value, podcastTz.value)
-    if (originalPublishedAt.value && form.published_at === originalAsLocalInput) {
-      publishedAtToSend = originalPublishedAt.value
-    } else {
-      publishedAtToSend = localInputToUtcIso(form.published_at, podcastTz.value)
-    }
-  }
-
-  try {
-    const updated = await updateEpisode(id, {
-      ...form,
-      episode_number: form.episode_number || null,
-      season_number: form.season_number || null,
-      audio_size_bytes: form.audio_size_bytes || null,
-      audio_duration_seconds: form.audio_duration_seconds || null,
-      published_at: publishedAtToSend,
-    })
-    // Sync server-resolved fields back to the form. The server may overwrite
-    // published_at when the user picks Published with a future date (it gets
-    // rewritten to "now") — without this the form keeps showing stale values.
-    if (updated) {
-      if (typeof updated.published_at === 'string' && updated.published_at) {
-        form.published_at = utcIsoToLocalInput(updated.published_at, podcastTz.value)
-        originalPublishedAt.value = updated.published_at
-      } else {
-        form.published_at = ''
-        originalPublishedAt.value = null
-      }
-      if (typeof updated.status === 'string') form.status = updated.status
-    }
-    // The form watcher would re-flip formDirty after our sync writes; let it
-    // run, then clear.
-    await nextTick()
-    formDirty.value = false
-    successMsg.value = 'Episode saved successfully.'
-    justSaved.value = true
-    setTimeout(() => { justSaved.value = false }, 3500)
-  } catch (err: unknown) {
-    errorMsg.value = err instanceof Error ? err.message : 'Failed to save episode'
-  } finally {
-    saving.value = false
-  }
-}
-
-async function togglePublish() {
-  if (form.status === 'draft') {
-    form.status = 'published'
-    if (!form.published_at) {
-      const now = new Date().toISOString()
-      form.published_at = utcIsoToLocalInput(now, podcastTz.value)
-      // Stash the full ISO so saveEpisode keeps full precision instead of
-      // persisting a minute-truncated timestamp for first-time publishes.
-      originalPublishedAt.value = now
-    }
-  } else {
-    form.status = 'draft'
-  }
-  await saveEpisode()
-}
+type SaveAction = 'save_changes' | 'publish_now' | 'schedule' | 'revert_draft'
 
 const publishedAtIsFuture = computed(() => {
   if (!form.published_at) return false
@@ -906,6 +836,118 @@ const statusLabel = computed(() => {
   if (form.status === 'scheduled') return 'Scheduled'
   return 'Draft'
 })
+
+interface ActionDef {
+  key: SaveAction
+  label: string
+  style: string
+  disabled?: boolean
+}
+// Verbs visible at any moment are scoped to the current status so the user
+// never sees an action that doesn't apply. "Save & Schedule" only shows
+// when the publish date is in the future — anything else would be a footgun.
+const availableActions = computed<ActionDef[]>(() => {
+  const list: ActionDef[] = [
+    { key: 'save_changes', label: 'Save Changes', style: 'btn-primary' },
+  ]
+  if (form.status === 'draft') {
+    list.push({ key: 'publish_now', label: 'Save & Publish', style: 'btn-publish' })
+    if (publishedAtIsFuture.value) {
+      list.push({ key: 'schedule', label: 'Save & Schedule', style: 'btn-schedule' })
+    }
+  } else if (form.status === 'scheduled') {
+    list.push({ key: 'publish_now', label: 'Publish Now', style: 'btn-publish' })
+    list.push({ key: 'revert_draft', label: 'Revert to Draft', style: 'btn-secondary' })
+  } else if (form.status === 'published') {
+    list.push({ key: 'revert_draft', label: 'Revert to Draft', style: 'btn-secondary' })
+  }
+  return list
+})
+
+/**
+ * Save the episode applying the verb's status/date semantics.
+ *   - save_changes: send what's in the form, never touch status
+ *   - publish_now:  status='published', published_at=now (overrides date)
+ *   - schedule:     status='scheduled', published_at=future date in form
+ *   - revert_draft: status='draft', keep published_at (so re-publishing
+ *                   later restores the original date)
+ */
+async function saveEpisode(action: SaveAction = 'save_changes') {
+  saving.value = true
+  errorMsg.value = ''
+  successMsg.value = ''
+
+  let nextStatus = form.status
+  let publishedAtToSend: string | null
+
+  if (action === 'publish_now') {
+    nextStatus = 'published'
+    publishedAtToSend = new Date().toISOString()
+  } else if (action === 'schedule') {
+    publishedAtToSend = localInputToUtcIso(form.published_at, podcastTz.value)
+    if (!publishedAtToSend) {
+      errorMsg.value = 'Pick a future publish date to schedule.'
+      saving.value = false
+      return
+    }
+    nextStatus = 'scheduled'
+  } else if (action === 'revert_draft') {
+    nextStatus = 'draft'
+    // Preserve the original UTC ISO when present so a later Publish Now /
+    // Save & Schedule has a sensible default to work from.
+    publishedAtToSend = originalPublishedAt.value
+  } else {
+    // save_changes — preserve full-precision ISO when the user didn't
+    // touch the field; otherwise convert the wall-clock entry.
+    if (form.published_at) {
+      const originalAsLocalInput = utcIsoToLocalInput(originalPublishedAt.value, podcastTz.value)
+      publishedAtToSend = originalPublishedAt.value && form.published_at === originalAsLocalInput
+        ? originalPublishedAt.value
+        : localInputToUtcIso(form.published_at, podcastTz.value)
+    } else {
+      publishedAtToSend = null
+    }
+  }
+
+  try {
+    const updated = await updateEpisode(id, {
+      ...form,
+      status: nextStatus,
+      episode_number: form.episode_number || null,
+      season_number: form.season_number || null,
+      audio_size_bytes: form.audio_size_bytes || null,
+      audio_duration_seconds: form.audio_duration_seconds || null,
+      published_at: publishedAtToSend,
+    })
+    // Sync server-resolved fields back to the form. The server may coerce
+    // status (e.g. published+future → scheduled) — reflect that immediately
+    // so the visible state matches the persisted state.
+    if (updated) {
+      if (typeof updated.published_at === 'string' && updated.published_at) {
+        form.published_at = utcIsoToLocalInput(updated.published_at, podcastTz.value)
+        originalPublishedAt.value = updated.published_at
+      } else {
+        form.published_at = ''
+        originalPublishedAt.value = null
+      }
+      if (typeof updated.status === 'string') form.status = updated.status
+    }
+    await nextTick()
+    formDirty.value = false
+    successMsg.value = 'Episode saved successfully.'
+    justSaved.value = true
+    setTimeout(() => { justSaved.value = false }, 3500)
+  } catch (err: unknown) {
+    errorMsg.value = err instanceof Error ? err.message : 'Failed to save episode'
+  } finally {
+    saving.value = false
+  }
+}
+
+// Submit via Enter defaults to Save Changes — the lowest-stakes verb.
+function onSubmit() {
+  saveEpisode('save_changes')
+}
 
 async function handleFileChange(event: Event) {
   const input = event.target as HTMLInputElement
@@ -1110,56 +1152,56 @@ h1 { margin: 0; font-size: 1.5rem; color: #1a202c; }
   font-weight: 500;
 }
 
-.publish-banner {
+.publishing-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 0.875rem 1.25rem;
-  border-radius: 8px;
-  margin-bottom: 1.25rem;
-  font-size: 0.9rem;
+  gap: 0.875rem;
+  margin-bottom: 0.5rem;
 }
-.publish-banner.published {
-  background: #f0fff4;
-  border: 1px solid #9ae6b4;
-  color: #276749;
+.publishing-header h2 { margin: 0; }
+
+.status-pill {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
 }
-.publish-banner.draft {
+.status-pill.draft {
   background: #fffff0;
-  border: 1px solid #faf089;
+  border-color: #faf089;
   color: #744210;
 }
-.publish-banner.scheduled {
+.status-pill.scheduled {
   background: #ebf4ff;
-  border: 1px solid #c3dafe;
+  border-color: #c3dafe;
   color: #4c51bf;
 }
+.status-pill.published {
+  background: #f0fff4;
+  border-color: #9ae6b4;
+  color: #276749;
+}
 
-.btn-publish-toggle {
-  padding: 0.4rem 0.875rem;
-  background: #38a169;
+.btn-schedule {
+  padding: 0.6rem 1.25rem;
+  background: #3182ce;
   color: white;
   border: none;
-  border-radius: 5px;
-  font-size: 0.8rem;
+  border-radius: 6px;
+  font-size: 0.9rem;
   font-weight: 500;
   cursor: pointer;
   transition: background 0.15s;
 }
-.btn-publish-toggle:hover:not(:disabled) { background: #2f855a; }
+.btn-schedule:hover:not(:disabled) { background: #2b6cb0; }
 
-.btn-unpublish-toggle {
-  padding: 0.4rem 0.875rem;
-  background: white;
-  color: #c53030;
-  border: 1px solid #fc8181;
-  border-radius: 5px;
-  font-size: 0.8rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-.btn-unpublish-toggle:hover:not(:disabled) { background: #fff5f5; }
+/* Top variant: action bar above the form, mirrors the bottom one. The
+ * form's flex `gap` already separates it from the next section, so no
+ * trailing padding. */
+.form-actions-top { padding-bottom: 0; }
 
 .episode-form {
   display: flex;
@@ -1405,6 +1447,19 @@ textarea { resize: vertical; line-height: 1.6; }
 }
 .btn-primary:hover:not(:disabled) { background: #5a67d8; }
 
+.btn-publish {
+  padding: 0.6rem 1.25rem;
+  background: #38a169;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.btn-publish:hover:not(:disabled) { background: #2f855a; }
+
 .btn-secondary {
   padding: 0.6rem 1.25rem;
   background: white;
@@ -1621,13 +1676,7 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
   }
   .ep-nav { flex-direction: column; }
   .form-row { flex-direction: column; gap: 0; }
-  .publish-banner {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 0.5rem;
-  }
-  .publish-banner .btn-publish-toggle,
-  .publish-banner .btn-unpublish-toggle { align-self: stretch; }
+  .publishing-header { flex-wrap: wrap; gap: 0.5rem; }
   .input-with-action { flex-wrap: wrap; }
   .input-with-action input { flex: 1 1 100%; min-width: 0; }
   .artwork-preview { flex-wrap: wrap; }
@@ -1640,6 +1689,8 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
     gap: 0.5rem;
   }
   .form-actions .btn-primary,
+  .form-actions .btn-publish,
+  .form-actions .btn-schedule,
   .form-actions .btn-secondary { flex: 1 1 auto; text-align: center; }
   .form-actions .save-status {
     flex-basis: 100%;

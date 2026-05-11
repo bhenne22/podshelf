@@ -11,6 +11,37 @@
       <div v-if="errorMsg" class="error-msg">{{ errorMsg }}</div>
 
       <form @submit.prevent="onSubmit" class="episode-form">
+        <div class="form-actions form-actions-top">
+          <span v-if="saving" class="save-status saving">Saving…</span>
+          <span v-else-if="errorMsg" class="save-status err">✗ {{ errorMsg }}</span>
+          <NuxtLink :to="`/podcasts/${podcastSlug}/episodes`" class="btn-secondary">Cancel</NuxtLink>
+          <button
+            v-for="a in availableActions"
+            :key="`top-${a.key}`"
+            type="button"
+            :class="a.style"
+            :disabled="saving || a.disabled"
+            @click="saveEpisode(a.key)"
+          >
+            {{ a.label }}
+          </button>
+        </div>
+
+        <div class="form-section publishing-section">
+          <h2>Publishing</h2>
+          <p class="hint section-hint">
+            Set a publish date to schedule for later, leave it blank to publish immediately, or save as a draft.
+          </p>
+
+          <div class="form-row">
+            <div class="form-group flex-2">
+              <label for="published_at_top">Publish Date</label>
+              <input id="published_at_top" v-model="form.published_at" type="datetime-local" />
+              <p class="hint">Times are in the podcast's timezone: <strong>{{ podcastTz }}</strong> ({{ tzAbbr }}).</p>
+            </div>
+          </div>
+        </div>
+
         <div class="form-section">
           <h2>Basic Info</h2>
           <div class="form-row">
@@ -272,28 +303,6 @@
           </div>
         </div>
 
-        <div class="form-section">
-          <h2>Publishing</h2>
-          <div class="form-row">
-            <div class="form-group">
-              <label for="status">Status</label>
-              <select id="status" v-model="form.status">
-                <option value="draft">Draft</option>
-                <option value="published">Published</option>
-              </select>
-            </div>
-            <div class="form-group flex-2">
-              <label for="published_at">Publish Date</label>
-              <input
-                id="published_at"
-                v-model="form.published_at"
-                type="datetime-local"
-              />
-              <p class="hint">Times are in the podcast's timezone: <strong>{{ podcastTz }}</strong> ({{ tzAbbr }}).</p>
-            </div>
-          </div>
-        </div>
-
         <div class="form-section rss-preview">
           <h2>RSS Preview</h2>
           <div class="preview-grid">
@@ -328,16 +337,15 @@
           <span v-if="saving" class="save-status saving">Saving…</span>
           <span v-else-if="errorMsg" class="save-status err">✗ {{ errorMsg }}</span>
           <NuxtLink :to="`/podcasts/${podcastSlug}/episodes`" class="btn-secondary">Cancel</NuxtLink>
-          <button type="submit" class="btn-primary" :disabled="saving">
-            {{ saving ? 'Saving…' : 'Save Draft' }}
-          </button>
           <button
+            v-for="a in availableActions"
+            :key="`bot-${a.key}`"
             type="button"
-            class="btn-publish"
-            :disabled="saving"
-            @click="saveAndPublish"
+            :class="a.style"
+            :disabled="saving || a.disabled"
+            @click="saveEpisode(a.key)"
           >
-            {{ saving ? 'Publishing…' : 'Save & Publish' }}
+            {{ a.label }}
           </button>
         </div>
       </form>
@@ -609,25 +617,69 @@ function formatDuration(seconds: number): string {
   return `${m}m ${String(s).padStart(2, '0')}s`
 }
 
-async function saveEpisode(publish = false) {
+type SaveAction = 'save_draft' | 'publish_now' | 'schedule'
+
+const publishedAtIsFuture = computed(() => {
+  if (!form.published_at) return false
+  const iso = localInputToUtcIso(form.published_at, podcastTz.value)
+  if (!iso) return false
+  const t = new Date(iso).getTime()
+  return Number.isFinite(t) && t > Date.now()
+})
+
+interface ActionDef {
+  key: SaveAction
+  label: string
+  style: string
+  disabled?: boolean
+}
+const availableActions = computed<ActionDef[]>(() => {
+  const list: ActionDef[] = [
+    { key: 'save_draft', label: 'Save Draft', style: 'btn-primary' },
+    { key: 'publish_now', label: 'Save & Publish', style: 'btn-publish' },
+  ]
+  if (publishedAtIsFuture.value) {
+    list.push({ key: 'schedule', label: 'Save & Schedule', style: 'btn-schedule' })
+  }
+  return list
+})
+
+async function saveEpisode(action: SaveAction) {
   saving.value = true
   errorMsg.value = ''
 
-  if (publish) {
-    form.status = 'published'
-    if (!form.published_at) {
-      form.published_at = utcIsoToLocalInput(new Date().toISOString(), podcastTz.value)
+  let status: string
+  let publishedAtIso: string | null
+
+  if (action === 'publish_now') {
+    status = 'published'
+    publishedAtIso = new Date().toISOString()
+  } else if (action === 'schedule') {
+    publishedAtIso = localInputToUtcIso(form.published_at, podcastTz.value)
+    if (!publishedAtIso) {
+      errorMsg.value = 'Pick a future publish date to schedule.'
+      saving.value = false
+      return
     }
+    status = 'scheduled'
+  } else {
+    status = 'draft'
+    publishedAtIso = form.published_at
+      ? localInputToUtcIso(form.published_at, podcastTz.value)
+      : null
   }
+
+  form.status = status
 
   try {
     const episode = await createEpisode({
       ...form,
+      status,
       episode_number: form.episode_number || null,
       season_number: form.season_number || null,
       audio_size_bytes: form.audio_size_bytes || null,
       audio_duration_seconds: form.audio_duration_seconds || null,
-      published_at: localInputToUtcIso(form.published_at, podcastTz.value),
+      published_at: publishedAtIso,
     })
     formSaved.value = true
     await router.push(`/podcasts/${podcastSlug}/episodes/${episode.id}`)
@@ -638,12 +690,9 @@ async function saveEpisode(publish = false) {
   }
 }
 
+// Submit via Enter defaults to Save Draft — the lowest-stakes verb.
 function onSubmit() {
-  saveEpisode(false)
-}
-
-function saveAndPublish() {
-  saveEpisode(true)
+  saveEpisode('save_draft')
 }
 
 useHead({ title: 'New Episode — Podshelf Admin' })
@@ -983,6 +1032,29 @@ textarea { resize: vertical; line-height: 1.6; }
 
 .btn-publish:hover:not(:disabled) { background: #2f855a; }
 
+.btn-schedule {
+  padding: 0.6rem 1.25rem;
+  background: #3182ce;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btn-schedule:hover:not(:disabled) { background: #2b6cb0; }
+
+/* Top variant: action bar above the form, mirrors the bottom one. The
+ * form's flex `gap` already separates it from the next section, so no
+ * trailing padding. */
+.form-actions-top { padding-bottom: 0; }
+
+.publishing-section .section-hint {
+  margin: 0 0 1rem;
+}
+
 .btn-secondary {
   padding: 0.6rem 1.25rem;
   background: white;
@@ -1047,6 +1119,7 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
   }
   .form-actions .btn-primary,
   .form-actions .btn-publish,
+  .form-actions .btn-schedule,
   .form-actions .btn-secondary { flex: 1 1 auto; text-align: center; }
   .form-actions .save-status {
     flex-basis: 100%;
