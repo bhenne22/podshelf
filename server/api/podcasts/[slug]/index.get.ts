@@ -20,6 +20,7 @@ export default defineEventHandler((event) => {
       funding_url, funding_label, verify_txt, license_identifier, license_url,
       episode_title_template, episode_description_template,
       seasons_enabled, episode_numbers_enabled,
+      timezone,
       storage_adapter, github_owner, github_repo, github_event_type,
       build_admin_only,
       status, lifecycle, deleted_at, created_at, updated_at

@@ -260,6 +260,32 @@
         </div>
 
         <div class="form-section">
+          <h2>Timezone</h2>
+          <p class="hint section-hint">
+            Wall-clock zone for episode publish dates. Picking "Scheduled
+            at midnight" means midnight in this zone — regardless of who
+            edited the episode or where they were. Doesn't affect the
+            RSS feed (pubDate is always emitted in UTC) or the audit log.
+          </p>
+
+          <div class="form-group">
+            <label for="timezone">Timezone</label>
+            <select id="timezone" v-model="form.timezone">
+              <option v-for="opt in tzOptions" :key="opt.tz" :value="opt.tz">{{ opt.label }}</option>
+            </select>
+            <p class="hint tz-current">
+              Current time for <strong>{{ form.timezone }}</strong>: {{ currentTimeInTz }}
+            </p>
+            <p class="hint">
+              Default <code>UTC</code>. Pick the zone your show is anchored
+              to — usually where the host lives or where the show is
+              produced. The offset shown updates automatically across DST
+              transitions because the zone is stored by name, not offset.
+            </p>
+          </div>
+        </div>
+
+        <div class="form-section">
           <h2>New Episode Templates</h2>
           <p class="hint section-hint">
             Pre-fills the title and show notes when you click "+ New Episode".
@@ -433,6 +459,70 @@ definePageMeta({ middleware: 'auth' })
 const route = useRoute()
 const podcastSlug = route.params.slug as string
 
+// Full IANA list from the runtime. Sorted alphabetically so common zones
+// like "America/Los_Angeles", "Europe/London", "UTC" are easy to scan.
+// Falls back to a tiny hand-curated set if supportedValuesOf is missing
+// (older runtimes).
+const supportedTimeZones: string[] = (() => {
+  try {
+    const fn = (Intl as unknown as { supportedValuesOf?: (k: string) => string[] }).supportedValuesOf
+    if (typeof fn === 'function') return fn('timeZone').slice().sort()
+  } catch {}
+  return ['UTC', 'America/New_York', 'America/Chicago', 'America/Denver',
+    'America/Los_Angeles', 'Europe/London', 'Europe/Berlin', 'Asia/Tokyo']
+})()
+
+// Tick a `now` ref so the "current time in zone" hint refreshes on its own
+// every 30s — long enough not to thrash, short enough that the minute
+// shown is never more than 30s stale.
+const now = ref(Date.now())
+let nowTimer: ReturnType<typeof setInterval> | null = null
+onMounted(() => {
+  nowTimer = setInterval(() => { now.value = Date.now() }, 30_000)
+})
+onBeforeUnmount(() => {
+  if (nowTimer) clearInterval(nowTimer)
+})
+
+/**
+ * Format a zone's current UTC offset as "UTC-5", "UTC+5:30", or "UTC" for
+ * the prime meridian. Pulled from Intl.shortOffset and renamed.
+ */
+function offsetLabel(tz: string, at: Date): string {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      timeZoneName: 'shortOffset',
+    }).formatToParts(at)
+    const raw = parts.find((p) => p.type === 'timeZoneName')?.value || 'GMT'
+    if (raw === 'GMT') return 'UTC'
+    return raw.replace('GMT', 'UTC')
+  } catch {
+    return ''
+  }
+}
+
+const tzOptions = computed(() => {
+  const at = new Date(now.value)
+  return supportedTimeZones.map((tz) => {
+    const off = offsetLabel(tz, at)
+    return { tz, label: off ? `${tz} (${off})` : tz }
+  })
+})
+
+const currentTimeInTz = computed(() => {
+  try {
+    return new Date(now.value).toLocaleTimeString('en-US', {
+      timeZone: form.timezone,
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZoneName: 'short',
+    })
+  } catch {
+    return '—'
+  }
+})
+
 interface PodcastRow {
   slug: string
   title: string
@@ -459,6 +549,7 @@ interface PodcastRow {
   episode_description_template: string | null
   seasons_enabled: number | null
   episode_numbers_enabled: number | null
+  timezone: string | null
   status: string
   lifecycle: string | null
   build_admin_only: number | null
@@ -497,6 +588,7 @@ const form = reactive({
   episode_description_template: '',
   seasons_enabled: true,
   episode_numbers_enabled: true,
+  timezone: 'UTC',
   lifecycle: 'active',
   build_admin_only: true,
 })
@@ -691,6 +783,7 @@ watch(initial, (p) => {
   form.episode_description_template = p.episode_description_template || ''
   form.seasons_enabled = p.seasons_enabled == null ? true : !!p.seasons_enabled
   form.episode_numbers_enabled = p.episode_numbers_enabled == null ? true : !!p.episode_numbers_enabled
+  form.timezone = p.timezone || 'UTC'
   form.lifecycle = p.lifecycle || 'active'
   form.build_admin_only = p.build_admin_only == null ? true : !!p.build_admin_only
 }, { immediate: true })

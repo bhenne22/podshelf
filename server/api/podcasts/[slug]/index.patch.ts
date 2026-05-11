@@ -24,6 +24,7 @@ const UPDATABLE = [
   'verify_txt', 'license_identifier', 'license_url',
   'episode_title_template', 'episode_description_template',
   'seasons_enabled', 'episode_numbers_enabled',
+  'timezone',
   'storage_adapter', 'github_owner', 'github_repo', 'github_event_type',
   'lifecycle',
   'build_admin_only',
@@ -66,6 +67,7 @@ export default defineEventHandler(async (event) => {
            funding_url, funding_label, verify_txt, license_identifier, license_url,
            episode_title_template, episode_description_template,
            seasons_enabled, episode_numbers_enabled,
+           timezone,
            storage_adapter, github_owner, github_repo, github_event_type,
            lifecycle, build_admin_only
     FROM podcasts WHERE id = ?
@@ -119,6 +121,21 @@ export default defineEventHandler(async (event) => {
     body.lifecycle = v
   }
 
+  if ('timezone' in body) {
+    const v = typeof body.timezone === 'string' ? body.timezone.trim() : ''
+    if (!v) {
+      throw createError({ statusCode: 400, statusMessage: 'timezone is required' })
+    }
+    // Round-trip through Intl to reject unknown IANA names. The constructor
+    // throws RangeError for invalid timeZone values.
+    try {
+      new Intl.DateTimeFormat('en-US', { timeZone: v })
+    } catch {
+      throw createError({ statusCode: 400, statusMessage: `Unknown IANA timezone: ${v}` })
+    }
+    body.timezone = v
+  }
+
   const updates: string[] = []
   const values: Record<string, unknown> = { id: podcastId }
   for (const field of UPDATABLE) {
@@ -158,6 +175,7 @@ export default defineEventHandler(async (event) => {
       funding_url, funding_label, verify_txt, license_identifier, license_url,
       episode_title_template, episode_description_template,
       seasons_enabled, episode_numbers_enabled,
+      timezone,
       storage_adapter, github_owner, github_repo, github_event_type,
       lifecycle, build_admin_only,
       created_at, updated_at

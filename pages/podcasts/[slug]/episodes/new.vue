@@ -289,6 +289,7 @@
                 v-model="form.published_at"
                 type="datetime-local"
               />
+              <p class="hint">Times are in the podcast's timezone: <strong>{{ podcastTz }}</strong> ({{ tzAbbr }}).</p>
             </div>
           </div>
         </div>
@@ -314,7 +315,7 @@
             </div>
             <div class="preview-item">
               <span class="preview-label">pubDate</span>
-              <span class="preview-value">{{ form.published_at ? new Date(form.published_at).toUTCString() : '—' }}</span>
+              <span class="preview-value">{{ pubDatePreview }}</span>
             </div>
             <div class="preview-item">
               <span class="preview-label">guid (url)</span>
@@ -345,6 +346,8 @@
 </template>
 
 <script setup lang="ts">
+import { utcIsoToLocalInput, localInputToUtcIso, tzAbbreviation } from '~/utils/datetime-local'
+
 definePageMeta({ middleware: 'auth' })
 
 const route = useRoute()
@@ -355,6 +358,7 @@ const { createEpisode } = useEpisodes(podcastSlug)
 interface PodcastFlags {
   seasons_enabled: number | null
   episode_numbers_enabled: number | null
+  timezone: string | null
 }
 const { data: podcastSettings } = await useFetch<PodcastFlags>(`/api/podcasts/${podcastSlug}`)
 const seasonsEnabled = computed(() => {
@@ -364,6 +368,17 @@ const seasonsEnabled = computed(() => {
 const episodeNumbersEnabled = computed(() => {
   const v = podcastSettings.value?.episode_numbers_enabled
   return v == null ? true : !!v
+})
+// Wall-clock conversions for the Publish Date input run against the
+// podcast's TZ so a co-host editing from a different country still sees
+// (and writes) the same intended moment. Fall back to UTC until settings
+// load — the dropdown won't fire before that anyway.
+const podcastTz = computed(() => podcastSettings.value?.timezone || 'UTC')
+const tzAbbr = computed(() => tzAbbreviation(podcastTz.value))
+const pubDatePreview = computed(() => {
+  if (!form.published_at) return '—'
+  const iso = localInputToUtcIso(form.published_at, podcastTz.value)
+  return iso ? new Date(iso).toUTCString() : '—'
 })
 
 const formDirty = ref(false)
@@ -601,7 +616,7 @@ async function saveEpisode(publish = false) {
   if (publish) {
     form.status = 'published'
     if (!form.published_at) {
-      form.published_at = new Date().toISOString().slice(0, 16)
+      form.published_at = utcIsoToLocalInput(new Date().toISOString(), podcastTz.value)
     }
   }
 
@@ -612,7 +627,7 @@ async function saveEpisode(publish = false) {
       season_number: form.season_number || null,
       audio_size_bytes: form.audio_size_bytes || null,
       audio_duration_seconds: form.audio_duration_seconds || null,
-      published_at: form.published_at || null,
+      published_at: localInputToUtcIso(form.published_at, podcastTz.value),
     })
     formSaved.value = true
     await router.push(`/podcasts/${podcastSlug}/episodes/${episode.id}`)

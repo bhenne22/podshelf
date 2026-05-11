@@ -58,6 +58,7 @@ CREATE TABLE IF NOT EXISTS podcasts (
   episode_description_template TEXT,
   seasons_enabled          INTEGER NOT NULL DEFAULT 1,
   episode_numbers_enabled  INTEGER NOT NULL DEFAULT 1,
+  timezone                 TEXT NOT NULL DEFAULT 'UTC',
   feed_last_modified       TEXT NOT NULL DEFAULT (datetime('now')),
   created_at               TEXT DEFAULT (datetime('now')),
   updated_at               TEXT DEFAULT (datetime('now'))

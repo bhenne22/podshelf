@@ -61,10 +61,10 @@
           <span>
             Status: <strong>{{ statusLabel }}</strong>
             <span v-if="form.status === 'published' && form.published_at">
-              on {{ formatDate(form.published_at) }}
+              on {{ publishedDateDisplay }}
             </span>
             <span v-else-if="form.status === 'scheduled' && form.published_at">
-              for {{ formatDateTime(form.published_at) }}
+              for {{ publishedDateTimeDisplay }}
             </span>
           </span>
           <button
@@ -448,6 +448,7 @@
               <div class="form-group flex-2">
                 <label for="published_at">Publish Date</label>
                 <input id="published_at" v-model="form.published_at" type="datetime-local" />
+                <p class="hint">Times are in the podcast's timezone: <strong>{{ podcastTz }}</strong> ({{ tzAbbr }}).</p>
               </div>
             </div>
           </div>
@@ -469,6 +470,7 @@
 
 <script setup lang="ts">
 import type { Episode } from '~/composables/useEpisodes'
+import { utcIsoToLocalInput, localInputToUtcIso, tzAbbreviation } from '~/utils/datetime-local'
 
 definePageMeta({
   middleware: 'auth',
@@ -485,6 +487,7 @@ const { updateEpisode } = useEpisodes(podcastSlug)
 interface PodcastFlags {
   seasons_enabled: number | null
   episode_numbers_enabled: number | null
+  timezone: string | null
 }
 const { data: podcastSettings } = await useFetch<PodcastFlags>(`/api/podcasts/${podcastSlug}`)
 const seasonsEnabled = computed(() => {
@@ -495,6 +498,8 @@ const episodeNumbersEnabled = computed(() => {
   const v = podcastSettings.value?.episode_numbers_enabled
   return v == null ? true : !!v
 })
+const podcastTz = computed(() => podcastSettings.value?.timezone || 'UTC')
+const tzAbbr = computed(() => tzAbbreviation(podcastTz.value))
 
 const pending = ref(true)
 const saving = ref(false)
@@ -762,7 +767,7 @@ onMounted(async () => {
       audio_duration_seconds: ep.audio_duration_seconds,
       image_url: ep.image_url || '',
       image_filename: ep.image_filename || '',
-      published_at: ep.published_at ? ep.published_at.slice(0, 16) : '',
+      published_at: utcIsoToLocalInput(ep.published_at, podcastTz.value),
       status: ep.status,
       transcript_path: ep.transcript_path || '',
       transcript_type: ep.transcript_type || '',
@@ -819,20 +824,22 @@ async function saveEpisode() {
   errorMsg.value = ''
   successMsg.value = ''
 
-  // Preserve the original full-precision ISO when the user didn't change
-  // the field. Without this, just opening + saving an episode strips the
-  // seconds (and the Z suffix) off the stored timestamp.
-  let publishedAtToSend: string | null = form.published_at || null
-  if (
-    publishedAtToSend
-    && originalPublishedAt.value
-    && publishedAtToSend === originalPublishedAt.value.slice(0, 16)
-  ) {
-    publishedAtToSend = originalPublishedAt.value
+  // The form holds a tz-naive datetime-local string in the podcast's TZ.
+  // When the user didn't touch the field we preserve the original UTC ISO
+  // (full precision); otherwise we convert podcast-TZ wall clock → UTC for
+  // the server.
+  let publishedAtToSend: string | null = null
+  if (form.published_at) {
+    const originalAsLocalInput = utcIsoToLocalInput(originalPublishedAt.value, podcastTz.value)
+    if (originalPublishedAt.value && form.published_at === originalAsLocalInput) {
+      publishedAtToSend = originalPublishedAt.value
+    } else {
+      publishedAtToSend = localInputToUtcIso(form.published_at, podcastTz.value)
+    }
   }
 
   try {
-    await updateEpisode(id, {
+    const updated = await updateEpisode(id, {
       ...form,
       episode_number: form.episode_number || null,
       season_number: form.season_number || null,
@@ -840,6 +847,22 @@ async function saveEpisode() {
       audio_duration_seconds: form.audio_duration_seconds || null,
       published_at: publishedAtToSend,
     })
+    // Sync server-resolved fields back to the form. The server may overwrite
+    // published_at when the user picks Published with a future date (it gets
+    // rewritten to "now") — without this the form keeps showing stale values.
+    if (updated) {
+      if (typeof updated.published_at === 'string' && updated.published_at) {
+        form.published_at = utcIsoToLocalInput(updated.published_at, podcastTz.value)
+        originalPublishedAt.value = updated.published_at
+      } else {
+        form.published_at = ''
+        originalPublishedAt.value = null
+      }
+      if (typeof updated.status === 'string') form.status = updated.status
+    }
+    // The form watcher would re-flip formDirty after our sync writes; let it
+    // run, then clear.
+    await nextTick()
     formDirty.value = false
     successMsg.value = 'Episode saved successfully.'
     justSaved.value = true
@@ -856,12 +879,11 @@ async function togglePublish() {
     form.status = 'published'
     if (!form.published_at) {
       const now = new Date().toISOString()
-      form.published_at = now.slice(0, 16)
+      form.published_at = utcIsoToLocalInput(now, podcastTz.value)
       // Stash the full ISO so saveEpisode keeps full precision instead of
       // persisting a minute-truncated timestamp for first-time publishes.
       originalPublishedAt.value = now
     }
-    // The server coerces to 'scheduled' automatically when published_at is in the future.
   } else {
     form.status = 'draft'
   }
@@ -870,7 +892,12 @@ async function togglePublish() {
 
 const publishedAtIsFuture = computed(() => {
   if (!form.published_at) return false
-  const t = new Date(form.published_at).getTime()
+  // form.published_at is a wall-clock string in podcast TZ — convert
+  // through the helper rather than letting the Date constructor parse it
+  // as browser-local.
+  const iso = localInputToUtcIso(form.published_at, podcastTz.value)
+  if (!iso) return false
+  const t = new Date(iso).getTime()
   return Number.isFinite(t) && t > Date.now()
 })
 
@@ -964,18 +991,28 @@ function formatDuration(seconds: number): string {
   return `${m}m ${String(s).padStart(2, '0')}s`
 }
 
-function formatDate(iso: string): string {
+// Render the banner's published-at in the podcast's TZ so a co-host abroad
+// sees the same wall-clock the publisher set. The source string is a
+// datetime-local value (naive, podcast-TZ), so we convert → UTC ISO
+// → toLocaleString with the podcast TZ.
+const publishedDateDisplay = computed(() => {
+  const iso = localInputToUtcIso(form.published_at, podcastTz.value)
+  if (!iso) return ''
   return new Date(iso).toLocaleDateString('en-US', {
     year: 'numeric', month: 'long', day: 'numeric',
+    timeZone: podcastTz.value,
   })
-}
-
-function formatDateTime(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, {
+})
+const publishedDateTimeDisplay = computed(() => {
+  const iso = localInputToUtcIso(form.published_at, podcastTz.value)
+  if (!iso) return ''
+  return new Date(iso).toLocaleString('en-US', {
     year: 'numeric', month: 'short', day: 'numeric',
     hour: '2-digit', minute: '2-digit',
+    timeZone: podcastTz.value,
+    timeZoneName: 'short',
   })
-}
+})
 
 useHead({ title: () => `Edit: ${form.title || '…'} — Podshelf Admin` })
 </script>

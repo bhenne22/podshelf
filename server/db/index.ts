@@ -60,6 +60,7 @@ CREATE TABLE IF NOT EXISTS podcasts (
   episode_description_template TEXT,
   seasons_enabled          INTEGER NOT NULL DEFAULT 1,
   episode_numbers_enabled  INTEGER NOT NULL DEFAULT 1,
+  timezone                 TEXT NOT NULL DEFAULT 'UTC',
   feed_last_modified       TEXT NOT NULL DEFAULT (datetime('now')),
   created_at               TEXT DEFAULT (datetime('now')),
   updated_at               TEXT DEFAULT (datetime('now'))
@@ -364,6 +365,9 @@ function applyMigrations(db: Database.Database) {
   }
   if (!podcastCols.includes('publish_dirty_last_at')) {
     db.exec('ALTER TABLE podcasts ADD COLUMN publish_dirty_last_at TEXT')
+  }
+  if (!podcastCols.includes('timezone')) {
+    db.exec("ALTER TABLE podcasts ADD COLUMN timezone TEXT NOT NULL DEFAULT 'UTC'")
   }
 
   const auditCols = cols('audit_log')
