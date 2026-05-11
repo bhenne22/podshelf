@@ -44,13 +44,19 @@ export function coerceScheduledStatus(
  */
 export function processScheduledFlips(podcastId?: number): number {
   const db = getDb()
+  // datetime() wraps both sides so SQLite normalizes the formats before
+  // comparing. Without the wrap, comparison is bytewise — and published_at
+  // is stored with a 'T' separator (e.g. "2026-05-11T07:00:00.000Z") while
+  // datetime('now') outputs "2026-05-11 04:25:00" with a space. ASCII T(84)
+  // > space(32), so the predicate evaluated FALSE for every well-formed
+  // value and scheduled episodes never flipped.
   const sql = podcastId
     ? `SELECT id, podcast_id, title, published_at FROM episodes
        WHERE podcast_id = ? AND status = 'scheduled'
-         AND published_at IS NOT NULL AND published_at <= datetime('now')`
+         AND published_at IS NOT NULL AND datetime(published_at) <= datetime('now')`
     : `SELECT id, podcast_id, title, published_at FROM episodes
        WHERE status = 'scheduled'
-         AND published_at IS NOT NULL AND published_at <= datetime('now')`
+         AND published_at IS NOT NULL AND datetime(published_at) <= datetime('now')`
   const rows = (podcastId
     ? db.prepare(sql).all(podcastId)
     : db.prepare(sql).all()) as ScheduledEpisode[]
