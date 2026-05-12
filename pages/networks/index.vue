@@ -52,11 +52,6 @@ interface NetworkListItem {
 const { data: me } = await useFetch<Me>('/api/me')
 const { data: networks, pending } = await useFetch<NetworkListItem[]>('/api/networks')
 
-// Single-network case: jump straight to it so this page isn't a needless stop.
-if (networks.value && networks.value.length === 1) {
-  await navigateTo(`/networks/${networks.value[0].slug}`)
-}
-
 useHead({ title: 'Networks · Podshelf' })
 </script>
 
