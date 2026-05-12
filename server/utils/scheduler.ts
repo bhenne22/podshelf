@@ -6,6 +6,7 @@ import {
   loadGithubConfig,
   clearPublishDirty,
   dispatchRepositoryEvent,
+  isDeploysPaused,
 } from './github'
 
 interface ScheduledEpisode {
@@ -112,6 +113,10 @@ export function processPendingPublishes(): number {
 
   let fired = 0
   for (const row of rows) {
+    // Kill switch: skip the dispatch but leave dirty markers in place so
+    // unpause can fire a normal debounced build off the accumulated changes.
+    if (isDeploysPaused(row.id)) continue
+
     const config = loadGithubConfig(row.id)
     // Config got removed but auto_trigger is still on. Don't clear the
     // dirty flag — keep it so the UI banner can show "configure GitHub

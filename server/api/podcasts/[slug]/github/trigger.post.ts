@@ -1,6 +1,6 @@
 import { defineEventHandler, getRouterParam, createError } from 'h3'
 import { requirePodcastAccess } from '../../../../utils/auth'
-import { dispatchRepositoryEvent, loadGithubConfig, clearPublishDirty } from '../../../../utils/github'
+import { dispatchRepositoryEvent, loadGithubConfig, clearPublishDirty, isDeploysPaused } from '../../../../utils/github'
 import { logAudit } from '../../../../utils/audit'
 
 /**
@@ -14,6 +14,13 @@ import { logAudit } from '../../../../utils/audit'
 export default defineEventHandler(async (event) => {
   const slug = getRouterParam(event, 'slug') as string
   const { user, podcastId } = requirePodcastAccess(event, slug)
+
+  if (isDeploysPaused(podcastId)) {
+    throw createError({
+      statusCode: 409,
+      statusMessage: 'Deploys are paused for this podcast. Toggle the kill switch off on the Build page to fire a dispatch.',
+    })
+  }
 
   const config = loadGithubConfig(podcastId)
   if (!config) {

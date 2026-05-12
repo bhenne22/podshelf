@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS podcasts (
   github_event_type        TEXT,
   github_token_encrypted   TEXT,
   github_auto_trigger      INTEGER NOT NULL DEFAULT 0,
+  deploys_paused           INTEGER NOT NULL DEFAULT 0,
   publish_dirty_first_at   TEXT,
   publish_dirty_last_at    TEXT,
   build_admin_only         INTEGER NOT NULL DEFAULT 1,
@@ -405,6 +406,9 @@ function applyMigrations(db: Database.Database) {
   }
   if (!podcastCols.includes('publish_dirty_last_at')) {
     db.exec('ALTER TABLE podcasts ADD COLUMN publish_dirty_last_at TEXT')
+  }
+  if (!podcastCols.includes('deploys_paused')) {
+    db.exec('ALTER TABLE podcasts ADD COLUMN deploys_paused INTEGER NOT NULL DEFAULT 0')
   }
   if (!podcastCols.includes('timezone')) {
     db.exec("ALTER TABLE podcasts ADD COLUMN timezone TEXT NOT NULL DEFAULT 'UTC'")

@@ -16,6 +16,11 @@ export interface GitHubConfigDescription {
   event_type: string | null
   has_token: boolean
   auto_trigger: boolean
+  /**
+   * Per-podcast deploy kill switch. When true, all repository_dispatch
+   * paths (auto, manual, test) are blocked. Dirty markers still accumulate.
+   */
+  deploys_paused: boolean
   pending: PublishPendingDescription
 }
 
@@ -40,16 +45,35 @@ interface PodcastGithubRow {
   github_event_type: string | null
   github_token_encrypted: string | null
   github_auto_trigger: number
+  deploys_paused: number
 }
 
 function loadRow(podcastId: number): PodcastGithubRow | null {
   const db = getDb()
   const row = db.prepare(`
     SELECT github_owner, github_repo, github_event_type,
-           github_token_encrypted, github_auto_trigger
+           github_token_encrypted, github_auto_trigger, deploys_paused
     FROM podcasts WHERE id = ?
   `).get(podcastId) as PodcastGithubRow | undefined
   return row || null
+}
+
+/**
+ * Returns true when the podcast's deploys are paused — used as the kill
+ * switch for any repository_dispatch path (auto / manual / test). Dirty
+ * markers still accumulate so unpause can fire a normal debounced build.
+ */
+export function isDeploysPaused(podcastId: number): boolean {
+  const row = loadRow(podcastId)
+  return !!row?.deploys_paused
+}
+
+export function setDeploysPaused(podcastId: number, paused: boolean): void {
+  getDb().prepare(`
+    UPDATE podcasts
+    SET deploys_paused = ?, updated_at = datetime('now')
+    WHERE id = ?
+  `).run(paused ? 1 : 0, podcastId)
 }
 
 /**
@@ -82,6 +106,7 @@ export function describeGithubConfig(podcastId: number): GitHubConfigDescription
       configured: false,
       owner: null, repo: null, event_type: null,
       has_token: false, auto_trigger: false,
+      deploys_paused: false,
       pending,
     }
   }
@@ -94,6 +119,7 @@ export function describeGithubConfig(podcastId: number): GitHubConfigDescription
     event_type: row.github_event_type,
     has_token: hasToken,
     auto_trigger: !!row.github_auto_trigger,
+    deploys_paused: !!row.deploys_paused,
     pending,
   }
 }

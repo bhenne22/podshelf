@@ -1,6 +1,6 @@
 import { defineEventHandler, readBody, getRouterParam, createError } from 'h3'
 import { requireBuildAccess } from '../../../../utils/build-access'
-import { dispatchRepositoryEvent, loadGithubConfig, type GitHubConfig } from '../../../../utils/github'
+import { dispatchRepositoryEvent, loadGithubConfig, isDeploysPaused, type GitHubConfig } from '../../../../utils/github'
 
 /**
  * POST /api/podcasts/[slug]/github/test
@@ -17,6 +17,13 @@ import { dispatchRepositoryEvent, loadGithubConfig, type GitHubConfig } from '..
 export default defineEventHandler(async (event) => {
   const slug = getRouterParam(event, 'slug') as string
   const { podcastId } = requireBuildAccess(event, slug)
+
+  if (isDeploysPaused(podcastId)) {
+    throw createError({
+      statusCode: 409,
+      statusMessage: 'Deploys are paused for this podcast. Toggle the kill switch off on the Build page to test a dispatch.',
+    })
+  }
 
   const body = await readBody(event)
   const incoming = (body || {}) as Record<string, unknown>

@@ -13,11 +13,42 @@
       <div v-if="successMsg" class="success-msg">{{ successMsg }}</div>
       <div v-if="errorMsg" class="error-msg">{{ errorMsg }}</div>
 
+      <div v-if="current?.deploys_paused" class="paused-banner">
+        <strong>Deploys are paused.</strong>
+        Auto-publish, Rebuild Now, and Test Dispatch are blocked until the kill
+        switch is turned off. Edits still mark this podcast dirty and will fire
+        once deploys are resumed.
+      </div>
+
       <p v-if="current?.configured" class="status">
         <strong>Configured.</strong> Auto-publish is
         <strong>{{ form.auto_trigger ? `on (${PUBLISH_DEBOUNCE_MINUTES}-min debounce)` : 'off' }}</strong>.
         Pending changes show in the banner above the nav and on every podcast page.
       </p>
+
+      <div v-if="meData?.is_admin" class="form-section">
+        <h2>Deploy Kill Switch</h2>
+        <p class="hint">
+          Admin-only. Pauses every <code>repository_dispatch</code> path for this
+          podcast — auto-publish, manual Rebuild Now, and Test Dispatch all return
+          a 409 until you flip it back. Useful while iterating on testing without
+          burning a build per save.
+        </p>
+        <div class="form-actions form-actions-row">
+          <span v-if="togglingPause" class="save-status saving">Saving…</span>
+          <span v-else class="save-status" :class="current?.deploys_paused ? 'err' : 'ok'">
+            {{ current?.deploys_paused ? 'Paused' : 'Active' }}
+          </span>
+          <button
+            type="button"
+            :class="current?.deploys_paused ? 'btn-rebuild' : 'btn-pause'"
+            :disabled="togglingPause"
+            @click="togglePause"
+          >
+            {{ current?.deploys_paused ? 'Resume Deploys' : 'Pause Deploys' }}
+          </button>
+        </div>
+      </div>
 
       <form @submit.prevent="save" class="form-section">
         <h2>GitHub Repository</h2>
@@ -69,7 +100,7 @@
           <span v-if="saving" class="save-status saving">Saving…</span>
           <span v-else-if="justSaved" class="save-status ok">✓ Saved</span>
           <span v-else-if="errorMsg" class="save-status err">✗ {{ errorMsg }}</span>
-          <button type="button" class="btn-secondary" :disabled="testing || !canTest" @click="testTrigger">
+          <button type="button" class="btn-secondary" :disabled="testing || !canTest || !!current?.deploys_paused" @click="testTrigger">
             {{ testing ? 'Testing…' : 'Test Dispatch' }}
           </button>
           <button type="submit" class="btn-primary" :disabled="saving">
@@ -88,7 +119,7 @@
         <div class="form-actions form-actions-row">
           <span v-if="triggering" class="save-status saving">Triggering…</span>
           <span v-else-if="lastTriggerOk" class="save-status ok">✓ Sent ({{ lastTriggerOk }})</span>
-          <button class="btn-rebuild" :disabled="triggering || !current?.configured" @click="manualTrigger">
+          <button class="btn-rebuild" :disabled="triggering || !current?.configured || !!current?.deploys_paused" @click="manualTrigger">
             {{ triggering ? 'Triggering…' : 'Rebuild Now' }}
           </button>
         </div>
@@ -151,6 +182,7 @@ interface GitHubDescription {
   event_type: string | null
   has_token: boolean
   auto_trigger: boolean
+  deploys_paused: boolean
   pending: PublishPending
 }
 
@@ -239,6 +271,27 @@ async function testTrigger() {
     errorMsg.value = (err as { data?: { statusMessage?: string } })?.data?.statusMessage || 'Test failed'
   } finally {
     testing.value = false
+  }
+}
+
+const togglingPause = ref(false)
+
+async function togglePause() {
+  togglingPause.value = true
+  successMsg.value = ''
+  errorMsg.value = ''
+  try {
+    const next = !current.value?.deploys_paused
+    await $fetch(`/api/podcasts/${podcastSlug}/deploys-paused`, {
+      method: 'POST',
+      body: { paused: next },
+    })
+    await refresh()
+    successMsg.value = next ? 'Deploys paused.' : 'Deploys resumed.'
+  } catch (err: unknown) {
+    errorMsg.value = (err as { data?: { statusMessage?: string } })?.data?.statusMessage || 'Failed to toggle'
+  } finally {
+    togglingPause.value = false
   }
 }
 
@@ -409,6 +462,23 @@ input:focus {
 }
 .btn-rebuild:hover:not(:disabled) { background: #2f855a; }
 .btn-rebuild:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-pause {
+  padding: 0.6rem 1.25rem;
+  background: #c53030; color: white;
+  border: none; border-radius: 6px;
+  font-size: 0.9rem; font-weight: 500;
+  cursor: pointer;
+}
+.btn-pause:hover:not(:disabled) { background: #9b2c2c; }
+.btn-pause:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.paused-banner {
+  background: #fffaf0; border: 1px solid #f6ad55;
+  color: #7b341e; padding: 0.875rem 1rem;
+  border-radius: 8px; margin-bottom: 1rem; font-size: 0.9rem;
+  line-height: 1.5;
+}
 
 button:disabled { opacity: 0.6; cursor: not-allowed; }
 
