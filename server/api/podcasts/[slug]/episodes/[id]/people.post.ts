@@ -66,6 +66,11 @@ export default defineEventHandler(async (event) => {
     attachId = Number(result.lastInsertRowid)
   }
 
+  // Roster changes alter the rendered episode payload (the <podcast:person>
+  // tags in the feed and the embedded people in downstream sync output), so
+  // bump episodes.updated_at for the incremental-sync invariant.
+  db.prepare(`UPDATE episodes SET updated_at = datetime('now') WHERE id = ?`).run(id)
+
   if (ep.status === 'published') {
     bumpFeedLastModified(podcastId)
     maybeAutoTrigger(podcastId, 'episode-people-update')

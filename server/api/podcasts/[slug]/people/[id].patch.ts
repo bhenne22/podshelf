@@ -64,6 +64,21 @@ export default defineEventHandler(async (event) => {
     'SELECT name, img_url, href, default_role, default_group, auto_attach FROM people WHERE id = ?'
   ).get(id) as Record<string, unknown>
   const diff = diffFields(existing, after)
+
+  // Cascade episodes.updated_at when render-affecting fields changed, so the
+  // incremental-sync invariant holds: every episode this person is attached
+  // to now has stale rendered output (the person's name/img/href appear in
+  // <podcast:person> tags + embedded people in downstream sync). Role/group
+  // defaults aren't render-affecting because per-attachment role/group are
+  // frozen at attach time.
+  const RENDER_AFFECTING = new Set(['name', 'img_url', 'href'])
+  if (diff.changed.some(f => RENDER_AFFECTING.has(f))) {
+    db.prepare(`
+      UPDATE episodes SET updated_at = datetime('now')
+      WHERE id IN (SELECT episode_id FROM episode_people WHERE person_id = ?)
+    `).run(id)
+  }
+
   if (diff.changed.length > 0) {
     logAudit(event, {
       podcastId,

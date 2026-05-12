@@ -91,6 +91,24 @@ CREATE TABLE IF NOT EXISTS api_key_podcasts (
   PRIMARY KEY (api_key_id, podcast_id)
 );
 
+-- INVARIANT: episodes.updated_at must advance whenever ANY change affects the
+-- rendered episode payload — including writes to related tables. Downstream
+-- static-site builds use this column as a "this episode is stale" signal to
+-- avoid re-fetching unchanged data (see docs/incremental-sync-design.md).
+--
+-- Concretely that means a bump on:
+--   * direct column updates (handled by episodes/[id].patch.ts)
+--   * chapters_url / transcript_path writes (handled by upload handlers)
+--   * episode_people attach/update/detach (people endpoints under episodes/)
+--   * people row updates that change render-affecting fields (name/img/href)
+--     → cascade to every episode the person is attached to
+--   * people row deletes → cascade BEFORE the delete (FK ON DELETE CASCADE
+--     wipes episode_people, so the affected-episode set must be captured first)
+--   * any future write that affects the rendered payload
+--
+-- If you add a handler that touches state visible through the episode
+-- projection, bump updated_at or the invariant breaks silently. The
+-- updated-at-cascade.test.ts suite pins the non-obvious cases.
 CREATE TABLE IF NOT EXISTS episodes (
   id                      INTEGER PRIMARY KEY AUTOINCREMENT,
   podcast_id              INTEGER NOT NULL REFERENCES podcasts(id) ON DELETE CASCADE,

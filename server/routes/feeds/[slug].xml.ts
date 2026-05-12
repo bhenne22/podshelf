@@ -267,7 +267,7 @@ export default defineEventHandler((event) => {
   // slug or website changes won't churn the GUID.
   const episodesNeedingGuid = episodes.filter((ep) => !ep.guid)
   if (episodesNeedingGuid.length > 0) {
-    const updateGuid = db.prepare('UPDATE episodes SET guid = ? WHERE id = ?')
+    const updateGuid = db.prepare(`UPDATE episodes SET guid = ?, updated_at = datetime('now') WHERE id = ?`)
     db.transaction(() => {
       for (const ep of episodesNeedingGuid) {
         const epUrl = websiteBase ? `${websiteBase}/episodes/${ep.slug}` : `/episodes/${ep.slug}`

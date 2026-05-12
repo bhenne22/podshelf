@@ -27,6 +27,14 @@ export default defineEventHandler((event) => {
     throw createError({ statusCode: 404, statusMessage: 'Person not found' })
   }
 
+  // Bump episodes.updated_at on attached episodes BEFORE the person delete —
+  // the FK CASCADE on episode_people wipes the rows we'd use to find affected
+  // episodes, so we have to capture the set while it still exists.
+  db.prepare(`
+    UPDATE episodes SET updated_at = datetime('now')
+    WHERE id IN (SELECT episode_id FROM episode_people WHERE person_id = ?)
+  `).run(id)
+
   db.prepare('DELETE FROM people WHERE id = ?').run(id)
   bumpFeedLastModified(podcastId)
 

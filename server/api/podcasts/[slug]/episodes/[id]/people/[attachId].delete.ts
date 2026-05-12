@@ -42,6 +42,11 @@ export default defineEventHandler((event) => {
     throw createError({ statusCode: 404, statusMessage: 'Attachment not found' })
   }
 
+  // Roster changes alter the rendered episode payload (the <podcast:person>
+  // tags in the feed and the embedded people in downstream sync output), so
+  // bump episodes.updated_at for the incremental-sync invariant.
+  db.prepare(`UPDATE episodes SET updated_at = datetime('now') WHERE id = ?`).run(epId)
+
   logAudit(event, {
     podcastId,
     userId: user.id,
