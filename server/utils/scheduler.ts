@@ -17,22 +17,30 @@ interface ScheduledEpisode {
 }
 
 /**
- * Decide whether a (status, published_at) pair should be coerced to
- * 'scheduled' on save. Returns the effective status to persist.
- *
- * Rule: status='published' + published_at strictly in the future → scheduled.
- * Anything else passes through.
+ * Resolve the (status, publishedAt) pair to persist on save. Rules:
+ *   - status='published' + future publishedAt → publish now (override
+ *     publishedAt to current time). Selecting "Published" is an explicit
+ *     intent to go live, so a leftover future date is treated as a stale
+ *     value rather than silently scheduling.
+ *   - status='published' + no publishedAt → fill in current time.
+ *   - status='scheduled' or 'draft' → pass through unchanged. Users who
+ *     want scheduling pick the Scheduled status explicitly.
  */
-export function coerceScheduledStatus(
+export function resolvePublishTiming(
   desiredStatus: string | null | undefined,
   publishedAt: string | null | undefined,
-): string | null | undefined {
-  if (desiredStatus !== 'published') return desiredStatus
-  if (!publishedAt) return desiredStatus
+): { status: string | null | undefined; publishedAt: string | null | undefined } {
+  if (desiredStatus !== 'published') {
+    return { status: desiredStatus, publishedAt: publishedAt ?? null }
+  }
+  if (!publishedAt) {
+    return { status: 'published', publishedAt: new Date().toISOString() }
+  }
   const t = new Date(publishedAt).getTime()
-  if (!Number.isFinite(t)) return desiredStatus
-  if (t > Date.now()) return 'scheduled'
-  return desiredStatus
+  if (Number.isFinite(t) && t > Date.now()) {
+    return { status: 'published', publishedAt: new Date().toISOString() }
+  }
+  return { status: 'published', publishedAt }
 }
 
 /**

@@ -5,7 +5,7 @@ import { maybeAutoTrigger } from '../../../../utils/github'
 import { bumpFeedLastModified } from '../../../../utils/feed-cache'
 import { logAudit, diffFields, summarizeChanges } from '../../../../utils/audit'
 import { firePublishEvent } from '../../../../utils/publish-event'
-import { coerceScheduledStatus } from '../../../../utils/scheduler'
+import { resolvePublishTiming } from '../../../../utils/scheduler'
 import getDb from '../../../../db/index'
 
 const UPDATABLE = [
@@ -42,18 +42,11 @@ export default defineEventHandler(async (event) => {
   const body = await readBody(event)
   validateEpisodeFields(body)
 
-  // If status is being set to 'published' with a future published_at, coerce
-  // to 'scheduled'. Same logic on create — keeps the publish-now vs publish-
-  // later semantics in one place.
   if (body.status === 'published') {
     const incomingPubDate = 'published_at' in body ? body.published_at : beforeRow.published_at
-    body.status = coerceScheduledStatus('published', incomingPubDate as string | null | undefined)
-
-    // A published episode must have a publish date — fill in now() if the
-    // caller is publishing without specifying one and the row had none.
-    if (body.status === 'published' && !incomingPubDate) {
-      body.published_at = new Date().toISOString()
-    }
+    const resolved = resolvePublishTiming('published', incomingPubDate as string | null | undefined)
+    body.status = resolved.status
+    body.published_at = resolved.publishedAt
   }
 
   const updates: string[] = []

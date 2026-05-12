@@ -3,7 +3,7 @@ import { requirePodcastAccess } from '../../../../utils/auth'
 import { validateEpisodeFields } from '../../../../utils/validate'
 import { logAudit } from '../../../../utils/audit'
 import { firePublishEvent } from '../../../../utils/publish-event'
-import { coerceScheduledStatus } from '../../../../utils/scheduler'
+import { resolvePublishTiming } from '../../../../utils/scheduler'
 import getDb from '../../../../db/index'
 
 function slugify(text: string): string {
@@ -47,17 +47,9 @@ export default defineEventHandler(async (event) => {
     slug = candidate
   }
 
-  // Coerce status: published + future date → scheduled.
-  const desiredStatus = body.status ?? 'draft'
-  const effectiveStatus = coerceScheduledStatus(desiredStatus, body.published_at) ?? 'draft'
-
-  // A published episode must have a publish date — otherwise it shows up in
-  // the feed with no <pubDate>, which clients sort to the bottom or hide.
-  // Default to now() when the caller publishes without specifying a date.
-  let publishedAt = body.published_at ?? null
-  if (effectiveStatus === 'published' && !publishedAt) {
-    publishedAt = new Date().toISOString()
-  }
+  const resolved = resolvePublishTiming(body.status ?? 'draft', body.published_at)
+  const effectiveStatus = resolved.status ?? 'draft'
+  const publishedAt = resolved.publishedAt
 
   const result = db.prepare(`
     INSERT INTO episodes (
