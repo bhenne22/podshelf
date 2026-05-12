@@ -16,27 +16,33 @@ const singleSrc = readFileSync(
   'utf-8',
 )
 
-test('LIST endpoint SELECT_COLS includes guid', () => {
-  const match = listSrc.match(/SELECT_COLS\s*=\s*`([^`]+)`/)
-  assert.ok(match, 'SELECT_COLS string should be extractable')
-  const cols = match![1]
+function extractDefaultCols(): string[] {
+  const match = listSrc.match(/DEFAULT_SELECT_COLS\s*=\s*`([^`]+)`/)
+  assert.ok(match, 'DEFAULT_SELECT_COLS string should be extractable')
+  return match![1].split(',').map((c) => c.trim()).filter(Boolean)
+}
+
+function extractAllowedFields(): Set<string> {
+  const match = listSrc.match(/ALLOWED_FIELDS\s*=\s*new Set\(\[([\s\S]+?)\]\)/)
+  assert.ok(match, 'ALLOWED_FIELDS Set literal should be extractable')
+  const fields = match![1]
     .split(',')
-    .map((c) => c.trim())
+    .map((s) => s.replace(/['"`\s]/g, ''))
     .filter(Boolean)
-  assert.ok(cols.includes('guid'), `LIST projection must include guid; got: ${cols.join(', ')}`)
+  return new Set(fields)
+}
+
+test('LIST endpoint DEFAULT_SELECT_COLS includes guid', () => {
+  const cols = extractDefaultCols()
+  assert.ok(cols.includes('guid'), `LIST default projection must include guid; got: ${cols.join(', ')}`)
 })
 
-test('LIST projection is a subset of (or equal to) SINGLE projection', () => {
+test('LIST default projection is a subset of (or equal to) SINGLE projection', () => {
   // Soft check — both endpoints should at minimum agree on shared fields.
   // Single endpoint uses SELECT * style or an explicit list; this catches
   // drift if someone adds a column to one and forgets the other.
-  const listMatch = listSrc.match(/SELECT_COLS\s*=\s*`([^`]+)`/)
-  const listCols = new Set(
-    listMatch![1].split(',').map((c) => c.trim()).filter(Boolean),
-  )
+  const listCols = new Set(extractDefaultCols())
 
-  // The single-episode endpoint may use SELECT *; if so we skip diffing.
-  // If it uses an explicit list, every LIST column should appear in it.
   const singleMatch = singleSrc.match(/SELECT\s+(\*|[^F]+?)\s+FROM\s+episodes/i)
   if (!singleMatch || singleMatch[1].trim() === '*') return
   const singleCols = new Set(
@@ -48,4 +54,51 @@ test('LIST projection is a subset of (or equal to) SINGLE projection', () => {
       `column "${col}" is in LIST projection but missing from SINGLE projection`,
     )
   }
+})
+
+// ---- ?fields= projection (incremental-sync design step 3) ----
+
+test('ALLOWED_FIELDS covers every column in DEFAULT_SELECT_COLS', () => {
+  // Drift guard: if you add a column to the default projection but forget
+  // to whitelist it in ALLOWED_FIELDS, ?fields=<new-col> would 400 — which
+  // is silently a worse default than failing the test.
+  const defaultCols = extractDefaultCols()
+  const allowed = extractAllowedFields()
+  for (const col of defaultCols) {
+    assert.ok(
+      allowed.has(col),
+      `column "${col}" is in DEFAULT_SELECT_COLS but missing from ALLOWED_FIELDS`,
+    )
+  }
+})
+
+test('ALLOWED_FIELDS includes the incremental-sync minimum projection', () => {
+  // Downstream sync scripts hit ?fields=id,slug,updated_at,deleted_at,...
+  // for the lightweight index. Pin those exact names so a column rename
+  // upstream doesn't silently break the sync.
+  const allowed = extractAllowedFields()
+  for (const f of ['id', 'slug', 'updated_at']) {
+    assert.ok(allowed.has(f), `incremental-sync requires "${f}" in ALLOWED_FIELDS`)
+  }
+})
+
+test('resolveSelectCols rejects unknown fields with 400', () => {
+  // Source-pin: the handler must throw createError({ statusCode: 400, ... })
+  // on an unknown field. Catching this at lint-time means callers can rely
+  // on typos being loud rather than silently returning empty projections.
+  assert.match(
+    listSrc,
+    /throw createError\(\{\s*statusCode:\s*400,\s*statusMessage:\s*`unknown field/,
+    'resolveSelectCols must reject unknown fields with a 400',
+  )
+})
+
+test('resolveSelectCols returns the default projection on missing fields', () => {
+  // Backwards-compat: callers that don't pass ?fields= keep getting
+  // everything, same as today's behavior.
+  assert.match(
+    listSrc,
+    /if \(!fieldsParam\) return DEFAULT_SELECT_COLS/,
+    'resolveSelectCols must fall back to DEFAULT_SELECT_COLS when ?fields= is absent',
+  )
 })
