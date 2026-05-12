@@ -1,4 +1,6 @@
 import { S3Client, PutObjectCommand, ListObjectsV2Command, DeleteObjectCommand, CopyObjectCommand, GetObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3'
+import { Upload } from '@aws-sdk/lib-storage'
+import type { Readable } from 'stream'
 import type { S3Config, StorageKind } from '../utils/storage-config'
 import { resolveS3Target } from '../utils/storage-config'
 
@@ -84,6 +86,43 @@ export async function uploadToS3(
     ACL: 'public-read',
   }))
 
+  return `${publicUrlBase.replace(/\/$/, '')}/${filename}`
+}
+
+/**
+ * Stream-upload variant used by the multipart upload endpoint. Routes through
+ * @aws-sdk/lib-storage's Upload helper, which transparently switches to S3
+ * multipart upload for large bodies — memory stays bounded by partSize
+ * regardless of the file size.
+ */
+export async function uploadStreamToS3(
+  stream: Readable,
+  filename: string,
+  contentType: string,
+  config: S3Config,
+  kind: StorageKind = 'audio',
+): Promise<string> {
+  if (!config.accessKeyId || !config.secretAccessKey || !config.bucketName || !config.publicUrlBase) {
+    throw new Error('S3 configuration incomplete: accessKeyId, secretAccessKey, bucketName, publicUrlBase are required')
+  }
+
+  const { prefix, publicUrlBase } = resolveS3Target(config, kind)
+  const client = buildClient(config)
+
+  const upload = new Upload({
+    client,
+    params: {
+      Bucket: config.bucketName,
+      Key: prefix + filename,
+      Body: stream,
+      ContentType: contentType,
+      ACL: 'public-read',
+    },
+    partSize: 8 * 1024 * 1024,
+    queueSize: 4,
+  })
+
+  await upload.done()
   return `${publicUrlBase.replace(/\/$/, '')}/${filename}`
 }
 

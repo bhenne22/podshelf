@@ -88,6 +88,20 @@ export async function uploadToSftp(
   config: SftpConfig,
   kind: StorageKind = 'audio',
 ): Promise<string> {
+  return uploadStreamToSftp(Readable.from(buffer), filename, config, kind)
+}
+
+/**
+ * Stream-upload variant. Used by the multipart upload endpoint so large MP3s
+ * never get buffered in memory — ssh2-sftp-client's `put` accepts a Readable
+ * directly. Same return contract as uploadToSftp.
+ */
+export async function uploadStreamToSftp(
+  stream: Readable,
+  filename: string,
+  config: SftpConfig,
+  kind: StorageKind = 'audio',
+): Promise<string> {
   const { host, port = 22, username, privateKey, passphrase, password } = config
   const { remoteDir, publicUrlBase } = resolveSftpTarget(config, kind)
 
@@ -117,7 +131,6 @@ export async function uploadToSftp(
     }
 
     const remotePath = `${remoteDir}/${filename}`
-    const stream = Readable.from(buffer)
 
     try {
       await sftp.put(stream, remotePath)

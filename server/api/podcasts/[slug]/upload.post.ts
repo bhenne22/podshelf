@@ -1,9 +1,11 @@
-import { defineEventHandler, readMultipartFormData, getRouterParam, getQuery, createError } from 'h3'
+import { defineEventHandler, getRouterParam, getQuery, createError } from 'h3'
+import { Transform } from 'stream'
 import { requirePodcastAccess } from '../../../utils/auth'
 import { loadPodcastStorage } from '../../../utils/storage-config'
 import { isMigrationActive } from '../../../utils/storage-migration'
-import { uploadToSftp } from '../../../storage/sftp'
-import { uploadToS3 } from '../../../storage/s3'
+import { uploadStreamToSftp, deleteFromSftp } from '../../../storage/sftp'
+import { uploadStreamToS3, deleteFromS3 } from '../../../storage/s3'
+import { streamFilePart } from '../../../utils/multipart-stream'
 
 const AUDIO_TYPES = [
   'audio/mpeg', 'audio/mp3', 'audio/mp4', 'audio/m4a', 'audio/x-m4a',
@@ -40,8 +42,9 @@ function extOf(filename: string): string {
 /**
  * POST /api/podcasts/[slug]/upload?kind=audio|artwork|transcript|chapters
  *
- * Multipart upload routed through the podcast's storage adapter.
- * Storage credentials are stored encrypted in the podcasts row.
+ * Streams a multipart upload directly into the podcast's storage adapter
+ * without buffering the body in memory. Storage credentials are loaded
+ * from the encrypted per-podcast config.
  *
  * Transcript and chapters files land in the same directory as audio
  * (sidecar files next to the MP3) — Podshelf doesn't host listener-facing
@@ -89,85 +92,101 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  const parts = await readMultipartFormData(event)
-  if (!parts || parts.length === 0) {
-    throw createError({ statusCode: 400, statusMessage: 'No file uploaded' })
-  }
-
-  const filePart = parts.find((p) => p.name === 'file')
-  if (!filePart) {
-    throw createError({ statusCode: 400, statusMessage: 'Form field "file" not found' })
-  }
-
-  const buffer = filePart.data
-  const rawFilename = filePart.filename || `upload-${Date.now()}`
-  const contentType = filePart.type || 'application/octet-stream'
-
   const maxSize =
     kind === 'artwork' ? MAX_SIZE_IMAGE :
     kind === 'transcript' ? MAX_SIZE_TEXT :
     kind === 'chapters' ? MAX_SIZE_CHAPTERS :
     MAX_SIZE_AUDIO
 
-  if (buffer.length > maxSize) {
-    const mb = Math.round(maxSize / (1024 * 1024))
-    throw createError({ statusCode: 413, statusMessage: `File too large. Maximum size is ${mb} MB.` })
-  }
+  return await streamFilePart(event, {
+    maxSize,
+    onFile: async ({ filename: rawFilename, contentType, stream }) => {
+      const incomingName = rawFilename || `upload-${Date.now()}`
+      const ext = extOf(incomingName)
+      const acceptedByMime =
+        kind === 'artwork' ? IMAGE_TYPES.includes(contentType) :
+        kind === 'transcript' ? TRANSCRIPT_TYPES.includes(contentType) :
+        kind === 'chapters' ? CHAPTERS_TYPES.includes(contentType) :
+        AUDIO_TYPES.includes(contentType)
+      const acceptedByExt =
+        kind === 'transcript' ? TRANSCRIPT_EXTENSIONS.includes(ext) :
+        kind === 'chapters' ? CHAPTERS_EXTENSIONS.includes(ext) :
+        false
 
-  const ext = extOf(rawFilename)
-  const acceptedByMime =
-    kind === 'artwork' ? IMAGE_TYPES.includes(contentType) :
-    kind === 'transcript' ? TRANSCRIPT_TYPES.includes(contentType) :
-    kind === 'chapters' ? CHAPTERS_TYPES.includes(contentType) :
-    AUDIO_TYPES.includes(contentType)
-  const acceptedByExt =
-    kind === 'transcript' ? TRANSCRIPT_EXTENSIONS.includes(ext) :
-    kind === 'chapters' ? CHAPTERS_EXTENSIONS.includes(ext) :
-    false
+      if (!acceptedByMime && !acceptedByExt) {
+        const friendly =
+          kind === 'artwork' ? 'image (JPEG, PNG, or WebP)' :
+          kind === 'transcript' ? 'transcript (HTML, TXT, SRT, VTT, or JSON)' :
+          kind === 'chapters' ? 'chapters JSON' :
+          'audio'
+        // Drain so busboy can finish parsing the request body.
+        stream.resume()
+        throw createError({
+          statusCode: 400,
+          statusMessage: `Invalid file type "${contentType}". Expected a ${friendly} file.`,
+        })
+      }
 
-  if (!acceptedByMime && !acceptedByExt) {
-    const friendly =
-      kind === 'artwork' ? 'image (JPEG, PNG, or WebP)' :
-      kind === 'transcript' ? 'transcript (HTML, TXT, SRT, VTT, or JSON)' :
-      kind === 'chapters' ? 'chapters JSON' :
-      'audio'
-    throw createError({
-      statusCode: 400,
-      statusMessage: `Invalid file type "${contentType}". Expected a ${friendly} file.`,
-    })
-  }
+      const basename = incomingName.split(/[/\\]/).pop() || `upload-${Date.now()}`
+      const filename = basename.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 255)
 
-  const basename = rawFilename.split(/[/\\]/).pop() || `upload-${Date.now()}`
-  const filename = basename.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 255)
+      // Browsers often send 'application/octet-stream' for SRT/VTT files;
+      // map ext → standard type so the response carries something usable
+      // by the client form (e.g. transcript_type).
+      let storedContentType = contentType
+      if (kind === 'transcript' && contentType === 'application/octet-stream') {
+        if (ext === 'srt') storedContentType = 'application/srt'
+        else if (ext === 'vtt') storedContentType = 'text/vtt'
+        else if (ext === 'json') storedContentType = 'application/json'
+        else if (ext === 'html' || ext === 'htm') storedContentType = 'text/html'
+        else if (ext === 'txt') storedContentType = 'text/plain'
+      }
+      if (kind === 'chapters') storedContentType = 'application/json+chapters'
 
-  // Normalize the stored content-type so the response carries something
-  // usable by the client form (e.g. for transcript_type). For SRT files
-  // browsers often send octet-stream; map ext → standard type when they do.
-  let storedContentType = contentType
-  if (kind === 'transcript' && contentType === 'application/octet-stream') {
-    if (ext === 'srt') storedContentType = 'application/srt'
-    else if (ext === 'vtt') storedContentType = 'text/vtt'
-    else if (ext === 'json') storedContentType = 'application/json'
-    else if (ext === 'html' || ext === 'htm') storedContentType = 'text/html'
-    else if (ext === 'txt') storedContentType = 'text/plain'
-  }
-  if (kind === 'chapters') storedContentType = 'application/json+chapters'
+      let bytesSeen = 0
+      const counter = new Transform({
+        transform(chunk: Buffer, _enc, cb) {
+          bytesSeen += chunk.length
+          cb(null, chunk)
+        },
+      })
+      stream.pipe(counter)
+      // If the source errors (busboy abort, client disconnect), tear down
+      // the counter so the storage upload stops too.
+      stream.on('error', (err) => counter.destroy(err))
 
-  let url: string
-  try {
-    if (storage.adapter === 's3' && storage.s3) {
-      url = await uploadToS3(buffer, filename, storedContentType, storage.s3, storageKind)
-    } else if (storage.adapter === 'sftp' && storage.sftp) {
-      url = await uploadToSftp(buffer, filename, storage.sftp, storageKind)
-    } else {
-      throw createError({ statusCode: 500, statusMessage: 'Storage configuration mismatch' })
-    }
-  } catch (err: unknown) {
-    throw createError({
-      statusCode: 500,
-      statusMessage: err instanceof Error ? err.message : 'Upload failed',
-    })
-  }
+      let url: string
+      try {
+        if (storage.adapter === 's3' && storage.s3) {
+          url = await uploadStreamToS3(counter, filename, storedContentType, storage.s3, storageKind)
+        } else if (storage.adapter === 'sftp' && storage.sftp) {
+          url = await uploadStreamToSftp(counter, filename, storage.sftp, storageKind)
+        } else {
+          throw createError({ statusCode: 500, statusMessage: 'Storage configuration mismatch' })
+        }
+      } catch (err: unknown) {
+        throw createError({
+          statusCode: 500,
+          statusMessage: err instanceof Error ? err.message : 'Upload failed',
+        })
+      }
 
-  return { url, filename, size: buffer.length, content_type: storedContentType, kind }
+      // Busboy sets `truncated` on the source stream when the fileSize limit
+      // is exceeded; the storage upload still completes (with a partial file),
+      // so we delete the partial artifact and surface a 413.
+      if (stream.truncated) {
+        try {
+          if (storage.adapter === 's3' && storage.s3) {
+            await deleteFromS3(storage.s3, storageKind, filename)
+          } else if (storage.adapter === 'sftp' && storage.sftp) {
+            await deleteFromSftp(storage.sftp, storageKind, filename)
+          }
+        } catch { /* best-effort cleanup */ }
+        const mb = Math.round(maxSize / (1024 * 1024))
+        throw createError({ statusCode: 413, statusMessage: `File too large. Maximum size is ${mb} MB.` })
+      }
+
+      return { url, filename, size: bytesSeen, content_type: storedContentType, kind }
+    },
+  })
 })
