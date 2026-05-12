@@ -6,6 +6,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Podshelf is a self-hosted, **multi-tenant** podcast publishing platform. One installation hosts many podcasts; each podcast has its own settings, storage credentials, episodes, members, and RSS feed. The database is embedded SQLite (`better-sqlite3`, synchronous API). The platform is headless by default — it produces an iTunes-compatible RSS feed (and optionally fires GitHub `repository_dispatch` events to rebuild a static site) but doesn't itself serve a public listener-facing website.
 
+For how Podshelf relates to its downstream Nuxt static sites
+(`teampumaknife.com`, `yousaid100miles.com`, `yourewatchingitwrong.com`), see
+[`docs/architecture.md`](./docs/architecture.md) — that doc covers the dispatch
+chain, hosting layout, and the contracts that must not break.
+
 ## Commands
 
 ```bash
