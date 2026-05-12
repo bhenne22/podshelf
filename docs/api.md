@@ -267,6 +267,97 @@ podcast currently has — partial reorders are rejected.
 
 ---
 
+## Networks
+
+A network groups sibling podcasts so members of any one of them can see
+read-only scheduling intent across the others. Membership for visibility is
+**implicit**: if you belong to any podcast in a network (via `podcast_users`),
+you can read that network. There is no `network_users` table; networks never
+widen edit access, only add a read surface.
+
+API-key scoping intersects with the network. A key scoped to podcast A can
+read networks A belongs to, but the `upcoming-episodes` endpoint returns
+episodes only from podcasts inside the key's scope — a network can never
+widen a key's data view.
+
+### `GET /api/networks`
+
+Lists networks the caller can read. Admins see all networks. Non-admins see
+only networks whose active-podcast set intersects their `podcast_users`
+membership.
+
+Optional `?podcastSlug=foo` filter — restricts the result to networks
+containing that podcast (used by the in-app scheduling conflict hint).
+
+Each row: `{ id, slug, title, description, podcast_count }`.
+
+### `GET /api/networks/[slug]`
+
+Network detail. Returns the network plus its active-podcast roster ordered
+by position, then title. Soft-deleted podcasts are filtered.
+
+```json
+{
+  "id": 1,
+  "slug": "teampumaknife",
+  "title": "Team Puma Knife",
+  "description": null,
+  "podcasts": [
+    { "id": 5, "slug": "you-said-100-miles", "title": "You Said 100 Miles?", "image_url": "…", "timezone": "America/New_York", "position": 0 }
+  ]
+}
+```
+
+### `GET /api/networks/[slug]/upcoming-episodes`
+
+Aggregated upcoming and recently-published episodes across the network's
+podcasts. Drafts are always excluded. Used by both the network dashboard
+timeline and the inline scheduling conflict hint.
+
+Query params:
+
+| Param | Default | Notes |
+|---|---|---|
+| `from` | now | ISO datetime — lower bound on `published_at` |
+| `to` | now + 60 days | ISO datetime — upper bound |
+| `excludePodcast` | _none_ | Podcast slug to omit from results (the host's own show, when used by the inline hint) |
+
+Response: `{ episodes: [...] }`. Each episode includes podcast id/slug/title/
+image/timezone for rendering without a second round trip.
+
+### `POST /api/admin/networks` *(admin only)*
+
+Creates a network. Body: `{ slug?, title, description? }`. Slug must not
+collide with an existing network slug or any podcast slug.
+
+### `PATCH /api/admin/networks/[id]` *(admin only)*
+
+Edits metadata. Re-slugging is allowed under the same uniqueness rules.
+
+### `DELETE /api/admin/networks/[id]` *(admin only)*
+
+Hard-deletes the network. Cascades to `network_podcasts`; the podcasts
+themselves are untouched.
+
+### `POST /api/admin/networks/[id]/podcasts` *(admin only)*
+
+Adds a podcast to a network. Body: `{ podcast_id, position? }`. Returns the
+updated roster. Re-adding an existing pairing is a no-op.
+
+### `PATCH /api/admin/networks/[id]/podcasts/[podcast_id]` *(admin only)*
+
+Updates the membership's position. Used by the admin reorder UI.
+
+### `DELETE /api/admin/networks/[id]/podcasts/[podcast_id]` *(admin only)*
+
+Removes a podcast from a network. The podcast is untouched.
+
+### `GET /api/admin/networks` *(admin only)*
+
+Admin listing of every network with its current active-podcast count.
+
+---
+
 ## Episodes
 
 All episode endpoints are scoped under a podcast slug.

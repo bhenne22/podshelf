@@ -59,6 +59,7 @@
       </template>
       <template v-else>
         <li><NuxtLink to="/" exact-active-class="active">Podcasts</NuxtLink></li>
+        <li v-if="showNetworksLink"><NuxtLink to="/networks" active-class="active">Networks</NuxtLink></li>
         <li><NuxtLink to="/api-keys" active-class="active">API Keys</NuxtLink></li>
         <li><NuxtLink to="/docs" active-class="active">API Docs</NuxtLink></li>
         <li v-if="me?.is_admin"><NuxtLink to="/admin/users" active-class="active">Users</NuxtLink></li>
@@ -102,6 +103,16 @@ interface Podcast {
 }
 
 const { data: me } = await useFetch<Me>('/api/me', { default: () => null })
+
+// Surface the Networks link when the user can see at least one network.
+// Admins always see it so they have a way to reach /admin/networks and
+// create the first one — /networks shows an empty-state link there.
+const { data: visibleNetworks } = await useFetch<{ id: number }[]>('/api/networks', {
+  default: () => [] as { id: number }[],
+})
+const showNetworksLink = computed(
+  () => (visibleNetworks.value?.length ?? 0) > 0 || !!me.value?.is_admin,
+)
 
 const podcast = ref<Podcast | null>(null)
 if (props.podcastSlug) {

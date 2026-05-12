@@ -52,6 +52,8 @@ tags:
     description: Per-podcast roster of hosts/guests + per-episode attachments
   - name: Distribution
     description: Per-podcast "Listen on" destinations (Apple, Spotify, etc.)
+  - name: Networks
+    description: Groupings of podcasts; implicit membership via podcast_users for read access. Mutations are admin-only.
   - name: Uploads & files
     description: Audio / artwork / transcript / chapters file uploads + file browser
   - name: Storage
@@ -636,6 +638,222 @@ paths:
                   ok: { type: boolean }
                   count: { type: integer }
 
+  # ---------------------------------------------------------------- Networks
+  /api/networks:
+    get:
+      tags: [Networks]
+      summary: List networks the caller can read
+      description: |
+        Admins see all networks. Non-admins see only networks whose active-
+        podcast set intersects their `podcast_users` membership. Scoped API
+        keys further restrict to networks whose podcasts intersect the key
+        scope.
+      parameters:
+        - in: query
+          name: podcastSlug
+          required: false
+          description: Restrict to networks containing this podcast (used by the in-app conflict hint).
+          schema: { type: string }
+      responses:
+        '200':
+          description: Networks the caller can read.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/NetworkListItem' }
+
+  /api/networks/{slug}:
+    parameters:
+      - { $ref: '#/components/parameters/NetworkSlug' }
+    get:
+      tags: [Networks]
+      summary: Network detail with active-podcast roster
+      responses:
+        '200':
+          description: Network detail.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NetworkDetail' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/networks/{slug}/upcoming-episodes:
+    parameters:
+      - { $ref: '#/components/parameters/NetworkSlug' }
+    get:
+      tags: [Networks]
+      summary: Aggregated upcoming episodes across the network
+      description: |
+        Drafts excluded. A scoped API key only sees episodes for podcasts
+        inside the key's scope — networks never widen a key's data view.
+      parameters:
+        - in: query
+          name: from
+          required: false
+          description: ISO datetime lower bound (default now).
+          schema: { type: string, format: date-time }
+        - in: query
+          name: to
+          required: false
+          description: ISO datetime upper bound (default now + 60 days).
+          schema: { type: string, format: date-time }
+        - in: query
+          name: excludePodcast
+          required: false
+          description: Podcast slug to omit (used by the inline hint for the host's own show).
+          schema: { type: string }
+      responses:
+        '200':
+          description: Upcoming episodes ordered by published_at ascending.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  episodes:
+                    type: array
+                    items: { $ref: '#/components/schemas/NetworkUpcomingEpisode' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/admin/networks:
+    get:
+      tags: [Networks]
+      summary: Admin list of all networks
+      responses:
+        '200':
+          description: All networks.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/NetworkListItem' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Networks]
+      summary: Create a network (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                slug: { type: string, nullable: true, description: Auto-derived from title if blank. Must not collide with any podcast slug. }
+                title: { type: string }
+                description: { type: string, nullable: true }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Network' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { description: Slug already in use by a network or podcast. }
+
+  /api/admin/networks/{id}:
+    parameters:
+      - { $ref: '#/components/parameters/NetworkId' }
+    get:
+      tags: [Networks]
+      summary: Admin network detail (includes inactive podcasts)
+      responses:
+        '200':
+          description: Network detail with full roster (inactive podcasts included).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NetworkDetail' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Networks]
+      summary: Edit network metadata (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                slug: { type: string }
+                title: { type: string }
+                description: { type: string, nullable: true }
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Network' }
+        '409': { description: Slug already in use. }
+    delete:
+      tags: [Networks]
+      summary: Hard-delete a network (admin only)
+      responses:
+        '200':
+          description: Deleted.
+
+  /api/admin/networks/{id}/podcasts:
+    parameters:
+      - { $ref: '#/components/parameters/NetworkId' }
+    post:
+      tags: [Networks]
+      summary: Add a podcast to a network (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [podcast_id]
+              properties:
+                podcast_id: { type: integer }
+                position: { type: integer, nullable: true }
+      responses:
+        '200':
+          description: Updated roster.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/NetworkPodcast' }
+
+  /api/admin/networks/{id}/podcasts/{podcast_id}:
+    parameters:
+      - { $ref: '#/components/parameters/NetworkId' }
+      - in: path
+        name: podcast_id
+        required: true
+        schema: { type: integer }
+    patch:
+      tags: [Networks]
+      summary: Update a membership's position (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [position]
+              properties:
+                position: { type: integer }
+      responses:
+        '200':
+          description: Updated roster.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/NetworkPodcast' }
+    delete:
+      tags: [Networks]
+      summary: Remove a podcast from a network (admin only)
+      responses:
+        '200':
+          description: Removed.
+
   # ---------------------------------------------------------------- Uploads & files
   /api/podcasts/{slug}/upload:
     parameters:
@@ -1147,6 +1365,17 @@ components:
       name: id
       required: true
       schema: { type: integer }
+    NetworkSlug:
+      in: path
+      name: slug
+      required: true
+      description: Network slug.
+      schema: { type: string }
+    NetworkId:
+      in: path
+      name: id
+      required: true
+      schema: { type: integer }
 
   responses:
     Unauthorized:
@@ -1340,3 +1569,58 @@ components:
           description: 'Free-form. Settings/episode updates include `changed[]`, `before`, `after`.'
           additionalProperties: true
         created_at: { type: string, format: date-time }
+
+
+    Network:
+      type: object
+      properties:
+        id: { type: integer }
+        slug: { type: string }
+        title: { type: string }
+        description: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    NetworkListItem:
+      type: object
+      properties:
+        id: { type: integer }
+        slug: { type: string }
+        title: { type: string }
+        description: { type: string, nullable: true }
+        podcast_count: { type: integer }
+
+    NetworkPodcast:
+      type: object
+      properties:
+        id: { type: integer }
+        slug: { type: string }
+        title: { type: string }
+        image_url: { type: string, nullable: true }
+        timezone: { type: string, nullable: true }
+        status: { type: string, nullable: true, description: "Included by admin endpoints so soft-deleted members are visible; omitted from the public network detail." }
+        position: { type: integer }
+
+    NetworkDetail:
+      allOf:
+        - $ref: '#/components/schemas/Network'
+        - type: object
+          properties:
+            podcasts:
+              type: array
+              items: { $ref: '#/components/schemas/NetworkPodcast' }
+
+    NetworkUpcomingEpisode:
+      type: object
+      properties:
+        episode_id: { type: integer }
+        episode_title: { type: string }
+        episode_slug: { type: string }
+        status: { type: string, enum: [scheduled, published] }
+        published_at: { type: string, format: date-time }
+        episode_type: { type: string }
+        podcast_id: { type: integer }
+        podcast_slug: { type: string }
+        podcast_title: { type: string }
+        podcast_image_url: { type: string, nullable: true }
+        podcast_timezone: { type: string }

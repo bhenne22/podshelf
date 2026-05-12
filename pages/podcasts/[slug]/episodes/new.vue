@@ -40,6 +40,8 @@
               <p class="hint">Times are in the podcast's timezone: <strong>{{ podcastTz }}</strong> ({{ tzAbbr }}).</p>
             </div>
           </div>
+
+          <NetworkConflictHint :podcast-slug="podcastSlug" :publish-at="publishAtIso" />
         </div>
 
         <div class="form-section">
@@ -387,6 +389,12 @@ const pubDatePreview = computed(() => {
   if (!form.published_at) return '—'
   const iso = localInputToUtcIso(form.published_at, podcastTz.value)
   return iso ? new Date(iso).toUTCString() : '—'
+})
+// UTC ISO version of the publish-date input, in the shape NetworkConflictHint
+// expects. Null until both the form value and the podcast timezone are ready.
+const publishAtIso = computed<string | null>(() => {
+  if (!form.published_at) return null
+  return localInputToUtcIso(form.published_at, podcastTz.value) || null
 })
 
 const formDirty = ref(false)

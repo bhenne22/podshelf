@@ -194,6 +194,87 @@ export function requireAdmin(event: H3Event): AuthUser {
 }
 
 /**
+ * Active podcast IDs belonging to a network. Soft-deleted podcasts are
+ * filtered out (status != 'active'); the join row stays so a future restore
+ * re-attaches them automatically.
+ */
+export function getNetworkPodcastIds(networkId: number): number[] {
+  const db = getDb()
+  const rows = db.prepare(`
+    SELECT np.podcast_id
+    FROM network_podcasts np
+    JOIN podcasts p ON p.id = np.podcast_id
+    WHERE np.network_id = ? AND p.status = 'active'
+    ORDER BY np.position, p.title
+  `).all(networkId) as { podcast_id: number }[]
+  return rows.map((r) => r.podcast_id)
+}
+
+/**
+ * Distinct network IDs the user can see, derived from podcast_users —
+ * if you're in any podcast in a network, you can read that network.
+ */
+export function getUserNetworkIds(userId: number): number[] {
+  const db = getDb()
+  const rows = db.prepare(`
+    SELECT DISTINCT np.network_id
+    FROM network_podcasts np
+    JOIN podcast_users pu ON pu.podcast_id = np.podcast_id
+    JOIN podcasts p ON p.id = np.podcast_id
+    WHERE pu.user_id = ? AND p.status = 'active'
+  `).all(userId) as { network_id: number }[]
+  return rows.map((r) => r.network_id)
+}
+
+/**
+ * Throws 401/403/404 unless the request can read the network. Mirrors the
+ * order-of-restrictions style of requirePodcastAccess:
+ *   1. Network must exist.
+ *   2. If the API key is scoped, its scope must intersect the network's
+ *      active podcasts. The intersection is returned as effectivePodcastIds
+ *      so handlers never widen a scoped key's data view via a network.
+ *   3. Admin → allow.
+ *   4. Otherwise the user must be a member of at least one podcast in the
+ *      network.
+ */
+export function requireNetworkReadAccess(
+  event: H3Event,
+  networkSlug: string,
+): { user: AuthUser; networkId: number; podcastIds: number[]; effectivePodcastIds: number[] } {
+  const ctx = requireAuthContext(event)
+  const db = getDb()
+  const network = db.prepare('SELECT id FROM networks WHERE slug = ?').get(networkSlug) as { id: number } | undefined
+  if (!network) {
+    throw createError({ statusCode: 404, statusMessage: 'Network not found' })
+  }
+  const podcastIds = getNetworkPodcastIds(network.id)
+
+  let effectivePodcastIds = podcastIds
+  if (ctx.restrictedPodcastIds !== null) {
+    effectivePodcastIds = podcastIds.filter((id) => ctx.restrictedPodcastIds!.includes(id))
+    if (effectivePodcastIds.length === 0) {
+      throw createError({ statusCode: 403, statusMessage: 'API key is not authorized for this network' })
+    }
+  }
+
+  if (ctx.user.is_admin) {
+    return { user: ctx.user, networkId: network.id, podcastIds, effectivePodcastIds }
+  }
+
+  if (podcastIds.length === 0) {
+    throw createError({ statusCode: 403, statusMessage: 'Forbidden' })
+  }
+  const placeholders = podcastIds.map(() => '?').join(',')
+  const member = db.prepare(
+    `SELECT 1 FROM podcast_users WHERE user_id = ? AND podcast_id IN (${placeholders})`
+  ).get(ctx.user.id, ...podcastIds)
+  if (!member) {
+    throw createError({ statusCode: 403, statusMessage: 'Forbidden' })
+  }
+  return { user: ctx.user, networkId: network.id, podcastIds, effectivePodcastIds }
+}
+
+/**
  * Throws 401/403/404 unless the request can access the podcast. Restrictions
  * apply in order:
  *   1. Podcast must exist.

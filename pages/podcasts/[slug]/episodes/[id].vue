@@ -96,6 +96,8 @@
                 <p class="hint">Times are in the podcast's timezone: <strong>{{ podcastTz }}</strong> ({{ tzAbbr }}).</p>
               </div>
             </div>
+
+            <NetworkConflictHint :podcast-slug="podcastSlug" :publish-at="publishAtIso" />
           </div>
 
           <div class="form-section">
@@ -499,6 +501,14 @@ const episodeNumbersEnabled = computed(() => {
 })
 const podcastTz = computed(() => podcastSettings.value?.timezone || 'UTC')
 const tzAbbr = computed(() => tzAbbreviation(podcastTz.value))
+
+// UTC ISO version of the publish-date input for NetworkConflictHint. Tracks
+// in-progress edits, not the saved value, so the hint reacts as the host
+// changes the date.
+const publishAtIso = computed<string | null>(() => {
+  if (!form.published_at) return null
+  return localInputToUtcIso(form.published_at, podcastTz.value) || null
+})
 
 const pending = ref(true)
 const saving = ref(false)

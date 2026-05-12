@@ -180,6 +180,35 @@ The Linode's ingress / egress allowance would be exhausted quickly if listener
 traffic passed through it; the storage-adapter split is what keeps the monthly
 hosting cost predictable.
 
+## Networks (in-Podshelf grouping)
+
+A **network** is a named grouping of podcasts (e.g., "Team Puma Knife")
+introduced so hosts on a multi-tenant Podshelf instance can see scheduling
+intent across sibling shows without gaining edit access to them. The data
+model is intentionally minimal:
+
+- `networks` — `id, slug, title, description`.
+- `network_podcasts` — `(network_id, podcast_id, position)`. A podcast can
+  belong to multiple networks.
+
+**Visibility is implicit.** There is no `network_users` join. If you're in
+`podcast_users` for any podcast in network N, you can read N. Soft-deleted
+podcasts are filtered out of network surfaces but the `network_podcasts`
+row stays so restore re-attaches them automatically. API keys scoped to a
+subset of podcasts only see the intersection of their scope with the
+network — networks can never widen a key's data view. Mutations are
+admin-only (`requireAdmin` blocks scoped API keys).
+
+In the UI, networks surface as a `/networks/<slug>` dashboard (read-only
+timeline of upcoming episodes across the roster) and an inline conflict
+hint on the episode scheduling form (`NetworkConflictHint`) that warns
+when a sibling has scheduled within ±3 days of the chosen slot.
+
+There is **no public network API** yet — the existing endpoints all require
+authentication. A future follow-up may expose a `/api/networks/[slug]/public`
+projection so `teampumaknife.com` can derive its show roster from Podshelf
+instead of `data/site-config.mjs`.
+
 ## Contracts that must not break
 
 - **Feed URLs.** Podshelf renders the feed at `/feeds/<slug>.xml`, but listeners

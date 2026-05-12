@@ -208,6 +208,35 @@ CREATE TABLE IF NOT EXISTS podcast_distributions (
 CREATE INDEX IF NOT EXISTS idx_podcast_distributions_podcast_id
   ON podcast_distributions(podcast_id, position);
 
+-- A "network" groups sibling podcasts so hosts of any one of them can see
+-- read-only scheduling intent across the others. Membership for visibility
+-- is implicit: if you belong to any podcast in network N (via podcast_users),
+-- you can read N. There is intentionally no network_users table — networks
+-- never widen edit access, only add a read surface.
+CREATE TABLE IF NOT EXISTS networks (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  slug        TEXT UNIQUE NOT NULL,
+  title       TEXT NOT NULL,
+  description TEXT,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- A podcast can belong to multiple networks (we deliberately do NOT add
+-- UNIQUE(podcast_id)). The compound PK only forbids duplicate pairings.
+CREATE TABLE IF NOT EXISTS network_podcasts (
+  network_id  INTEGER NOT NULL REFERENCES networks(id) ON DELETE CASCADE,
+  podcast_id  INTEGER NOT NULL REFERENCES podcasts(id) ON DELETE CASCADE,
+  position    INTEGER NOT NULL DEFAULT 0,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (network_id, podcast_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_network_podcasts_podcast_id
+  ON network_podcasts(podcast_id);
+CREATE INDEX IF NOT EXISTS idx_network_podcasts_network_position
+  ON network_podcasts(network_id, position);
+
 -- Per-podcast audit trail. podcast_id is nullable so we can capture
 -- platform-level events (admin actions on podcasts as a whole, etc.).
 -- user_id is nullable for system-generated events (e.g. the scheduler

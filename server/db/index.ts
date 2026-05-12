@@ -197,6 +197,28 @@ CREATE TABLE IF NOT EXISTS podcast_distributions (
 CREATE INDEX IF NOT EXISTS idx_podcast_distributions_podcast_id
   ON podcast_distributions(podcast_id, position);
 
+CREATE TABLE IF NOT EXISTS networks (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  slug        TEXT UNIQUE NOT NULL,
+  title       TEXT NOT NULL,
+  description TEXT,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS network_podcasts (
+  network_id  INTEGER NOT NULL REFERENCES networks(id) ON DELETE CASCADE,
+  podcast_id  INTEGER NOT NULL REFERENCES podcasts(id) ON DELETE CASCADE,
+  position    INTEGER NOT NULL DEFAULT 0,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (network_id, podcast_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_network_podcasts_podcast_id
+  ON network_podcasts(podcast_id);
+CREATE INDEX IF NOT EXISTS idx_network_podcasts_network_position
+  ON network_podcasts(network_id, position);
+
 CREATE TABLE IF NOT EXISTS audit_log (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   podcast_id  INTEGER REFERENCES podcasts(id) ON DELETE CASCADE,
