@@ -18,7 +18,14 @@ your static site to redeploy on every change.
 - A **per-podcast storage layer** — each podcast configures its own SFTP or
   S3-compatible target, with credentials encrypted at rest in the database
 - A **GitHub `repository_dispatch` trigger** so publishing an episode can
-  automatically rebuild your static podcast site
+  automatically rebuild your static podcast site (with a per-podcast deploy
+  kill switch)
+- **Networks** — optional groupings of sibling podcasts, giving hosts a
+  read-only view of each other's upcoming-episode schedule plus an inline
+  conflict hint on the New Episode form
+- **Network custom properties** — a per-network schema of typed extra fields
+  (string / boolean / number / url / color) and per-podcast values, exposed
+  via API so downstream static-site builds can derive their roster
 - An **RSS importer** for migrating an existing show onto Podshelf
 - Built-in **download tracking** with optional GeoIP lookup
 
@@ -38,8 +45,8 @@ podshelf/
 │   ├── routes/    /feeds/[slug].xml, /track/[...path] (download redirect)
 │   ├── storage/   SFTP and S3 adapters (take config args, no env-coupling)
 │   └── utils/     auth, password, crypto (AES-256-GCM), github, rss-parser
-├── pages/         User UI: dashboard `/`, login, /podcasts/[slug]/* tabs, /api-keys
-├── pages/admin/   Admin-only UI: /admin/users, /admin/podcasts/new, /admin/inactive-podcasts
+├── pages/         User UI: dashboard `/`, login, /podcasts/[slug]/* tabs, /api-keys, /networks/[slug]
+├── pages/admin/   Admin-only UI: /admin/users, /admin/podcasts/new, /admin/inactive-podcasts, /admin/networks
 ├── components/    AdminNav, RichTextEditor (TipTap)
 ├── composables/   useEpisodes(slug), useUpload(slug)
 ├── middleware/    auth (login required), admin-only (login + is_admin)

@@ -50,17 +50,19 @@ User-facing routes (login required):
 - `/podcasts/[slug]/preview`, `/podcasts/[slug]/preview/[id]` — Apple-style preview of the show (artwork, metadata, episode cards with inline `<audio>` + collapsible chapters/transcript/notes panels) and a per-episode detail view (bigger player, prev/next nav). Both pages have a Desktop/Mobile view toggle that wraps the content in a phone-style frame and uses CSS container queries for the responsive layout. Drafts + scheduled included. Admin-only, no public surface.
 - `/podcasts/[slug]/build`, `/podcasts/[slug]/stats`, `/podcasts/[slug]/members`, `/podcasts/[slug]/import-rss` — build dispatch, analytics, membership, RSS import
 - `/podcasts/[slug]/audit` — chronological audit log of every change (visible to all members)
+- `/networks`, `/networks/[slug]` — networks the user belongs to and a per-network dashboard (roster + 14d-back-to-N-day-forward timeline of recently published + upcoming episodes across siblings). Visibility is implicit: any user in any podcast in a network can read that network. Admins always see the `/networks` link.
 
 Admin-only routes (`is_admin` required):
 - `/admin/users` — user management
 - `/admin/podcasts/new` — create a new podcast
 - `/admin/inactive-podcasts` — purge / restore soft-deleted podcasts
+- `/admin/networks`, `/admin/networks/[id]` — manage networks (metadata, roster reorder, custom property schema + per-podcast values)
 
 Two route middlewares enforce these:
 - `middleware/auth.ts` — login required (used by all user-facing pages above)
 - `middleware/admin-only.ts` — login + `is_admin` required (used by `/admin/*` pages); non-admins bounce to `/`, unauthenticated callers bounce to `/login`
 
-API endpoints are protected server-side by `requireAuth` / `requirePodcastAccess` / `requireAdmin` from `server/utils/auth.ts`, accepting either:
+API endpoints are protected server-side by `requireAuth` / `requirePodcastAccess` / `requireNetworkReadAccess` / `requireAdmin` from `server/utils/auth.ts`, accepting either:
 - An HMAC-signed session cookie (`session`) — set by `POST /api/auth/login`, cleared by `POST /api/auth/logout`
 - An API key via `X-Api-Key: <key>` or `Authorization: Bearer <key>` header — for automation. API keys can be scoped to specific podcasts and have a `read|write|full` permission level.
 
@@ -87,6 +89,9 @@ All under `server/api/`. The full reference is in `docs/api.md`. The shapes most
 - `GET /api/podcasts/[slug]/files?kind=…`, `POST .../files/delete`, `POST .../files/rename`
 - `GET/POST /api/podcasts/[slug]/storage`, `POST .../storage/test`
 - `GET/POST /api/podcasts/[slug]/github`, `POST .../github/test`, `POST .../github/trigger` — GitHub `repository_dispatch` integration
+- `POST /api/podcasts/[slug]/deploys-paused` (admin-only) — kill switch for all `repository_dispatch` paths (auto, manual, test, and the scheduled-flip publisher); dirty markers still accumulate so unpause fires a normal debounced build
+- `GET /api/networks` (with optional `?podcastSlug=` filter), `GET /api/networks/[slug]` (with optional `?include=properties`), `GET /api/networks/[slug]/upcoming-episodes`, `GET /api/networks/[slug]/property-definitions`, `GET /api/networks/[slug]/properties` — read surface for networks. Implicit membership via `podcast_users`; scoped API keys see only values for podcasts inside their scope.
+- Admin CRUD: `/api/admin/networks` (+ `[id]`, `[id]/podcasts`, `[id]/podcasts/[podcast_id]`) and `/api/admin/networks/[id]/property-definitions` (+ `[key]`, `[id]/podcasts/[podcast_id]/properties/[key]`)
 
 RSS feed lives at `server/routes/feeds/[slug].xml.ts` → `GET /feeds/[slug].xml`. Returns 404 when the podcast is soft-deleted (`status='inactive'`).
 
@@ -94,7 +99,7 @@ RSS feed lives at `server/routes/feeds/[slug].xml.ts` → `GET /feeds/[slug].xml
 
 SQLite via `better-sqlite3` (sync, no async/await). Singleton initialized in `server/db/index.ts`; canonical schema in `server/db/schema.sql` (mirrored inline as `SCHEMA_SQL` in `server/db/index.ts` to dodge file-read issues in Nitro production builds — keep both in sync). Idempotent `ALTER` migrations live in `applyMigrations` in `server/db/index.ts` for backward-compatible additions.
 
-Tables: `users`, `podcasts` (per-tenant config + soft-delete `status` / `deleted_at`, plus webhook config: `webhook_url_encrypted`/`webhook_format`/`webhook_enabled`, plus new-episode templates: `episode_title_template`/`episode_description_template`), `podcast_users` (membership), `api_keys`, `api_key_podcasts` (key scope), `episodes` (per-podcast, with `image_url`/`image_filename` for per-episode artwork, plus Podcasting 2.0 fields: `transcript_path`/`transcript_type`, `chapters_url`, `itunes_title`/`itunes_author`/`itunes_explicit`, `season_name`, `episode_display`, `license_identifier`/`license_url`; status enum is `draft|scheduled|published`), `people` (per-podcast roster: name, photo, href, default role/group, `auto_attach` flag), `episode_people` (many-to-many; `role`/`group` frozen at attach time so historical attribution survives roster edits), `slug_aliases` (permanent record of old podcast slugs; the feed handler matches by alias and emits `<itunes:new-feed-url>`), `podcast_distributions` (per-podcast "Listen on" destinations: name, url, platform_id, notes, position; admin-only metadata, not in feed), `audit_log` (per-podcast change history, nullable `user_id` for system events like the scheduled-publish flip), `storage_migrations` (queue + progress for end-to-end storage moves), `downloads`.
+Tables: `users`, `podcasts` (per-tenant config + soft-delete `status` / `deleted_at`, plus webhook config: `webhook_url_encrypted`/`webhook_format`/`webhook_enabled`, plus new-episode templates: `episode_title_template`/`episode_description_template`, plus `deploys_paused` kill switch), `podcast_users` (membership), `api_keys`, `api_key_podcasts` (key scope), `episodes` (per-podcast, with `image_url`/`image_filename` for per-episode artwork, plus Podcasting 2.0 fields: `transcript_path`/`transcript_type`, `chapters_url`, `itunes_title`/`itunes_author`/`itunes_explicit`, `season_name`, `episode_display`, `license_identifier`/`license_url`; status enum is `draft|scheduled|published`), `people` (per-podcast roster: name, photo, href, default role/group, `auto_attach` flag), `episode_people` (many-to-many; `role`/`group` frozen at attach time so historical attribution survives roster edits), `slug_aliases` (permanent record of old podcast slugs; the feed handler matches by alias and emits `<itunes:new-feed-url>`), `podcast_distributions` (per-podcast "Listen on" destinations: name, url, platform_id, notes, position; admin-only metadata, not in feed), `networks` (named groupings of sibling podcasts) + `network_podcasts` (compound-PK join with `position`, allows a podcast in multiple networks), `network_property_definitions` (per-network schema of custom fields: key, label, type ∈ {string|boolean|number|url|color}, required, position) + `network_podcast_properties` (per-(network, podcast) values; FK against `network_podcasts` compound PK so leaving a network auto-clears values), `audit_log` (per-podcast change history, nullable `user_id` for system events like the scheduled-publish flip), `storage_migrations` (queue + progress for end-to-end storage moves), `downloads`.
 
 Background work: `server/plugins/scheduler.ts` boots an in-process timer that runs `processScheduledFlips()` every 60s, flipping `status='scheduled'` episodes whose `published_at` has arrived. The feed handler also calls `processScheduledFlips(podcast.id)` on every render as a fallback if the timer is dead. `server/plugins/migration-worker.ts` boots a second timer that picks up pending storage migrations, copies files end-to-end (audio + artwork dirs), then rewrites all matching URLs across `episodes` + `podcasts` and swaps `storage_config_encrypted` to the target. Stale `running` migrations from a dead process are reaped to `failed` on startup. Publish side effects (webhook + GitHub repository_dispatch) fan out from `firePublishEvent()` in `server/utils/publish-event.ts`.
 
@@ -106,6 +111,8 @@ Background work: `server/plugins/scheduler.ts` boots an in-process timer that ru
 - **artwork** (`artworkRemoteDir` / `artworkPublicUrlBase` for SFTP; `artworkPrefix` + `artworkPublicUrlBase` for S3 — falls back to audio URL base when blank)
 
 Helpers: `resolveSftpTarget`, `resolveS3Target` in `server/utils/storage-config.ts` — pass `'audio' | 'artwork'` to get the appropriate dir + URL base. Upload/list/delete/rename functions all take a `kind` param and route accordingly.
+
+Uploads are **streamed** end-to-end via `server/utils/multipart-stream.ts` (busboy) into either `uploadStreamToSftp` or `uploadStreamToS3` (`@aws-sdk/lib-storage` multipart). The handler never buffers a full file body in memory — a 500 MB audio upload doesn't allocate 500 MB of heap. Size limits are enforced as bytes flow through.
 
 ### Styling
 
