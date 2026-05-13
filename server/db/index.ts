@@ -220,6 +220,37 @@ CREATE INDEX IF NOT EXISTS idx_network_podcasts_podcast_id
 CREATE INDEX IF NOT EXISTS idx_network_podcasts_network_position
   ON network_podcasts(network_id, position);
 
+CREATE TABLE IF NOT EXISTS network_property_definitions (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  network_id  INTEGER NOT NULL REFERENCES networks(id) ON DELETE CASCADE,
+  key         TEXT NOT NULL,
+  label       TEXT NOT NULL,
+  type        TEXT NOT NULL DEFAULT 'string',
+  required    INTEGER NOT NULL DEFAULT 0,
+  position    INTEGER NOT NULL DEFAULT 0,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (network_id, key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_network_property_definitions_network
+  ON network_property_definitions(network_id, position);
+
+CREATE TABLE IF NOT EXISTS network_podcast_properties (
+  network_id  INTEGER NOT NULL,
+  podcast_id  INTEGER NOT NULL,
+  key         TEXT NOT NULL,
+  value       TEXT,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (network_id, podcast_id, key),
+  FOREIGN KEY (network_id, podcast_id)
+    REFERENCES network_podcasts (network_id, podcast_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_network_podcast_properties_lookup
+  ON network_podcast_properties(network_id, key);
+
 CREATE TABLE IF NOT EXISTS audit_log (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   podcast_id  INTEGER REFERENCES podcasts(id) ON DELETE CASCADE,

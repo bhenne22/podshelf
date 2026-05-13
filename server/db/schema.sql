@@ -238,6 +238,47 @@ CREATE INDEX IF NOT EXISTS idx_network_podcasts_podcast_id
 CREATE INDEX IF NOT EXISTS idx_network_podcasts_network_position
   ON network_podcasts(network_id, position);
 
+-- Per-network schema of custom properties. Admins declare a small set of
+-- named fields (accentColor, hosted, etc.) and downstream static-site
+-- builds can read them via the network read API. Each network defines
+-- its own set; the same key can be reused freely across networks.
+CREATE TABLE IF NOT EXISTS network_property_definitions (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  network_id  INTEGER NOT NULL REFERENCES networks(id) ON DELETE CASCADE,
+  key         TEXT NOT NULL,
+  label       TEXT NOT NULL,
+  type        TEXT NOT NULL DEFAULT 'string',
+  required    INTEGER NOT NULL DEFAULT 0,
+  position    INTEGER NOT NULL DEFAULT 0,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (network_id, key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_network_property_definitions_network
+  ON network_property_definitions(network_id, position);
+
+-- Per (network, podcast) property values. FK targets the network_podcasts
+-- compound PK so leaving a network auto-clears that podcast's values.
+-- value is TEXT; type-aware coercion happens on read. Deleting a property
+-- definition does NOT cascade values (the value table references by string
+-- key, not def id, so two unrelated networks can use the same key freely);
+-- the value cleanup is handled by the def-delete endpoint in a transaction.
+CREATE TABLE IF NOT EXISTS network_podcast_properties (
+  network_id  INTEGER NOT NULL,
+  podcast_id  INTEGER NOT NULL,
+  key         TEXT NOT NULL,
+  value       TEXT,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (network_id, podcast_id, key),
+  FOREIGN KEY (network_id, podcast_id)
+    REFERENCES network_podcasts (network_id, podcast_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_network_podcast_properties_lookup
+  ON network_podcast_properties(network_id, key);
+
 -- Per-podcast audit trail. podcast_id is nullable so we can capture
 -- platform-level events (admin actions on podcasts as a whole, etc.).
 -- user_id is nullable for system-generated events (e.g. the scheduler

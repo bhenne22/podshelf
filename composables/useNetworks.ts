@@ -6,6 +6,30 @@ export interface NetworkListItem {
   podcast_count: number
 }
 
+export type NetworkPropertyType = 'string' | 'boolean' | 'number' | 'url' | 'color'
+
+export interface NetworkPropertyDefinition {
+  id: number
+  key: string
+  label: string
+  type: NetworkPropertyType
+  required: boolean | number
+  position: number
+  created_at?: string
+  updated_at?: string
+}
+
+export type NetworkPropertyValue = string | number | boolean | null
+export type NetworkPropertyValues = Record<string, NetworkPropertyValue>
+
+export interface NetworkPropertyEntry {
+  podcast_id: number
+  podcast_slug: string
+  key: string
+  value: NetworkPropertyValue
+  type: NetworkPropertyType
+}
+
 export interface NetworkPodcast {
   id: number
   slug: string
@@ -14,6 +38,7 @@ export interface NetworkPodcast {
   timezone?: string
   status?: string
   position: number
+  properties?: NetworkPropertyValues
 }
 
 export interface NetworkDetail {
@@ -53,8 +78,13 @@ export function useNetworks() {
     return await $fetch<NetworkListItem[]>('/api/networks', { params })
   }
 
-  async function getNetwork(slug: string): Promise<NetworkDetail> {
-    return await $fetch<NetworkDetail>(`/api/networks/${slug}`)
+  async function getNetwork(
+    slug: string,
+    opts: { includeProperties?: boolean } = {},
+  ): Promise<NetworkDetail> {
+    const params: Record<string, string> = {}
+    if (opts.includeProperties) params.include = 'properties'
+    return await $fetch<NetworkDetail>(`/api/networks/${slug}`, { params })
   }
 
   async function getUpcomingEpisodes(
@@ -68,5 +98,24 @@ export function useNetworks() {
     return res.episodes
   }
 
-  return { listNetworks, getNetwork, getUpcomingEpisodes }
+  async function listPropertyDefinitions(slug: string): Promise<NetworkPropertyDefinition[]> {
+    return await $fetch<NetworkPropertyDefinition[]>(
+      `/api/networks/${slug}/property-definitions`,
+    )
+  }
+
+  async function listProperties(slug: string): Promise<NetworkPropertyEntry[]> {
+    const res = await $fetch<{ properties: NetworkPropertyEntry[] }>(
+      `/api/networks/${slug}/properties`,
+    )
+    return res.properties
+  }
+
+  return {
+    listNetworks,
+    getNetwork,
+    getUpcomingEpisodes,
+    listPropertyDefinitions,
+    listProperties,
+  }
 }

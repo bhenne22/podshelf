@@ -854,6 +854,184 @@ paths:
         '200':
           description: Removed.
 
+  # ---------------------------------------------------------------- Network custom properties
+  /api/networks/{slug}/property-definitions:
+    parameters:
+      - { $ref: '#/components/parameters/NetworkSlug' }
+    get:
+      tags: [Networks]
+      summary: List a network's custom property schema
+      responses:
+        '200':
+          description: Property definitions ordered by position.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/NetworkPropertyDefinition' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/networks/{slug}/properties:
+    parameters:
+      - { $ref: '#/components/parameters/NetworkSlug' }
+    get:
+      tags: [Networks]
+      summary: Flat list of property values across the network roster
+      description: |
+        Orphan keys (values whose definition has been deleted) are dropped
+        from the response. A scoped API key only sees values for podcasts
+        inside its scope.
+      responses:
+        '200':
+          description: Property values.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  properties:
+                    type: array
+                    items: { $ref: '#/components/schemas/NetworkPropertyEntry' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/admin/networks/{id}/property-definitions:
+    parameters:
+      - { $ref: '#/components/parameters/NetworkId' }
+    get:
+      tags: [Networks]
+      summary: Admin mirror of property definitions list
+      responses:
+        '200':
+          description: Property definitions.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/NetworkPropertyDefinition' }
+    post:
+      tags: [Networks]
+      summary: Define a new custom property (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [key, type]
+              properties:
+                key:
+                  type: string
+                  description: 'Must match ^[a-zA-Z][a-zA-Z0-9_]*$.'
+                label: { type: string }
+                type:
+                  type: string
+                  enum: [string, boolean, number, url, color]
+                required: { type: boolean, default: false }
+                position: { type: integer, nullable: true }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NetworkPropertyDefinition' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { description: A property with this key already exists on this network. }
+
+  /api/admin/networks/{id}/property-definitions/{key}:
+    parameters:
+      - { $ref: '#/components/parameters/NetworkId' }
+      - in: path
+        name: key
+        required: true
+        schema: { type: string }
+    patch:
+      tags: [Networks]
+      summary: Update a property definition (admin only)
+      description: |
+        When `type` changes, every existing value must coerce under the new
+        type — otherwise the request 409s with the offending value.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                label: { type: string }
+                type:
+                  type: string
+                  enum: [string, boolean, number, url, color]
+                required: { type: boolean }
+                position: { type: integer }
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NetworkPropertyDefinition' }
+        '409': { description: Existing value cannot coerce to the new type. }
+    delete:
+      tags: [Networks]
+      summary: Drop a definition and cascade its values (admin only)
+      responses:
+        '200':
+          description: Deleted with cleared value count.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  values_cleared: { type: integer }
+
+  /api/admin/networks/{id}/podcasts/{podcast_id}/properties/{key}:
+    parameters:
+      - { $ref: '#/components/parameters/NetworkId' }
+      - in: path
+        name: podcast_id
+        required: true
+        schema: { type: integer }
+      - in: path
+        name: key
+        required: true
+        schema: { type: string }
+    put:
+      tags: [Networks]
+      summary: Set a property value (admin only)
+      description: |
+        Validated against the property's declared type. Blank values are
+        rejected — use DELETE to clear.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [value]
+              properties:
+                value: { description: 'Type-coerced per the property definition.' }
+      responses:
+        '200':
+          description: Persisted value.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  key: { type: string }
+                  value: { type: string }
+                  type: { type: string }
+        '404': { description: Property not defined on this network, or podcast not in network. }
+    delete:
+      tags: [Networks]
+      summary: Clear a property value (admin only)
+      responses:
+        '200':
+          description: Cleared (idempotent).
+
   # ---------------------------------------------------------------- Uploads & files
   /api/podcasts/{slug}/upload:
     parameters:
@@ -1600,6 +1778,38 @@ components:
         timezone: { type: string, nullable: true }
         status: { type: string, nullable: true, description: "Included by admin endpoints so soft-deleted members are visible; omitted from the public network detail." }
         position: { type: integer }
+        properties:
+          type: object
+          nullable: true
+          description: "Present only when the network detail endpoint is called with ?include=properties. Keys are property keys; values are type-coerced per the property definition."
+          additionalProperties: true
+
+    NetworkPropertyDefinition:
+      type: object
+      properties:
+        id: { type: integer }
+        key: { type: string }
+        label: { type: string }
+        type:
+          type: string
+          enum: [string, boolean, number, url, color]
+        required: { type: boolean }
+        position: { type: integer }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    NetworkPropertyEntry:
+      type: object
+      properties:
+        podcast_id: { type: integer }
+        podcast_slug: { type: string }
+        key: { type: string }
+        value:
+          nullable: true
+          description: "Type-coerced per the matching definition (boolean → JSON bool, number → JSON number, others → string)."
+        type:
+          type: string
+          enum: [string, boolean, number, url, color]
 
     NetworkDetail:
       allOf:

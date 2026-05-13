@@ -356,6 +356,81 @@ Removes a podcast from a network. The podcast is untouched.
 
 Admin listing of every network with its current active-podcast count.
 
+### Custom properties
+
+A network can declare a small schema of extra fields (custom properties)
+that downstream static-site builds can read alongside the podcast roster.
+Each network defines its own schema; the same key can be reused freely
+across networks.
+
+- Values are stored per `(network, podcast)` — a podcast in two different
+  networks can carry different values.
+- Supported `type` values: `string`, `boolean`, `number`, `url`, `color`.
+  All values are stored as TEXT and coerced to the declared type on read.
+- `required: true` is a documentary hint for consumers and the admin UI.
+  It is **not** enforced server-side on writes; missing values are returned
+  as `null`.
+- Mutations are admin-only (`requireAdmin` rejects scoped API keys). Reads
+  follow the same scope rules as the rest of the network surface: a scoped
+  API key only sees values for podcasts inside its scope.
+
+#### `GET /api/networks/[slug]/property-definitions`
+
+Lists the network's property schema:
+
+```json
+[
+  { "id": 1, "key": "accentColor", "label": "Accent Color",
+    "type": "color", "required": 0, "position": 0 }
+]
+```
+
+#### `GET /api/networks/[slug]/properties`
+
+Flat list of all values across the network's roster (excluding orphan
+keys whose definition has been deleted):
+
+```json
+{
+  "properties": [
+    { "podcast_id": 5, "podcast_slug": "you-said-100-miles",
+      "key": "accentColor", "value": "#e66b2c", "type": "color" }
+  ]
+}
+```
+
+#### `GET /api/networks/[slug]?include=properties`
+
+Convenience: returns the existing network-detail response with a typed
+`properties: { key: value }` map attached to each podcast. Without
+`?include=properties` the response is byte-identical to the original.
+
+#### `POST /api/admin/networks/[id]/property-definitions` *(admin only)*
+
+`{ key, label, type, required?, position? }`. Key must match
+`^[a-zA-Z][a-zA-Z0-9_]*$`. Defaults `position` to the end. 409 on
+duplicate key for the same network.
+
+#### `PATCH /api/admin/networks/[id]/property-definitions/[key]` *(admin only)*
+
+Update label, type, required, or position. When `type` changes, every
+existing value for the property must coerce under the new type — otherwise
+the request 409s with the offending value so it can be edited first.
+
+#### `DELETE /api/admin/networks/[id]/property-definitions/[key]` *(admin only)*
+
+Drops the definition and cascades all stored values for that key in a
+single transaction. Response includes `values_cleared` count.
+
+#### `PUT /api/admin/networks/[id]/podcasts/[podcast_id]/properties/[key]` *(admin only)*
+
+Set a value. `{ value }` body. Validated against the property's declared
+type. Blank `value` is rejected — use DELETE to clear instead.
+
+#### `DELETE /api/admin/networks/[id]/podcasts/[podcast_id]/properties/[key]` *(admin only)*
+
+Clear one value. Idempotent (200 even if no row existed).
+
 ---
 
 ## Episodes

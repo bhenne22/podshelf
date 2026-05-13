@@ -204,10 +204,20 @@ timeline of upcoming episodes across the roster) and an inline conflict
 hint on the episode scheduling form (`NetworkConflictHint`) that warns
 when a sibling has scheduled within ±3 days of the chosen slot.
 
-There is **no public network API** yet — the existing endpoints all require
-authentication. A future follow-up may expose a `/api/networks/[slug]/public`
-projection so `teampumaknife.com` can derive its show roster from Podshelf
-instead of `data/site-config.mjs`.
+There is **no unauthenticated public API**. Downstream static-site builds
+(e.g. `teampumaknife.com`) authenticate with a per-instance API key the same
+way the per-show sync scripts do.
+
+**Custom properties.** A network can declare a small schema of extra fields
+(e.g. `accentColor`, `hosted`, `externalUrl`, `vault`) with typed values
+stored per `(network, podcast)`. The schema is fully user-defined per
+network — nothing about it is TPK-specific. Definitions live in
+`network_property_definitions`; values in `network_podcast_properties`
+which FKs against the `network_podcasts` compound PK so leaving a network
+auto-clears that podcast's values. Scoped API keys only see values for
+podcasts inside their scope. This is the mechanism that lets TPK derive
+its roster + per-show metadata from Podshelf and (eventually) delete its
+`data/site-config.mjs`.
 
 ## Contracts that must not break
 
