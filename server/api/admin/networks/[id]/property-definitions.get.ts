@@ -17,7 +17,7 @@ export default defineEventHandler((event) => {
   }
   const db = getDb()
   return db.prepare(`
-    SELECT id, key, label, type, required, position, created_at, updated_at
+    SELECT id, key, label, description, type, required, position, created_at, updated_at
     FROM network_property_definitions
     WHERE network_id = ?
     ORDER BY position, key

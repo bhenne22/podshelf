@@ -925,6 +925,7 @@ paths:
                   type: string
                   description: 'Must match ^[a-zA-Z][a-zA-Z0-9_]*$.'
                 label: { type: string }
+                description: { type: string, nullable: true, description: 'Surfaced as a tooltip in the admin UI next to the property name and on per-podcast value editors.' }
                 type:
                   type: string
                   enum: [string, boolean, number, url, color]
@@ -961,6 +962,7 @@ paths:
               additionalProperties: false
               properties:
                 label: { type: string }
+                description: { type: string, nullable: true }
                 type:
                   type: string
                   enum: [string, boolean, number, url, color]
@@ -1790,6 +1792,7 @@ components:
         id: { type: integer }
         key: { type: string }
         label: { type: string }
+        description: { type: string, nullable: true, description: 'Optional documentation surfaced as a tooltip in the admin UI.' }
         type:
           type: string
           enum: [string, boolean, number, url, color]

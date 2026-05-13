@@ -32,6 +32,7 @@ export default defineEventHandler(async (event) => {
   const body = await readBody(event)
   const key = validatePropertyKey(body?.key)
   const label = String(body?.label ?? '').trim() || key
+  const description = body?.description ? (String(body.description).trim() || null) : null
   if (!isPropertyType(body?.type)) {
     throw createError({
       statusCode: 400,
@@ -61,9 +62,9 @@ export default defineEventHandler(async (event) => {
   }
 
   const result = db.prepare(`
-    INSERT INTO network_property_definitions (network_id, key, label, type, required, position)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `).run(networkId, key, label, type, required, position)
+    INSERT INTO network_property_definitions (network_id, key, label, description, type, required, position)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(networkId, key, label, description, type, required, position)
   const id = Number(result.lastInsertRowid)
 
   logAudit(event, {
@@ -77,6 +78,6 @@ export default defineEventHandler(async (event) => {
 
   event.node.res.statusCode = 201
   return db.prepare(
-    'SELECT id, key, label, type, required, position, created_at, updated_at FROM network_property_definitions WHERE id = ?'
+    'SELECT id, key, label, description, type, required, position, created_at, updated_at FROM network_property_definitions WHERE id = ?'
   ).get(id)
 })

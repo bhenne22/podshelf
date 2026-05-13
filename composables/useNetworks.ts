@@ -12,6 +12,7 @@ export interface NetworkPropertyDefinition {
   id: number
   key: string
   label: string
+  description: string | null
   type: NetworkPropertyType
   required: boolean | number
   position: number

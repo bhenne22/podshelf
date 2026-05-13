@@ -247,6 +247,7 @@ CREATE TABLE IF NOT EXISTS network_property_definitions (
   network_id  INTEGER NOT NULL REFERENCES networks(id) ON DELETE CASCADE,
   key         TEXT NOT NULL,
   label       TEXT NOT NULL,
+  description TEXT,
   type        TEXT NOT NULL DEFAULT 'string',
   required    INTEGER NOT NULL DEFAULT 0,
   position    INTEGER NOT NULL DEFAULT 0,

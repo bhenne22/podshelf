@@ -381,9 +381,13 @@ Lists the network's property schema:
 ```json
 [
   { "id": 1, "key": "accentColor", "label": "Accent Color",
+    "description": "Hex color used for show-specific theming on the network landing page.",
     "type": "color", "required": 0, "position": 0 }
 ]
 ```
+
+`description` is optional documentation surfaced as a tooltip in the admin UI
+next to each property and on the per-podcast value editors. `null` when unset.
 
 #### `GET /api/networks/[slug]/properties`
 
@@ -407,15 +411,15 @@ Convenience: returns the existing network-detail response with a typed
 
 #### `POST /api/admin/networks/[id]/property-definitions` *(admin only)*
 
-`{ key, label, type, required?, position? }`. Key must match
+`{ key, label, description?, type, required?, position? }`. Key must match
 `^[a-zA-Z][a-zA-Z0-9_]*$`. Defaults `position` to the end. 409 on
 duplicate key for the same network.
 
 #### `PATCH /api/admin/networks/[id]/property-definitions/[key]` *(admin only)*
 
-Update label, type, required, or position. When `type` changes, every
-existing value for the property must coerce under the new type — otherwise
-the request 409s with the offending value so it can be edited first.
+Update label, description, type, required, or position. When `type` changes,
+every existing value for the property must coerce under the new type —
+otherwise the request 409s with the offending value so it can be edited first.
 
 #### `DELETE /api/admin/networks/[id]/property-definitions/[key]` *(admin only)*
 

@@ -27,12 +27,12 @@ export default defineEventHandler(async (event) => {
 
   const db = getDb()
   const existing = db.prepare(`
-    SELECT id, key, label, type, required, position
+    SELECT id, key, label, description, type, required, position
     FROM network_property_definitions
     WHERE network_id = ? AND key = ?
   `).get(networkId, key) as {
-    id: number; key: string; label: string; type: string;
-    required: number; position: number;
+    id: number; key: string; label: string; description: string | null;
+    type: string; required: number; position: number;
   } | undefined
   if (!existing) {
     throw createError({ statusCode: 404, statusMessage: 'Property not found' })
@@ -47,6 +47,13 @@ export default defineEventHandler(async (event) => {
     if (!next) throw createError({ statusCode: 400, statusMessage: 'label cannot be blank' })
     values.label = next
     updates.push('label = @label')
+  }
+
+  if ('description' in body) {
+    values.description = body.description == null
+      ? null
+      : (String(body.description).trim() || null)
+    updates.push('description = @description')
   }
 
   if ('type' in body) {
@@ -98,11 +105,17 @@ export default defineEventHandler(async (event) => {
   ).run(values)
 
   const after = db.prepare(`
-    SELECT key, label, type, required, position FROM network_property_definitions WHERE id = ?
+    SELECT key, label, description, type, required, position FROM network_property_definitions WHERE id = ?
   `).get(existing.id) as Record<string, unknown>
 
   const diff = diffFields(
-    { label: existing.label, type: existing.type, required: existing.required, position: existing.position },
+    {
+      label: existing.label,
+      description: existing.description,
+      type: existing.type,
+      required: existing.required,
+      position: existing.position,
+    },
     after,
   )
   if (diff.changed.length > 0) {
@@ -118,6 +131,6 @@ export default defineEventHandler(async (event) => {
   }
 
   return db.prepare(
-    'SELECT id, key, label, type, required, position, created_at, updated_at FROM network_property_definitions WHERE id = ?'
+    'SELECT id, key, label, description, type, required, position, created_at, updated_at FROM network_property_definitions WHERE id = ?'
   ).get(existing.id)
 })

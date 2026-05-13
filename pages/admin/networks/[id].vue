@@ -100,6 +100,7 @@
                 <div v-for="d in definitions" :key="d.id" class="value-cell">
                   <label class="value-label">
                     {{ d.label }}
+                    <span v-if="d.description" class="info-icon" :title="d.description" aria-label="Description">ⓘ</span>
                     <span v-if="d.required" class="required-badge">required</span>
                   </label>
                   <div class="value-controls">
@@ -123,12 +124,23 @@
                       placeholder="https://…"
                       @input="onValueInput(p.id, d.key, ($event.target as HTMLInputElement).value)"
                     />
-                    <input
-                      v-else-if="d.type === 'color'"
-                      :value="stringValue(p.id, d.key) || '#000000'"
-                      type="color"
-                      @input="onValueInput(p.id, d.key, ($event.target as HTMLInputElement).value)"
-                    />
+                    <template v-else-if="d.type === 'color'">
+                      <input
+                        :value="hexOrDefault(stringValue(p.id, d.key))"
+                        type="color"
+                        class="color-swatch"
+                        @input="onValueInput(p.id, d.key, ($event.target as HTMLInputElement).value)"
+                      />
+                      <input
+                        :value="stringValue(p.id, d.key)"
+                        type="text"
+                        class="color-hex"
+                        placeholder="#rrggbb"
+                        maxlength="7"
+                        spellcheck="false"
+                        @input="onColorTextInput(p.id, d.key, ($event.target as HTMLInputElement).value)"
+                      />
+                    </template>
                     <label v-else-if="d.type === 'boolean'" class="bool-toggle">
                       <input
                         type="checkbox"
@@ -200,7 +212,15 @@
             <tbody>
               <tr v-for="(d, i) in definitions" :key="d.id">
                 <template v-if="editingDefKey === d.key">
-                  <td><input v-model="defEdit.label" type="text" class="inline-input" /></td>
+                  <td>
+                    <input v-model="defEdit.label" type="text" class="inline-input" placeholder="Label" />
+                    <textarea
+                      v-model="defEdit.description"
+                      class="inline-input desc-input"
+                      placeholder="Description (shown as tooltip)"
+                      rows="2"
+                    />
+                  </td>
                   <td class="mono">{{ d.key }}</td>
                   <td>
                     <select v-model="defEdit.type" class="inline-input">
@@ -219,7 +239,10 @@
                   </td>
                 </template>
                 <template v-else>
-                  <td>{{ d.label }}</td>
+                  <td>
+                    {{ d.label }}
+                    <span v-if="d.description" class="info-icon" :title="d.description" aria-label="Description">ⓘ</span>
+                  </td>
                   <td class="mono">{{ d.key }}</td>
                   <td><span class="type-tag">{{ d.type }}</span></td>
                   <td>{{ d.required ? 'yes' : 'no' }}</td>
@@ -264,6 +287,12 @@
                 {{ addingDef ? 'Adding…' : 'Add' }}
               </button>
             </div>
+            <textarea
+              v-model="newDef.description"
+              class="add-desc"
+              placeholder="Description (optional; shown as a tooltip next to the field name)"
+              rows="2"
+            />
           </div>
         </section>
       </template>
@@ -507,9 +536,16 @@ async function movePodcast(p: RosterPodcast, toIndex: number) {
 
 // --- Custom Properties: definitions ---
 
-const newDef = reactive<{ key: string; label: string; type: NetworkPropertyType; required: boolean }>({
+const newDef = reactive<{
+  key: string
+  label: string
+  description: string
+  type: NetworkPropertyType
+  required: boolean
+}>({
   key: '',
   label: '',
+  description: '',
   type: 'string',
   required: false,
 })
@@ -525,12 +561,14 @@ async function addDefinition() {
       body: {
         key: newDef.key.trim(),
         label: newDef.label.trim() || newDef.key.trim(),
+        description: newDef.description.trim() || null,
         type: newDef.type,
         required: newDef.required,
       },
     })
     newDef.key = ''
     newDef.label = ''
+    newDef.description = ''
     newDef.type = 'string'
     newDef.required = false
     await loadDefinitions()
@@ -542,8 +580,14 @@ async function addDefinition() {
 }
 
 const editingDefKey = ref<string | null>(null)
-const defEdit = reactive<{ label: string; type: NetworkPropertyType; required: boolean }>({
+const defEdit = reactive<{
+  label: string
+  description: string
+  type: NetworkPropertyType
+  required: boolean
+}>({
   label: '',
+  description: '',
   type: 'string',
   required: false,
 })
@@ -552,6 +596,7 @@ const savingDef = ref(false)
 function beginEdit(d: NetworkPropertyDefinition) {
   editingDefKey.value = d.key
   defEdit.label = d.label
+  defEdit.description = d.description ?? ''
   defEdit.type = d.type
   defEdit.required = !!d.required
 }
@@ -568,6 +613,7 @@ async function saveDef(d: NetworkPropertyDefinition) {
       method: 'PATCH',
       body: {
         label: defEdit.label.trim() || d.key,
+        description: defEdit.description.trim() || null,
         type: defEdit.type,
         required: defEdit.required,
       },
@@ -702,6 +748,40 @@ function onValueInput(podcastId: number, key: string, raw: string) {
 function onValueImmediate(podcastId: number, key: string, raw: unknown) {
   setCellState(podcastId, key, 'saving')
   persistValue(podcastId, key, raw)
+}
+
+const HEX_RE = /^#[0-9a-fA-F]{6}$/
+
+function hexOrDefault(raw: string): string {
+  return HEX_RE.test(raw) ? raw : '#000000'
+}
+
+// Color text input: optimistically reflect every keystroke locally so the
+// user can type freely, but only fire the server PUT when the value is a
+// complete 6-digit hex (or empty, which means "clear"). Intermediate states
+// like "#ab" stay local — the swatch falls back to #000000 and no error
+// fires.
+function onColorTextInput(podcastId: number, key: string, raw: string) {
+  let bucket = valuesByPodcast.value.get(podcastId)
+  if (!bucket) {
+    bucket = new Map()
+    valuesByPodcast.value.set(podcastId, bucket)
+  }
+  bucket.set(key, raw)
+
+  const k = cellKey(podcastId, key)
+  const existing = debounceTimers.get(k)
+  if (existing) clearTimeout(existing)
+
+  if (raw === '' || HEX_RE.test(raw)) {
+    setCellState(podcastId, key, 'saving')
+    const timer = setTimeout(() => persistValue(podcastId, key, raw), DEBOUNCE_MS)
+    debounceTimers.set(k, timer)
+  } else {
+    // Mid-typing — drop any prior save indicator so the user doesn't see
+    // stale "Saved" while they're entering a partial hex.
+    setCellState(podcastId, key, null)
+  }
 }
 
 async function persistValue(podcastId: number, key: string, raw: unknown) {
@@ -956,6 +1036,35 @@ code.mono { font-size: 0.85em; }
   font-family: inherit;
   background: white;
 }
+textarea.inline-input.desc-input {
+  margin-top: 0.3rem;
+  resize: vertical;
+  min-height: 2.2rem;
+}
+
+.info-icon {
+  display: inline-block;
+  margin-left: 0.3rem;
+  color: #718096;
+  cursor: help;
+  font-size: 0.85em;
+  user-select: none;
+}
+.info-icon:hover { color: #4c51bf; }
+
+.add-desc {
+  display: block;
+  width: 100%;
+  margin-top: 0.5rem;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-family: inherit;
+  background: white;
+  resize: vertical;
+  min-height: 2.4rem;
+}
 
 .type-tag {
   display: inline-block;
@@ -1112,6 +1221,20 @@ code.mono { font-size: 0.85em; }
   border: 1px solid #e2e8f0;
   border-radius: 5px;
   background: white;
+}
+.value-controls .color-swatch {
+  flex: 0 0 auto;
+}
+.value-controls .color-hex {
+  flex: 1;
+  min-width: 0;
+  padding: 0.35rem 0.55rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 5px;
+  font-size: 0.85rem;
+  font-family: monospace;
+  background: white;
+  text-transform: lowercase;
 }
 .bool-toggle {
   display: flex;

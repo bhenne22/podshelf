@@ -225,6 +225,7 @@ CREATE TABLE IF NOT EXISTS network_property_definitions (
   network_id  INTEGER NOT NULL REFERENCES networks(id) ON DELETE CASCADE,
   key         TEXT NOT NULL,
   label       TEXT NOT NULL,
+  description TEXT,
   type        TEXT NOT NULL DEFAULT 'string',
   required    INTEGER NOT NULL DEFAULT 0,
   position    INTEGER NOT NULL DEFAULT 0,
@@ -489,6 +490,11 @@ function applyMigrations(db: Database.Database) {
   }
   if (!episodeCols.includes('license_url')) {
     db.exec('ALTER TABLE episodes ADD COLUMN license_url TEXT')
+  }
+
+  const networkPropDefCols = cols('network_property_definitions')
+  if (networkPropDefCols.length > 0 && !networkPropDefCols.includes('description')) {
+    db.exec('ALTER TABLE network_property_definitions ADD COLUMN description TEXT')
   }
 }
 
