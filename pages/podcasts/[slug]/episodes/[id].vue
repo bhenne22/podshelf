@@ -330,7 +330,17 @@
             <div class="form-row">
               <div class="form-group flex-2">
                 <label for="transcript_path">Transcript URL</label>
-                <input id="transcript_path" v-model="form.transcript_path" type="url" placeholder="https://example.com/episode-42.html" />
+                <div class="input-with-action">
+                  <input id="transcript_path" v-model="form.transcript_path" type="url" placeholder="https://example.com/episode-42.html" />
+                  <button
+                    type="button"
+                    class="btn-probe"
+                    :disabled="!form.transcript_path || transcriptProbing"
+                    @click="probeTranscript"
+                  >
+                    {{ transcriptProbing ? 'Checking…' : 'Check File' }}
+                  </button>
+                </div>
               </div>
               <div class="form-group">
                 <label for="transcript_type">Type</label>
@@ -342,6 +352,34 @@
                   <option value="text/vtt">WebVTT</option>
                   <option value="application/json">JSON (closed captions)</option>
                 </select>
+              </div>
+            </div>
+
+            <div v-if="transcriptProbe" class="probe-result" :class="{ ok: transcriptProbe.ok && transcriptProbe.reachable, bad: !transcriptProbe.ok || !transcriptProbe.reachable }">
+              <div v-if="!transcriptProbe.reachable" class="probe-line">
+                <strong>Unreachable.</strong> {{ transcriptProbe.errors[0] }}
+              </div>
+              <template v-else-if="transcriptProbe.summary">
+                <div class="probe-line">
+                  <strong>{{ String(transcriptProbe.summary.kind).toUpperCase() }}</strong> ·
+                  {{ transcriptProbe.summary.cueCount }} cues ·
+                  {{ transcriptProbe.summary.durationFormatted }} covered
+                  <template v-if="Array.isArray(transcriptProbe.summary.speakers) && transcriptProbe.summary.speakers.length">
+                    · speakers: {{ (transcriptProbe.summary.speakers as string[]).join(', ') }}
+                  </template>
+                </div>
+                <div v-if="transcriptProbe.summary.preview" class="probe-preview">
+                  {{ transcriptProbe.summary.preview }}
+                </div>
+              </template>
+              <div v-else-if="transcriptProbe.ok" class="probe-line">
+                <strong>Reachable.</strong> Format isn't SRT/VTT/JSON — no content summary.
+              </div>
+              <div v-else class="probe-line">
+                <strong>Parse error.</strong>
+                <ul class="probe-errors">
+                  <li v-for="(e, idx) in transcriptProbe.errors" :key="idx">{{ e }}</li>
+                </ul>
               </div>
             </div>
           </div>
@@ -376,8 +414,40 @@
 
             <div class="form-group">
               <label for="chapters_url">Chapters URL</label>
-              <input id="chapters_url" v-model="form.chapters_url" type="url" placeholder="https://example.com/episode-42.chapters.json" />
+              <div class="input-with-action">
+                <input id="chapters_url" v-model="form.chapters_url" type="url" placeholder="https://example.com/episode-42.chapters.json" />
+                <button
+                  type="button"
+                  class="btn-probe"
+                  :disabled="!form.chapters_url || chaptersProbing"
+                  @click="probeChapters"
+                >
+                  {{ chaptersProbing ? 'Checking…' : 'Check File' }}
+                </button>
+              </div>
               <p class="hint">Or paste an existing public URL to a chapters JSON file hosted elsewhere.</p>
+            </div>
+
+            <div v-if="chaptersProbe" class="probe-result" :class="{ ok: chaptersProbe.ok && chaptersProbe.reachable, bad: !chaptersProbe.ok || !chaptersProbe.reachable }">
+              <div v-if="!chaptersProbe.reachable" class="probe-line">
+                <strong>Unreachable.</strong> {{ chaptersProbe.errors[0] }}
+              </div>
+              <template v-else-if="chaptersProbe.summary">
+                <div class="probe-line">
+                  <strong>{{ chaptersProbe.summary.chapterCount }} chapters</strong>
+                  <template v-if="chaptersProbe.summary.version">· v{{ chaptersProbe.summary.version }}</template>
+                  · last starts at {{ chaptersProbe.summary.lastStartFormatted }}
+                </div>
+                <div v-if="Array.isArray(chaptersProbe.summary.titles) && chaptersProbe.summary.titles.length" class="probe-preview">
+                  {{ (chaptersProbe.summary.titles as string[]).slice(0, 3).join(' • ') }}{{ (chaptersProbe.summary.titles as string[]).length > 3 ? ' • …' : '' }}
+                </div>
+              </template>
+              <div v-else class="probe-line">
+                <strong>Validation failed.</strong>
+                <ul class="probe-errors">
+                  <li v-for="(e, idx) in chaptersProbe.errors" :key="idx">{{ e }}</li>
+                </ul>
+              </div>
             </div>
 
             <div class="chapters-divider"><span>or paste a list</span></div>
@@ -615,6 +685,53 @@ const transcriptError = ref('')
 const chaptersFileUploading = ref(false)
 const chaptersFileError = ref('')
 
+interface SidecarProbeResult {
+  reachable: boolean
+  size: number | null
+  contentType: string | null
+  ok: boolean
+  summary: Record<string, unknown> | null
+  errors: string[]
+}
+const transcriptProbe = ref<SidecarProbeResult | null>(null)
+const chaptersProbe = ref<SidecarProbeResult | null>(null)
+const transcriptProbing = ref(false)
+const chaptersProbing = ref(false)
+
+async function probeSidecar(
+  kind: 'transcript' | 'chapters',
+  url: string,
+): Promise<SidecarProbeResult | null> {
+  if (!url) return null
+  try {
+    return await $fetch<SidecarProbeResult>('/api/sidecar-probe', { query: { url, kind } })
+  } catch (err: unknown) {
+    const msg = (err as { data?: { statusMessage?: string } })?.data?.statusMessage
+      || (err instanceof Error ? err.message : 'Probe failed')
+    return { reachable: false, size: null, contentType: null, ok: false, summary: null, errors: [msg] }
+  }
+}
+
+async function probeTranscript() {
+  if (!form.transcript_path) return
+  transcriptProbing.value = true
+  try {
+    transcriptProbe.value = await probeSidecar('transcript', form.transcript_path)
+  } finally {
+    transcriptProbing.value = false
+  }
+}
+
+async function probeChapters() {
+  if (!form.chapters_url) return
+  chaptersProbing.value = true
+  try {
+    chaptersProbe.value = await probeSidecar('chapters', form.chapters_url)
+  } finally {
+    chaptersProbing.value = false
+  }
+}
+
 const VALID_TRANSCRIPT_TYPES = new Set([
   'text/html', 'text/plain', 'text/vtt', 'application/srt', 'application/json',
 ])
@@ -631,6 +748,7 @@ async function handleTranscriptChange(event: Event) {
     if (result.content_type && VALID_TRANSCRIPT_TYPES.has(result.content_type)) {
       form.transcript_type = result.content_type
     }
+    await probeTranscript()
   } catch (err: unknown) {
     transcriptError.value = err instanceof Error ? err.message : 'Upload failed'
   } finally {
@@ -655,6 +773,7 @@ async function handleChaptersFileChange(event: Event) {
       method: 'PATCH',
       body: { chapters_url: result.url },
     })
+    await probeChapters()
   } catch (err: unknown) {
     chaptersFileError.value = err instanceof Error ? err.message : 'Upload failed'
   } finally {
@@ -797,6 +916,10 @@ onMounted(async () => {
     originalPublishedAt.value = ep.published_at || null
 
     await Promise.all([loadRoster(), loadEpisodePeople()])
+    // Auto-probe existing sidecars so the editor surfaces broken or
+    // malformed files without the user having to click Check.
+    if (form.transcript_path) probeTranscript()
+    if (form.chapters_url) probeChapters()
   } catch (err: unknown) {
     loadError.value = err instanceof Error ? err.message : 'Failed to load episode'
   } finally {
@@ -1337,6 +1460,33 @@ textarea { resize: vertical; line-height: 1.6; }
   font-size: 0.8rem;
   margin-bottom: 0.5rem;
 }
+
+.probe-result {
+  padding: 0.625rem 0.875rem;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  margin: 0.625rem 0;
+  border: 1px solid transparent;
+}
+.probe-result.ok { background: #f0fdf4; color: #166534; border-color: #bbf7d0; }
+.probe-result.bad { background: #fff5f5; color: #c53030; border-color: #feb2b2; }
+.probe-line { line-height: 1.5; }
+.probe-line strong { font-weight: 600; }
+.probe-preview {
+  margin-top: 0.35rem;
+  font-size: 0.78rem;
+  font-style: italic;
+  opacity: 0.85;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.probe-errors {
+  margin: 0.35rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.78rem;
+}
+.probe-errors li { margin: 0.1rem 0; }
 
 .lock-toggle {
   background: none;
