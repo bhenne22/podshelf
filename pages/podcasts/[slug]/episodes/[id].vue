@@ -256,6 +256,24 @@
             @select="onArtworkPicked"
           />
 
+          <SidecarPicker
+            :open="transcriptPickerOpen"
+            :podcast-slug="podcastSlug"
+            title="Choose Transcript"
+            :extensions="['.srt', '.vtt', '.json', '.html', '.htm', '.txt']"
+            @close="transcriptPickerOpen = false"
+            @select="onTranscriptPicked"
+          />
+
+          <SidecarPicker
+            :open="chaptersPickerOpen"
+            :podcast-slug="podcastSlug"
+            title="Choose Chapters JSON"
+            :extensions="['.json']"
+            @close="chaptersPickerOpen = false"
+            @select="onChaptersPicked"
+          />
+
           <div class="form-section">
             <h2>People</h2>
             <p class="hint section-hint">
@@ -313,14 +331,17 @@
             </div>
 
             <div class="form-group">
-              <label for="transcript_file">Upload transcript</label>
-              <input
-                id="transcript_file"
-                type="file"
-                accept=".html,.htm,.txt,.srt,.vtt,.json,text/html,text/plain,text/vtt,application/srt,application/x-subrip,application/json"
-                @change="handleTranscriptChange"
-                class="file-input"
-              />
+              <label for="transcript_file">Upload or pick transcript</label>
+              <div class="upload-and-pick">
+                <input
+                  id="transcript_file"
+                  type="file"
+                  accept=".html,.htm,.txt,.srt,.vtt,.json,text/html,text/plain,text/vtt,application/srt,application/x-subrip,application/json"
+                  @change="handleTranscriptChange"
+                  class="file-input"
+                />
+                <button type="button" class="btn-secondary" @click="transcriptPickerOpen = true">Pick from files</button>
+              </div>
               <p class="hint">HTML, plain text, SRT, WebVTT, or JSON. Goes into your audio directory next to the MP3.</p>
             </div>
 
@@ -398,14 +419,17 @@
             </div>
 
             <div class="form-group">
-              <label for="chapters_file">Upload chapters JSON</label>
-              <input
-                id="chapters_file"
-                type="file"
-                accept=".json,application/json"
-                @change="handleChaptersFileChange"
-                class="file-input"
-              />
+              <label for="chapters_file">Upload or pick chapters JSON</label>
+              <div class="upload-and-pick">
+                <input
+                  id="chapters_file"
+                  type="file"
+                  accept=".json,application/json"
+                  @change="handleChaptersFileChange"
+                  class="file-input"
+                />
+                <button type="button" class="btn-secondary" @click="chaptersPickerOpen = true">Pick from files</button>
+              </div>
               <p class="hint">Upload a pre-built JSON file. <a href="https://github.com/Podcastindex-org/podcast-namespace/blob/main/docs/examples/chapters/jsonChapters.md" target="_blank" rel="noopener">Spec</a>.</p>
             </div>
 
@@ -1121,6 +1145,26 @@ const pickerOpen = ref(false)
 function onArtworkPicked(payload: { url: string; name: string }) {
   form.image_url = payload.url
   form.image_filename = payload.name
+}
+
+const transcriptPickerOpen = ref(false)
+const chaptersPickerOpen = ref(false)
+
+function onTranscriptPicked(payload: { url: string; name: string }) {
+  form.transcript_path = payload.url
+  // Best-effort content-type from extension so the feed gets the right mime.
+  const lower = payload.name.toLowerCase()
+  if (lower.endsWith('.srt')) form.transcript_type = 'application/srt'
+  else if (lower.endsWith('.vtt')) form.transcript_type = 'text/vtt'
+  else if (lower.endsWith('.json')) form.transcript_type = 'application/json'
+  else if (lower.endsWith('.html') || lower.endsWith('.htm')) form.transcript_type = 'text/html'
+  else if (lower.endsWith('.txt')) form.transcript_type = 'text/plain'
+  probeTranscript()
+}
+
+function onChaptersPicked(payload: { url: string; name: string }) {
+  form.chapters_url = payload.url
+  probeChapters()
 }
 
 async function probeAudio() {

@@ -63,6 +63,9 @@ export default defineEventHandler(async (event) => {
   const imageByFilename = new Set<string>()
   const audioRefRows = db.prepare(`SELECT id, audio_filename, audio_url, title FROM episodes WHERE podcast_id = ?`).all(podcastId) as { id: number; audio_filename: string | null; audio_url: string | null; title: string }[]
   const imageRefRows = db.prepare(`SELECT id, image_filename, image_url, title FROM episodes WHERE podcast_id = ?`).all(podcastId) as { id: number; image_filename: string | null; image_url: string | null; title: string }[]
+  // Sidecars (transcripts + chapters JSON) live in the audio directory, so
+  // we also look up which episodes reference them by URL last-segment.
+  const sidecarRefRows = db.prepare(`SELECT id, transcript_path, chapters_url, title FROM episodes WHERE podcast_id = ?`).all(podcastId) as { id: number; transcript_path: string | null; chapters_url: string | null; title: string }[]
   const podcastImageRow = db.prepare(`SELECT image_url FROM podcasts WHERE id = ?`).get(podcastId) as { image_url: string | null } | undefined
 
   function lastSegment(url: string | null): string | null {
@@ -93,11 +96,28 @@ export default defineEventHandler(async (event) => {
   }
   const podcastImageName = lastSegment(podcastImageRow?.image_url || null)
 
+  const transcriptUses = new Map<string, string[]>()
+  const chaptersUses = new Map<string, string[]>()
+  for (const r of sidecarRefRows) {
+    const tName = lastSegment(r.transcript_path)
+    if (tName) {
+      if (!transcriptUses.has(tName)) transcriptUses.set(tName, [])
+      transcriptUses.get(tName)!.push(`Transcript for #${r.id}: ${r.title}`)
+    }
+    const cName = lastSegment(r.chapters_url)
+    if (cName) {
+      if (!chaptersUses.has(cName)) chaptersUses.set(cName, [])
+      chaptersUses.get(cName)!.push(`Chapters for #${r.id}: ${r.title}`)
+    }
+  }
+
   const base = publicUrlBase.replace(/\/$/, '')
   const result: FileEntry[] = entries.map((e) => {
     const usedBy: string[] = []
     if (kind === 'audio') {
       if (audioByFilename.has(e.name)) usedBy.push(...(audioUses.get(e.name) || []))
+      if (transcriptUses.has(e.name)) usedBy.push(...(transcriptUses.get(e.name) || []))
+      if (chaptersUses.has(e.name)) usedBy.push(...(chaptersUses.get(e.name) || []))
     } else {
       if (imageByFilename.has(e.name)) usedBy.push(...(imageUses.get(e.name) || []))
       if (podcastImageName === e.name) usedBy.push('Podcast main artwork')
