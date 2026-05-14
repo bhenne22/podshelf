@@ -46,14 +46,31 @@
           <div class="form-row">
             <div class="form-group flex-2">
               <label for="img_url">Photo URL</label>
-              <input id="img_url" v-model="form.img_url" type="url" placeholder="https://example.com/jane.jpg" />
-              <p class="hint">Square image, 100×100+ recommended. Modern apps show this next to the show or episode.</p>
+              <div class="input-with-action">
+                <input id="img_url" v-model="form.img_url" type="url" placeholder="https://example.com/jane.jpg" />
+                <label class="btn-upload">
+                  {{ photoUploading ? `Uploading… ${uploadProgress}%` : 'Upload…' }}
+                  <input type="file" accept="image/jpeg,image/png,image/webp"
+                    :disabled="photoUploading" @change="handlePhotoChange" hidden />
+                </label>
+              </div>
+              <p v-if="photoError" class="probe-error">{{ photoError }}</p>
+              <p class="hint">Square image. Upload + crop to {{ PHOTO_SIZE }}×{{ PHOTO_SIZE }} in-browser, or paste a URL.</p>
             </div>
             <div class="form-group flex-2">
               <label for="href">Profile / Website</label>
               <input id="href" v-model="form.href" type="url" placeholder="https://janedoe.example.com" />
             </div>
           </div>
+
+          <ArtworkCropper
+            :open="cropperOpen"
+            :src="cropperSrc"
+            :filename="cropperFilename"
+            :output-size="PHOTO_SIZE"
+            @cancel="closeCropper"
+            @cropped="onCropperSaved"
+          />
 
           <div class="form-group">
             <label class="checkbox-label">
@@ -127,6 +144,57 @@ const saving = ref(false)
 const editingId = ref<number | null>(null)
 const successMsg = ref('')
 const errorMsg = ref('')
+
+// Person photos crop to a smaller square than podcast/episode art — they
+// render as avatars in apps and disk is the only cost.
+const PHOTO_SIZE = 600
+
+const { uploadProgress, uploadFile } = useUpload(podcastSlug)
+const photoUploading = ref(false)
+const photoError = ref('')
+
+const cropperOpen = ref(false)
+const cropperSrc = ref<string | null>(null)
+const cropperFilename = ref('')
+let cropperRevokeUrl: string | null = null
+
+function handlePhotoChange(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  photoError.value = ''
+  if (cropperRevokeUrl) URL.revokeObjectURL(cropperRevokeUrl)
+  const url = URL.createObjectURL(file)
+  cropperRevokeUrl = url
+  cropperSrc.value = url
+  cropperFilename.value = file.name
+  cropperOpen.value = true
+  input.value = ''
+}
+
+function closeCropper() {
+  cropperOpen.value = false
+  if (cropperRevokeUrl) {
+    URL.revokeObjectURL(cropperRevokeUrl)
+    cropperRevokeUrl = null
+  }
+  cropperSrc.value = null
+}
+
+async function onCropperSaved(payload: { blob: Blob; filename: string }) {
+  closeCropper()
+  photoUploading.value = true
+  photoError.value = ''
+  try {
+    const file = new File([payload.blob], payload.filename, { type: payload.blob.type })
+    const result = await uploadFile(file, 'artwork')
+    form.img_url = result.url
+  } catch (err: unknown) {
+    photoError.value = err instanceof Error ? err.message : 'Upload failed'
+  } finally {
+    photoUploading.value = false
+  }
+}
 
 const form = reactive({
   name: '',
@@ -426,9 +494,41 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
   font-size: 0.9rem;
 }
 
+.input-with-action {
+  display: flex;
+  gap: 0.5rem;
+}
+.input-with-action input { flex: 1; }
+.btn-upload {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.5rem 0.875rem;
+  background: #edf2f7;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #4a5568;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+.btn-upload:hover { background: #e2e8f0; border-color: #cbd5e0; }
+.probe-error {
+  padding: 0.5rem 0.75rem;
+  background: #fff5f5;
+  color: #c53030;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  margin: 0.5rem 0 0;
+}
+
 @media (max-width: 600px) {
   .form-row { flex-direction: column; gap: 0.75rem; }
   .person-row { flex-wrap: wrap; }
   .person-actions { width: 100%; justify-content: flex-end; }
+  .input-with-action { flex-wrap: wrap; }
+  .input-with-action input { min-width: 0; flex: 1 1 100%; }
+  .input-with-action .btn-upload { flex: 1; justify-content: center; }
 }
 </style>

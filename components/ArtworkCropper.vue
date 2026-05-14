@@ -3,7 +3,7 @@
     <div v-if="open" class="ac-overlay" @click.self="cancel">
       <div class="ac-modal">
         <div class="ac-header">
-          <h3>Crop to 1400×1400</h3>
+          <h3>Crop to {{ outputSize }}×{{ outputSize }}</h3>
           <button class="ac-close" type="button" @click="cancel" aria-label="Close">×</button>
         </div>
         <p class="ac-hint">Drag to position. Scroll or use the slider to zoom. The square overlay is what gets uploaded.</p>
@@ -52,20 +52,25 @@
 </template>
 
 <script setup lang="ts">
-const props = defineProps<{
-  open: boolean
-  /** Object URL or data URL for the source image. */
-  src: string | null
-  /** Original filename — used to derive the output filename. */
-  filename: string
-}>()
+const props = withDefaults(
+  defineProps<{
+    open: boolean
+    /** Object URL or data URL for the source image. */
+    src: string | null
+    /** Original filename — used to derive the output filename. */
+    filename: string
+    /** Output edge length in px. Defaults to Apple Podcasts artwork minimum. */
+    outputSize?: number
+  }>(),
+  { outputSize: 1400 },
+)
 
 const emit = defineEmits<{
   (e: 'cancel'): void
   (e: 'cropped', payload: { blob: Blob; filename: string }): void
 }>()
 
-const OUTPUT_SIZE = 1400 // px (Apple Podcasts minimum)
+const OUTPUT_SIZE = computed(() => props.outputSize)
 const FRAME_SIZE = 420   // px on-screen viewport size
 
 const frameEl = ref<HTMLDivElement | null>(null)
@@ -105,8 +110,8 @@ function onImageLoad() {
   if (!img) return
   naturalW.value = img.naturalWidth
   naturalH.value = img.naturalHeight
-  if (naturalW.value < OUTPUT_SIZE || naturalH.value < OUTPUT_SIZE) {
-    errorMsg.value = `Source is ${naturalW.value}×${naturalH.value}; output will be upscaled to ${OUTPUT_SIZE}×${OUTPUT_SIZE}. For best results upload an image at least ${OUTPUT_SIZE}px on each side.`
+  if (naturalW.value < OUTPUT_SIZE.value || naturalH.value < OUTPUT_SIZE.value) {
+    errorMsg.value = `Source is ${naturalW.value}×${naturalH.value}; output will be upscaled to ${OUTPUT_SIZE.value}×${OUTPUT_SIZE.value}. For best results upload an image at least ${OUTPUT_SIZE.value}px on each side.`
   }
   // Cover-style minimum scale — image always fills the frame so the output
   // is always real pixels, never letterboxed.
@@ -182,7 +187,7 @@ function deriveOutputFilename(orig: string): string {
   const dot = orig.lastIndexOf('.')
   const base = dot > 0 ? orig.slice(0, dot) : orig
   // Always emit JPEG since we're rasterizing through canvas; .png/.webp inputs lose alpha intentionally.
-  return `${base}-${OUTPUT_SIZE}.jpg`
+  return `${base}-${OUTPUT_SIZE.value}.jpg`
 }
 
 async function save() {
@@ -190,8 +195,8 @@ async function save() {
   saving.value = true
   try {
     const canvas = document.createElement('canvas')
-    canvas.width = OUTPUT_SIZE
-    canvas.height = OUTPUT_SIZE
+    canvas.width = OUTPUT_SIZE.value
+    canvas.height = OUTPUT_SIZE.value
     const ctx = canvas.getContext('2d')
     if (!ctx) throw new Error('Canvas not supported')
 
@@ -201,7 +206,7 @@ async function save() {
     const srcW = FRAME_SIZE / scale.value
     const srcH = FRAME_SIZE / scale.value
 
-    ctx.drawImage(imgEl.value, srcX, srcY, srcW, srcH, 0, 0, OUTPUT_SIZE, OUTPUT_SIZE)
+    ctx.drawImage(imgEl.value, srcX, srcY, srcW, srcH, 0, 0, OUTPUT_SIZE.value, OUTPUT_SIZE.value)
 
     const blob: Blob = await new Promise((resolve, reject) => {
       canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('Canvas export failed'))), 'image/jpeg', 0.92)

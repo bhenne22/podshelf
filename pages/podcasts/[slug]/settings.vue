@@ -434,6 +434,14 @@
       @select="onArtworkPicked"
     />
 
+    <ArtworkCropper
+      :open="cropperOpen"
+      :src="cropperSrc"
+      :filename="cropperFilename"
+      @cancel="closeCropper"
+      @cropped="onCropperSaved"
+    />
+
     <div v-if="showDeleteConfirm" class="modal-overlay" @click.self="showDeleteConfirm = false">
       <div class="modal">
         <h3>Delete this podcast?</h3>
@@ -706,13 +714,42 @@ async function handleArtworkChange(event: Event) {
   const file = input.files?.[0]
   if (!file) return
   artworkError.value = ''
+  openCropper(file)
+  input.value = ''
+}
+
+const cropperOpen = ref(false)
+const cropperSrc = ref<string | null>(null)
+const cropperFilename = ref('')
+let cropperRevokeUrl: string | null = null
+
+function openCropper(file: File) {
+  if (cropperRevokeUrl) URL.revokeObjectURL(cropperRevokeUrl)
+  const url = URL.createObjectURL(file)
+  cropperRevokeUrl = url
+  cropperSrc.value = url
+  cropperFilename.value = file.name
+  cropperOpen.value = true
+}
+
+function closeCropper() {
+  cropperOpen.value = false
+  if (cropperRevokeUrl) {
+    URL.revokeObjectURL(cropperRevokeUrl)
+    cropperRevokeUrl = null
+  }
+  cropperSrc.value = null
+}
+
+async function onCropperSaved(payload: { blob: Blob; filename: string }) {
+  closeCropper()
+  artworkError.value = ''
   try {
+    const file = new File([payload.blob], payload.filename, { type: payload.blob.type })
     const result = await uploadFile(file, 'artwork')
     form.image_url = result.url
   } catch (err: unknown) {
     artworkError.value = err instanceof Error ? err.message : 'Artwork upload failed'
-  } finally {
-    input.value = ''
   }
 }
 
