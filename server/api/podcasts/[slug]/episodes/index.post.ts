@@ -51,6 +51,14 @@ export default defineEventHandler(async (event) => {
   const effectiveStatus = resolved.status ?? 'draft'
   const publishedAt = resolved.publishedAt
 
+  // Empty strings from the form mean "no value." Normalize before INSERT so a
+  // datetime-local picker that the user cleared doesn't land in the DB as "".
+  const recordingStartsAt = body.recording_starts_at === '' ? null : (body.recording_starts_at ?? null)
+  const recordingDurationMinutes =
+    body.recording_duration_minutes === '' || body.recording_duration_minutes == null
+      ? null
+      : Number(body.recording_duration_minutes)
+
   const result = db.prepare(`
     INSERT INTO episodes (
       podcast_id, title, slug, episode_number, season_number,
@@ -59,7 +67,8 @@ export default defineEventHandler(async (event) => {
       published_at, status, tags, transcript_path, transcript_type,
       chapters_url, episode_type, itunes_title, itunes_author,
       itunes_explicit, season_name, episode_display,
-      license_identifier, license_url
+      license_identifier, license_url,
+      recording_starts_at, recording_duration_minutes
     ) VALUES (
       @podcast_id, @title, @slug, @episode_number, @season_number,
       @description, @audio_url, @audio_filename, @audio_size_bytes,
@@ -67,7 +76,8 @@ export default defineEventHandler(async (event) => {
       @published_at, @status, @tags, @transcript_path, @transcript_type,
       @chapters_url, @episode_type, @itunes_title, @itunes_author,
       @itunes_explicit, @season_name, @episode_display,
-      @license_identifier, @license_url
+      @license_identifier, @license_url,
+      @recording_starts_at, @recording_duration_minutes
     )
   `).run({
     podcast_id: podcastId,
@@ -96,6 +106,8 @@ export default defineEventHandler(async (event) => {
     episode_display: body.episode_display ?? null,
     license_identifier: body.license_identifier ?? null,
     license_url: body.license_url ?? null,
+    recording_starts_at: recordingStartsAt,
+    recording_duration_minutes: recordingDurationMinutes,
   })
 
   const episodeId = Number(result.lastInsertRowid)

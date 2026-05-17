@@ -60,6 +60,7 @@ CREATE TABLE IF NOT EXISTS podcasts (
   seasons_enabled          INTEGER NOT NULL DEFAULT 1,
   episode_numbers_enabled  INTEGER NOT NULL DEFAULT 1,
   timezone                 TEXT NOT NULL DEFAULT 'UTC',
+  recording_default_duration_minutes  INTEGER,
   feed_last_modified       TEXT NOT NULL DEFAULT (datetime('now')),
   created_at               TEXT DEFAULT (datetime('now')),
   updated_at               TEXT DEFAULT (datetime('now'))
@@ -140,12 +141,19 @@ CREATE TABLE IF NOT EXISTS episodes (
   episode_display         TEXT,
   license_identifier      TEXT,
   license_url             TEXT,
+  recording_starts_at         TEXT,
+  recording_duration_minutes  INTEGER,
   created_at              TEXT DEFAULT (datetime('now')),
   updated_at              TEXT DEFAULT (datetime('now')),
   UNIQUE (podcast_id, slug)
 );
 
 CREATE INDEX IF NOT EXISTS idx_episodes_podcast_id ON episodes(podcast_id);
+-- The recording_starts_at index is created by applyMigrations() in
+-- server/db/index.ts after the column ALTER for existing databases. We
+-- can't put it here because SCHEMA_SQL runs before applyMigrations, and
+-- on an old database the column wouldn't exist yet — the CREATE INDEX
+-- would error out before migrations had a chance to run.
 
 CREATE TABLE IF NOT EXISTS people (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -341,3 +349,24 @@ CREATE TABLE IF NOT EXISTS downloads (
 CREATE INDEX IF NOT EXISTS idx_downloads_episode_id ON downloads(episode_id);
 CREATE INDEX IF NOT EXISTS idx_downloads_downloaded_at ON downloads(downloaded_at);
 CREATE INDEX IF NOT EXISTS idx_downloads_ip_hash_episode ON downloads(ip_hash, episode_id);
+
+-- Per-user opaque tokens for subscribing to .ics calendar feeds. Calendar
+-- apps can't send X-Api-Key headers, so feed URLs embed an unguessable
+-- token. One token = one feed scope (podcast or network). Revoking sets
+-- revoked_at; the feed route returns 410 Gone so subscribers drop the
+-- subscription cleanly instead of polling forever.
+CREATE TABLE IF NOT EXISTS schedule_tokens (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token       TEXT NOT NULL UNIQUE,
+  scope_type  TEXT NOT NULL,
+  scope_id    INTEGER NOT NULL,
+  label       TEXT,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  revoked_at  TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_schedule_tokens_token ON schedule_tokens(token);
+CREATE INDEX IF NOT EXISTS idx_schedule_tokens_user ON schedule_tokens(user_id);
+CREATE INDEX IF NOT EXISTS idx_schedule_tokens_scope
+  ON schedule_tokens(scope_type, scope_id);

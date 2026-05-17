@@ -22,11 +22,13 @@ export default defineEventHandler((event) => {
 
   const db = getDb()
   const row = db.prepare(`
-    SELECT episode_title_template, episode_description_template
+    SELECT episode_title_template, episode_description_template,
+           recording_default_duration_minutes
     FROM podcasts WHERE id = ?
   `).get(podcastId) as {
     episode_title_template: string | null
     episode_description_template: string | null
+    recording_default_duration_minutes: number | null
   }
 
   const ctx = suggestNextEpisodeContext(podcastId)
@@ -41,5 +43,6 @@ export default defineEventHandler((event) => {
     description: renderTemplate(row.episode_description_template, renderCtx),
     season_number: ctx.next_season_number,
     episode_number: ctx.next_episode_number,
+    recording_default_duration_minutes: row.recording_default_duration_minutes,
   }
 })

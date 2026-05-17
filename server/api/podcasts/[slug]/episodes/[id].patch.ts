@@ -17,6 +17,7 @@ const UPDATABLE = [
   'itunes_title', 'itunes_author', 'itunes_explicit',
   'season_name', 'episode_display',
   'license_identifier', 'license_url',
+  'recording_starts_at', 'recording_duration_minutes',
 ]
 
 /**
@@ -47,6 +48,19 @@ export default defineEventHandler(async (event) => {
     const resolved = resolvePublishTiming('published', incomingPubDate as string | null | undefined)
     body.status = resolved.status
     body.published_at = resolved.publishedAt
+  }
+
+  // Empty strings from the form mean "no value" for the recording fields —
+  // normalize so a cleared datetime-local input doesn't land as "" in the DB.
+  if ('recording_starts_at' in body && body.recording_starts_at === '') {
+    body.recording_starts_at = null
+  }
+  if ('recording_duration_minutes' in body) {
+    if (body.recording_duration_minutes === '' || body.recording_duration_minutes == null) {
+      body.recording_duration_minutes = null
+    } else {
+      body.recording_duration_minutes = Number(body.recording_duration_minutes)
+    }
   }
 
   const updates: string[] = []

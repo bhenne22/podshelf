@@ -28,6 +28,7 @@ const ALLOWED_FIELDS = new Set([
   'itunes_title', 'itunes_author', 'itunes_explicit',
   'season_name', 'episode_display',
   'license_identifier', 'license_url',
+  'recording_starts_at', 'recording_duration_minutes',
   'created_at', 'updated_at',
 ])
 
@@ -40,6 +41,7 @@ const DEFAULT_SELECT_COLS = `
   itunes_title, itunes_author, itunes_explicit,
   season_name, episode_display,
   license_identifier, license_url,
+  recording_starts_at, recording_duration_minutes,
   created_at, updated_at
 `
 

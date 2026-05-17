@@ -54,4 +54,18 @@ export function validateEpisodeFields(body: Record<string, unknown>) {
       throw createError({ statusCode: 400, statusMessage: 'published_at must be a valid date' })
     }
   }
+
+  if (body.recording_starts_at != null && body.recording_starts_at !== '') {
+    const d = new Date(body.recording_starts_at as string)
+    if (isNaN(d.getTime())) {
+      throw createError({ statusCode: 400, statusMessage: 'recording_starts_at must be a valid date' })
+    }
+  }
+
+  if (body.recording_duration_minutes != null && body.recording_duration_minutes !== '') {
+    const n = Number(body.recording_duration_minutes)
+    if (!Number.isInteger(n) || n <= 0) {
+      throw createError({ statusCode: 400, statusMessage: 'recording_duration_minutes must be a positive integer' })
+    }
+  }
 }

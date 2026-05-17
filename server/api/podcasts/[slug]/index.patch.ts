@@ -25,6 +25,7 @@ const UPDATABLE = [
   'episode_title_template', 'episode_description_template',
   'seasons_enabled', 'episode_numbers_enabled',
   'timezone',
+  'recording_default_duration_minutes',
   'storage_adapter', 'github_owner', 'github_repo', 'github_event_type',
   'lifecycle',
   'build_admin_only',
@@ -67,7 +68,7 @@ export default defineEventHandler(async (event) => {
            funding_url, funding_label, verify_txt, license_identifier, license_url,
            episode_title_template, episode_description_template,
            seasons_enabled, episode_numbers_enabled,
-           timezone,
+           timezone, recording_default_duration_minutes,
            storage_adapter, github_owner, github_repo, github_event_type,
            lifecycle, build_admin_only
     FROM podcasts WHERE id = ?
@@ -136,6 +137,22 @@ export default defineEventHandler(async (event) => {
     body.timezone = v
   }
 
+  if ('recording_default_duration_minutes' in body) {
+    const raw = body.recording_default_duration_minutes
+    if (raw === null || raw === '' || raw === undefined) {
+      body.recording_default_duration_minutes = null
+    } else {
+      const n = Number(raw)
+      if (!Number.isInteger(n) || n <= 0) {
+        throw createError({
+          statusCode: 400,
+          statusMessage: 'recording_default_duration_minutes must be a positive integer',
+        })
+      }
+      body.recording_default_duration_minutes = n
+    }
+  }
+
   const updates: string[] = []
   const values: Record<string, unknown> = { id: podcastId }
   for (const field of UPDATABLE) {
@@ -175,7 +192,7 @@ export default defineEventHandler(async (event) => {
       funding_url, funding_label, verify_txt, license_identifier, license_url,
       episode_title_template, episode_description_template,
       seasons_enabled, episode_numbers_enabled,
-      timezone,
+      timezone, recording_default_duration_minutes,
       storage_adapter, github_owner, github_repo, github_event_type,
       lifecycle, build_admin_only,
       created_at, updated_at

@@ -26,6 +26,7 @@ export default defineEventHandler((event) => {
       itunes_type, podcast_locked, itunes_complete, itunes_block,
       funding_url, funding_label, verify_txt, license_identifier, license_url,
       episode_title_template, episode_description_template,
+      recording_default_duration_minutes,
       guid, status, created_at, updated_at,
       webhook_format, webhook_enabled,
       github_owner, github_repo, github_event_type, github_auto_trigger
@@ -43,6 +44,7 @@ export default defineEventHandler((event) => {
       itunes_title, itunes_author, itunes_explicit,
       season_name, episode_display,
       license_identifier, license_url,
+      recording_starts_at, recording_duration_minutes,
       created_at, updated_at
     FROM episodes
     WHERE podcast_id = ?

@@ -33,6 +33,9 @@ interface ArchiveEpisode {
   episode_display: string | null
   license_identifier: string | null
   license_url: string | null
+  // Both optional — pre-recording-schedule archives won't have these fields.
+  recording_starts_at?: string | null
+  recording_duration_minutes?: number | null
 }
 
 interface ArchivePerson {
@@ -75,6 +78,7 @@ const PODCAST_RESTORE_FIELDS = [
   'itunes_type', 'podcast_locked', 'itunes_complete', 'itunes_block',
   'funding_url', 'funding_label', 'verify_txt', 'license_identifier', 'license_url',
   'episode_title_template', 'episode_description_template', 'guid',
+  'recording_default_duration_minutes',
 ] as const
 
 /**
@@ -137,9 +141,10 @@ export default defineEventHandler(async (event) => {
            category, explicit, website, audio_tracking_prefix,
            itunes_type, podcast_locked, itunes_complete, itunes_block,
            funding_url, funding_label, verify_txt, license_identifier, license_url,
-           episode_title_template, episode_description_template, guid
+           episode_title_template, episode_description_template, guid,
+           recording_default_duration_minutes
     FROM podcasts WHERE id = ?
-  `).get(podcastId) as Record<string, string | null>
+  `).get(podcastId) as Record<string, string | number | null>
 
   const settingsBackfilled: string[] = []
   const setClauses: string[] = []
@@ -171,7 +176,8 @@ export default defineEventHandler(async (event) => {
       guid, episode_type,
       itunes_title, itunes_author, itunes_explicit,
       season_name, episode_display,
-      license_identifier, license_url
+      license_identifier, license_url,
+      recording_starts_at, recording_duration_minutes
     ) VALUES (
       @podcast_id, @title, @slug, @episode_number, @season_number,
       @description, @audio_url, @audio_filename, @audio_size_bytes,
@@ -181,7 +187,8 @@ export default defineEventHandler(async (event) => {
       @guid, @episode_type,
       @itunes_title, @itunes_author, @itunes_explicit,
       @season_name, @episode_display,
-      @license_identifier, @license_url
+      @license_identifier, @license_url,
+      @recording_starts_at, @recording_duration_minutes
     )
   `)
 
@@ -253,6 +260,8 @@ export default defineEventHandler(async (event) => {
         episode_display: ep.episode_display,
         license_identifier: ep.license_identifier,
         license_url: ep.license_url,
+        recording_starts_at: ep.recording_starts_at ?? null,
+        recording_duration_minutes: ep.recording_duration_minutes ?? null,
       })
       episodeIdMap.set(ep.id, Number(result.lastInsertRowid))
       importedEpisodes++

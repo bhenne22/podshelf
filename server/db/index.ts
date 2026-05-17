@@ -62,6 +62,7 @@ CREATE TABLE IF NOT EXISTS podcasts (
   seasons_enabled          INTEGER NOT NULL DEFAULT 1,
   episode_numbers_enabled  INTEGER NOT NULL DEFAULT 1,
   timezone                 TEXT NOT NULL DEFAULT 'UTC',
+  recording_default_duration_minutes  INTEGER,
   feed_last_modified       TEXT NOT NULL DEFAULT (datetime('now')),
   created_at               TEXT DEFAULT (datetime('now')),
   updated_at               TEXT DEFAULT (datetime('now'))
@@ -139,12 +140,16 @@ CREATE TABLE IF NOT EXISTS episodes (
   episode_display         TEXT,
   license_identifier      TEXT,
   license_url             TEXT,
+  recording_starts_at         TEXT,
+  recording_duration_minutes  INTEGER,
   created_at              TEXT DEFAULT (datetime('now')),
   updated_at              TEXT DEFAULT (datetime('now')),
   UNIQUE (podcast_id, slug)
 );
 
 CREATE INDEX IF NOT EXISTS idx_episodes_podcast_id ON episodes(podcast_id);
+-- idx_episodes_recording_starts_at is created in applyMigrations() AFTER
+-- the column ALTER for old databases — see schema.sql for context.
 
 CREATE TABLE IF NOT EXISTS people (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -305,6 +310,22 @@ CREATE TABLE IF NOT EXISTS downloads (
 CREATE INDEX IF NOT EXISTS idx_downloads_episode_id ON downloads(episode_id);
 CREATE INDEX IF NOT EXISTS idx_downloads_downloaded_at ON downloads(downloaded_at);
 CREATE INDEX IF NOT EXISTS idx_downloads_ip_hash_episode ON downloads(ip_hash, episode_id);
+
+CREATE TABLE IF NOT EXISTS schedule_tokens (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token       TEXT NOT NULL UNIQUE,
+  scope_type  TEXT NOT NULL,
+  scope_id    INTEGER NOT NULL,
+  label       TEXT,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  revoked_at  TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_schedule_tokens_token ON schedule_tokens(token);
+CREATE INDEX IF NOT EXISTS idx_schedule_tokens_user ON schedule_tokens(user_id);
+CREATE INDEX IF NOT EXISTS idx_schedule_tokens_scope
+  ON schedule_tokens(scope_type, scope_id);
 `
 
 let _db: Database.Database | null = null
@@ -445,6 +466,9 @@ function applyMigrations(db: Database.Database) {
   if (!podcastCols.includes('timezone')) {
     db.exec("ALTER TABLE podcasts ADD COLUMN timezone TEXT NOT NULL DEFAULT 'UTC'")
   }
+  if (!podcastCols.includes('recording_default_duration_minutes')) {
+    db.exec('ALTER TABLE podcasts ADD COLUMN recording_default_duration_minutes INTEGER')
+  }
 
   const auditCols = cols('audit_log')
   if (!auditCols.includes('api_key_id')) {
@@ -491,6 +515,16 @@ function applyMigrations(db: Database.Database) {
   if (!episodeCols.includes('license_url')) {
     db.exec('ALTER TABLE episodes ADD COLUMN license_url TEXT')
   }
+  if (!episodeCols.includes('recording_starts_at')) {
+    db.exec('ALTER TABLE episodes ADD COLUMN recording_starts_at TEXT')
+  }
+  if (!episodeCols.includes('recording_duration_minutes')) {
+    db.exec('ALTER TABLE episodes ADD COLUMN recording_duration_minutes INTEGER')
+  }
+  // Created here (not in SCHEMA_SQL) because on an old database the column
+  // doesn't exist when SCHEMA_SQL runs, and the CREATE INDEX would error.
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_episodes_recording_starts_at
+           ON episodes(podcast_id, recording_starts_at)`)
 
   const networkPropDefCols = cols('network_property_definitions')
   if (networkPropDefCols.length > 0 && !networkPropDefCols.includes('description')) {
