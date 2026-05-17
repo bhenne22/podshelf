@@ -72,6 +72,8 @@
           </section>
         </div>
 
+        <SchedulePanel scope-type="podcast" :scope-slug="podcastSlug" />
+
         <section class="panel">
           <h2>Quick Links</h2>
           <div class="quick-links">
