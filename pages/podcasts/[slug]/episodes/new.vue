@@ -45,6 +45,31 @@
         </div>
 
         <div class="form-section">
+          <h2>Recording</h2>
+          <p class="hint section-hint">
+            Optional. Adds a timed event to the calendar feed for the
+            recording session itself. Independent of the publish date.
+          </p>
+
+          <div class="form-row">
+            <div class="form-group flex-2">
+              <label for="recording_starts_at">Recording date &amp; time</label>
+              <input id="recording_starts_at"
+                v-model="form.recording_starts_at"
+                type="datetime-local" />
+              <p class="hint">Times are in the podcast's timezone: <strong>{{ podcastTz }}</strong> ({{ tzAbbr }}).</p>
+            </div>
+            <div class="form-group">
+              <label for="recording_duration_minutes">Duration (minutes)</label>
+              <input id="recording_duration_minutes"
+                v-model.number="form.recording_duration_minutes"
+                type="number" min="1" step="1"
+                :placeholder="String(recordingDurationDefault)" />
+            </div>
+          </div>
+        </div>
+
+        <div class="form-section">
           <h2>Basic Info</h2>
           <div class="form-row">
             <div class="form-group flex-2">
@@ -377,6 +402,7 @@ interface PodcastFlags {
   seasons_enabled: number | null
   episode_numbers_enabled: number | null
   timezone: string | null
+  recording_default_duration_minutes: number | null
 }
 const { data: podcastSettings } = await useFetch<PodcastFlags>(`/api/podcasts/${podcastSlug}`)
 const seasonsEnabled = computed(() => {
@@ -393,6 +419,8 @@ const episodeNumbersEnabled = computed(() => {
 // load — the dropdown won't fire before that anyway.
 const podcastTz = computed(() => podcastSettings.value?.timezone || 'UTC')
 const tzAbbr = computed(() => tzAbbreviation(podcastTz.value))
+const recordingDurationDefault = computed(() =>
+  podcastSettings.value?.recording_default_duration_minutes ?? 90)
 const pubDatePreview = computed(() => {
   if (!form.published_at) return '—'
   const iso = localInputToUtcIso(form.published_at, podcastTz.value)
@@ -432,6 +460,8 @@ const form = reactive({
   episode_display: '',
   license_identifier: '',
   license_url: '',
+  recording_starts_at: '',
+  recording_duration_minutes: null as number | null,
 })
 
 const saving = ref(false)
@@ -525,6 +555,7 @@ interface EpisodeTemplate {
   description: string
   season_number: number | null
   episode_number: number
+  recording_default_duration_minutes: number | null
 }
 
 onMounted(async () => {
@@ -717,6 +748,10 @@ async function saveEpisode(action: SaveAction) {
 
   form.status = status
 
+  const recordingStartsAtIso = form.recording_starts_at
+    ? localInputToUtcIso(form.recording_starts_at, podcastTz.value)
+    : null
+
   try {
     const episode = await createEpisode({
       ...form,
@@ -726,6 +761,8 @@ async function saveEpisode(action: SaveAction) {
       audio_size_bytes: form.audio_size_bytes || null,
       audio_duration_seconds: form.audio_duration_seconds || null,
       published_at: publishedAtIso,
+      recording_starts_at: recordingStartsAtIso,
+      recording_duration_minutes: form.recording_duration_minutes || null,
     })
     formSaved.value = true
     await router.push(`/podcasts/${podcastSlug}/episodes/${episode.id}`)

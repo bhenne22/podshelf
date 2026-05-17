@@ -104,6 +104,7 @@
             <th scope="col">Title</th>
             <th scope="col">Status</th>
             <th scope="col">Published</th>
+            <th scope="col" title="Scheduled recording date — blank if none">Recording</th>
             <th scope="col">Actions</th>
           </tr>
         </thead>
@@ -139,6 +140,12 @@
                 {{ formatDate(ep.published_at) }}
               </span>
               <span v-else>{{ ep.published_at ? formatDate(ep.published_at) : '—' }}</span>
+            </td>
+            <td class="col-date" data-label="Recording">
+              <span v-if="ep.recording_starts_at" :title="formatDateTime(ep.recording_starts_at)">
+                {{ formatDate(ep.recording_starts_at) }}
+              </span>
+              <span v-else>—</span>
             </td>
             <td class="col-actions">
               <div class="row-menu">

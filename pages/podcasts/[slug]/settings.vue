@@ -309,6 +309,23 @@
         </div>
 
         <div class="form-section">
+          <h2>Recording</h2>
+          <p class="hint section-hint">
+            Default block length for recording sessions. Per-episode duration
+            on the editor overrides this; if neither is set the calendar feed
+            falls back to 90 minutes.
+          </p>
+
+          <div class="form-group">
+            <label for="recording_default_duration_minutes">Default duration (minutes)</label>
+            <input id="recording_default_duration_minutes"
+              v-model="form.recording_default_duration_minutes"
+              type="number" min="1" step="1" placeholder="90" />
+            <p class="hint">Used as the placeholder + initial value in the episode editor's recording panel. Leave blank for no default.</p>
+          </div>
+        </div>
+
+        <div class="form-section">
           <h2>Publish Webhook</h2>
           <p class="hint section-hint">
             Notify a chat channel or other system when an episode goes live.
@@ -558,6 +575,7 @@ interface PodcastRow {
   seasons_enabled: number | null
   episode_numbers_enabled: number | null
   timezone: string | null
+  recording_default_duration_minutes: number | null
   status: string
   lifecycle: string | null
   build_admin_only: number | null
@@ -597,6 +615,7 @@ const form = reactive({
   seasons_enabled: true,
   episode_numbers_enabled: true,
   timezone: 'UTC',
+  recording_default_duration_minutes: '' as '' | string,
   lifecycle: 'active',
   build_admin_only: true,
 })
@@ -821,6 +840,8 @@ watch(initial, (p) => {
   form.seasons_enabled = p.seasons_enabled == null ? true : !!p.seasons_enabled
   form.episode_numbers_enabled = p.episode_numbers_enabled == null ? true : !!p.episode_numbers_enabled
   form.timezone = p.timezone || 'UTC'
+  form.recording_default_duration_minutes =
+    p.recording_default_duration_minutes == null ? '' : String(p.recording_default_duration_minutes)
   form.lifecycle = p.lifecycle || 'active'
   form.build_admin_only = p.build_admin_only == null ? true : !!p.build_admin_only
 }, { immediate: true })

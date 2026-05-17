@@ -101,6 +101,31 @@
           </div>
 
           <div class="form-section">
+            <h2>Recording</h2>
+            <p class="hint section-hint">
+              Optional. Adds a timed event to the calendar feed for the
+              recording session itself. Independent of the publish date.
+            </p>
+
+            <div class="form-row">
+              <div class="form-group flex-2">
+                <label for="recording_starts_at">Recording date &amp; time</label>
+                <input id="recording_starts_at"
+                  v-model="form.recording_starts_at"
+                  type="datetime-local" />
+                <p class="hint">Times are in the podcast's timezone: <strong>{{ podcastTz }}</strong> ({{ tzAbbr }}).</p>
+              </div>
+              <div class="form-group">
+                <label for="recording_duration_minutes">Duration (minutes)</label>
+                <input id="recording_duration_minutes"
+                  v-model.number="form.recording_duration_minutes"
+                  type="number" min="1" step="1"
+                  :placeholder="String(recordingDurationDefault)" />
+              </div>
+            </div>
+          </div>
+
+          <div class="form-section">
             <h2>Basic Info</h2>
             <div class="form-row">
               <div class="form-group flex-2">
@@ -591,6 +616,7 @@ interface PodcastFlags {
   seasons_enabled: number | null
   episode_numbers_enabled: number | null
   timezone: string | null
+  recording_default_duration_minutes: number | null
 }
 const { data: podcastSettings } = await useFetch<PodcastFlags>(`/api/podcasts/${podcastSlug}`)
 const seasonsEnabled = computed(() => {
@@ -603,6 +629,8 @@ const episodeNumbersEnabled = computed(() => {
 })
 const podcastTz = computed(() => podcastSettings.value?.timezone || 'UTC')
 const tzAbbr = computed(() => tzAbbreviation(podcastTz.value))
+const recordingDurationDefault = computed(() =>
+  podcastSettings.value?.recording_default_duration_minutes ?? 90)
 
 // UTC ISO version of the publish-date input for NetworkConflictHint. Tracks
 // in-progress edits, not the saved value, so the hint reacts as the host
@@ -650,9 +678,12 @@ interface EpisodeForm {
   episode_display: string
   license_identifier: string
   license_url: string
+  recording_starts_at: string
+  recording_duration_minutes: number | null
 }
 
 const originalPublishedAt = ref<string | null>(null)
+const originalRecordingStartsAt = ref<string | null>(null)
 
 const form = reactive<EpisodeForm>({
   title: '',
@@ -679,6 +710,8 @@ const form = reactive<EpisodeForm>({
   episode_display: '',
   license_identifier: '',
   license_url: '',
+  recording_starts_at: '',
+  recording_duration_minutes: null,
 })
 
 interface RosterPerson {
@@ -940,12 +973,15 @@ onMounted(async () => {
       episode_display: ep.episode_display || '',
       license_identifier: ep.license_identifier || '',
       license_url: ep.license_url || '',
+      recording_starts_at: utcIsoToLocalInput(ep.recording_starts_at, podcastTz.value),
+      recording_duration_minutes: ep.recording_duration_minutes,
     })
     // <input type="datetime-local"> can only round-trip minute precision,
     // so we display the truncated value but remember the full ISO. On save
     // we send the full ISO back if the user didn't change the field;
     // otherwise we send what they typed.
     originalPublishedAt.value = ep.published_at || null
+    originalRecordingStartsAt.value = ep.recording_starts_at || null
 
     await Promise.all([loadRoster(), loadEpisodePeople()])
     // Auto-probe existing sidecars so the editor surfaces broken or
@@ -1074,6 +1110,20 @@ async function saveEpisode(action: SaveAction = 'save_changes') {
     }
   }
 
+  // Same precision-preservation game as published_at: round-trip the full
+  // server ISO if the user didn't touch the field; otherwise convert what
+  // they typed.
+  let recordingStartsAtToSend: string | null
+  if (form.recording_starts_at) {
+    const originalAsLocalInput = utcIsoToLocalInput(originalRecordingStartsAt.value, podcastTz.value)
+    recordingStartsAtToSend = originalRecordingStartsAt.value
+        && form.recording_starts_at === originalAsLocalInput
+      ? originalRecordingStartsAt.value
+      : localInputToUtcIso(form.recording_starts_at, podcastTz.value)
+  } else {
+    recordingStartsAtToSend = null
+  }
+
   try {
     const updated = await updateEpisode(id, {
       ...form,
@@ -1083,6 +1133,8 @@ async function saveEpisode(action: SaveAction = 'save_changes') {
       audio_size_bytes: form.audio_size_bytes || null,
       audio_duration_seconds: form.audio_duration_seconds || null,
       published_at: publishedAtToSend,
+      recording_starts_at: recordingStartsAtToSend,
+      recording_duration_minutes: form.recording_duration_minutes || null,
     })
     // Sync server-resolved fields back to the form. The server may coerce
     // status (e.g. published+future → scheduled) — reflect that immediately
@@ -1094,6 +1146,13 @@ async function saveEpisode(action: SaveAction = 'save_changes') {
       } else {
         form.published_at = ''
         originalPublishedAt.value = null
+      }
+      if (typeof updated.recording_starts_at === 'string' && updated.recording_starts_at) {
+        form.recording_starts_at = utcIsoToLocalInput(updated.recording_starts_at, podcastTz.value)
+        originalRecordingStartsAt.value = updated.recording_starts_at
+      } else {
+        form.recording_starts_at = ''
+        originalRecordingStartsAt.value = null
       }
       if (typeof updated.status === 'string') form.status = updated.status
     }

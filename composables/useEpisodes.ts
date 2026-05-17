@@ -26,6 +26,8 @@ export interface Episode {
   episode_display: string | null
   license_identifier: string | null
   license_url: string | null
+  recording_starts_at: string | null
+  recording_duration_minutes: number | null
   created_at: string
   updated_at: string
 }
