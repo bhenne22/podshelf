@@ -42,6 +42,8 @@
           </div>
         </section>
 
+        <SchedulePanel scope-type="network" :scope-slug="slug" />
+
         <section v-if="network.podcasts.length" class="timeline-section">
           <div class="timeline-head">
             <h2 class="section-heading">Recent &amp; upcoming episodes</h2>
@@ -68,33 +70,46 @@
             <div v-for="bucket in buckets" :key="bucket.label" class="week">
               <h3 class="week-label">{{ bucket.label }}</h3>
               <ul class="episode-rows">
-                <li v-for="ep in bucket.episodes" :key="ep.episode_id" class="episode-row">
+                <li
+                  v-for="ev in bucket.events"
+                  :key="`${ev.ep.episode_id}-${ev.kind}`"
+                  class="episode-row"
+                  :class="`event-${ev.kind}`"
+                >
                   <img
-                    v-if="ep.podcast_image_url"
-                    :src="ep.podcast_image_url"
-                    :alt="ep.podcast_title"
+                    v-if="ev.ep.podcast_image_url"
+                    :src="ev.ep.podcast_image_url"
+                    :alt="ev.ep.podcast_title"
                     class="row-art"
                   />
                   <div v-else class="row-art placeholder" />
                   <div class="row-body">
                     <div class="row-title">
-                      <span class="row-show">{{ ep.podcast_title }}</span>
+                      <span class="event-kind" :class="`event-kind-${ev.kind}`">
+                        {{ ev.kind === 'recording' ? 'REC' : 'DROP' }}
+                      </span>
+                      <span class="row-show">{{ ev.ep.podcast_title }}</span>
                       <span class="row-sep">·</span>
                       <NuxtLink
-                        v-if="memberPodcastSlugs.has(ep.podcast_slug)"
-                        :to="`/podcasts/${ep.podcast_slug}/episodes/${ep.episode_id}`"
+                        v-if="memberPodcastSlugs.has(ev.ep.podcast_slug)"
+                        :to="`/podcasts/${ev.ep.podcast_slug}/episodes/${ev.ep.episode_id}`"
                         class="row-ep-link"
                       >
-                        {{ ep.episode_title }}
+                        {{ ev.ep.episode_title }}
                       </NuxtLink>
-                      <span v-else>{{ ep.episode_title }}</span>
+                      <span v-else>{{ ev.ep.episode_title }}</span>
                     </div>
                     <div class="row-meta">
-                      <span class="row-when">{{ formatWhen(ep.published_at, ep.podcast_timezone) }}</span>
+                      <span class="row-when">{{ formatWhen(ev.at, ev.ep.podcast_timezone) }}</span>
                       <span
+                        v-if="ev.kind === 'recording' && ev.duration_minutes"
+                        class="row-when"
+                      >· {{ ev.duration_minutes }} min</span>
+                      <span
+                        v-if="ev.kind === 'publish'"
                         class="status-badge"
-                        :class="`status-${ep.status}`"
-                      >{{ ep.status }}</span>
+                        :class="`status-${ev.ep.status}`"
+                      >{{ ev.ep.status }}</span>
                     </div>
                   </div>
                 </li>
@@ -155,7 +170,10 @@ async function loadEpisodes() {
     const now = new Date()
     const from = new Date(now.getTime() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000).toISOString()
     const to = new Date(now.getTime() + windowDays.value * 24 * 60 * 60 * 1000).toISOString()
-    episodes.value = await getUpcomingEpisodes(slug.value, { from, to })
+    // include=recording widens the response to bring in REC events. Each
+    // episode may produce 1 or 2 timeline entries below; the endpoint
+    // still returns one row per episode.
+    episodes.value = await getUpcomingEpisodes(slug.value, { from, to, include: 'recording' })
   } catch {
     episodes.value = []
   } finally {
@@ -167,7 +185,36 @@ watch([network, windowDays], () => {
   if (network.value) loadEpisodes()
 }, { immediate: true })
 
-interface Bucket { label: string; episodes: NetworkUpcomingEpisode[] }
+// One timeline event per render row. An episode with both a publish date
+// and a recording slot produces two events; either kind alone produces one.
+// Carrying the full episode lets the template reuse the existing link/art
+// rendering without per-kind duplication.
+interface TimelineEvent {
+  kind: 'publish' | 'recording'
+  at: string
+  ep: NetworkUpcomingEpisode
+  duration_minutes?: number | null
+}
+
+interface Bucket { label: string; events: TimelineEvent[] }
+
+const timelineEvents = computed<TimelineEvent[]>(() => {
+  const out: TimelineEvent[] = []
+  for (const ep of episodes.value) {
+    if (ep.published_at) {
+      out.push({ kind: 'publish', at: ep.published_at, ep })
+    }
+    if (ep.recording_starts_at) {
+      out.push({
+        kind: 'recording',
+        at: ep.recording_starts_at,
+        ep,
+        duration_minutes: ep.recording_duration_minutes ?? null,
+      })
+    }
+  }
+  return out.sort((a, b) => a.at.localeCompare(b.at))
+})
 
 // Group by ISO week (Mon-start). Labels reference the bucket relative to
 // "this week" so the timeline reads as a quick scan rather than a date list.
@@ -175,14 +222,14 @@ const buckets = computed<Bucket[]>(() => {
   const out: Map<string, Bucket> = new Map()
   const now = new Date()
   const thisWeekStart = startOfWeek(now)
-  for (const ep of episodes.value) {
-    const d = new Date(ep.published_at)
+  for (const ev of timelineEvents.value) {
+    const d = new Date(ev.at)
     const ws = startOfWeek(d)
     const key = ws.toISOString().slice(0, 10)
     if (!out.has(key)) {
-      out.set(key, { label: weekLabel(ws, thisWeekStart), episodes: [] })
+      out.set(key, { label: weekLabel(ws, thisWeekStart), events: [] })
     }
-    out.get(key)!.episodes.push(ep)
+    out.get(key)!.events.push(ev)
   }
   return [...out.values()]
 })
@@ -467,6 +514,39 @@ h1 {
   background: #e6fffa;
   color: #2c7a7b;
   border: 1px solid #81e6d9;
+}
+.status-draft {
+  background: #edf2f7;
+  color: #4a5568;
+  border: 1px solid #cbd5e0;
+}
+
+/* REC events get a subtle accent on the row so they're scannable as a
+   different beat from publish events. Drops keep the original styling. */
+.event-row.event-recording,
+.episode-row.event-recording {
+  border-left: 3px solid #6b46c1;
+}
+
+.event-kind {
+  display: inline-block;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 0.05rem 0.4rem;
+  border-radius: 3px;
+  margin-right: 0.35rem;
+  font-family: ui-monospace, monospace;
+}
+.event-kind-recording {
+  background: #faf5ff;
+  color: #6b46c1;
+  border: 1px solid #d6bcfa;
+}
+.event-kind-publish {
+  background: #ebf8ff;
+  color: #2b6cb0;
+  border: 1px solid #bee3f8;
 }
 
 .loading, .empty {

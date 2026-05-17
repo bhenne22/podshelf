@@ -13,7 +13,7 @@
       <li v-for="ep in episodes" :key="ep.episode_id">
         <strong>{{ ep.podcast_title }}</strong> — {{ ep.episode_title }}
         <span class="conflict-hint-when">
-          ({{ formatWhen(ep.published_at, ep.podcast_timezone) }}, {{ ep.status }})
+          ({{ formatWhen(ep.published_at || '', ep.podcast_timezone) }}, {{ ep.status }})
         </span>
       </li>
     </ul>
@@ -92,8 +92,11 @@ async function runQuery(publishAt: string) {
 
   const dedup = new Map<number, NetworkUpcomingEpisode>()
   for (const ep of results) dedup.set(ep.episode_id, ep)
+  // The endpoint guarantees published_at is non-null in the conflict-hint
+  // branch (no ?include=recording), but the unified type permits null —
+  // coerce to '' rather than non-null-assert so we never sort-throw.
   episodes.value = [...dedup.values()].sort((a, b) =>
-    a.published_at.localeCompare(b.published_at),
+    (a.published_at || '').localeCompare(b.published_at || ''),
   )
 }
 

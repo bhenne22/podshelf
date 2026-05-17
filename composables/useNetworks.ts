@@ -56,20 +56,27 @@ export interface NetworkUpcomingEpisode {
   episode_id: number
   episode_title: string
   episode_slug: string
-  status: 'scheduled' | 'published'
-  published_at: string
+  // 'draft' only appears when ?include=recording brings in episodes that
+  // have a recording slot but no publish state.
+  status: 'draft' | 'scheduled' | 'published'
+  published_at: string | null
   episode_type: string
   podcast_id: number
   podcast_slug: string
   podcast_title: string
   podcast_image_url: string | null
   podcast_timezone: string
+  // Only present when ?include=recording was passed.
+  recording_starts_at?: string | null
+  recording_duration_minutes?: number | null
 }
 
 export interface UpcomingEpisodesParams {
   from?: string
   to?: string
   excludePodcast?: string
+  /** Comma-separated, e.g. "recording" — opt in to recording events. */
+  include?: string
 }
 
 export function useNetworks() {
