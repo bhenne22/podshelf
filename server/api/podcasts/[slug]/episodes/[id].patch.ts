@@ -5,6 +5,7 @@ import { maybeAutoTrigger } from '../../../../utils/github'
 import { bumpFeedLastModified } from '../../../../utils/feed-cache'
 import { logAudit, diffFields, summarizeChanges } from '../../../../utils/audit'
 import { firePublishEvent } from '../../../../utils/publish-event'
+import { fireRecordingEvent } from '../../../../utils/recording-event'
 import { resolvePublishTiming } from '../../../../utils/scheduler'
 import getDb from '../../../../db/index'
 
@@ -121,6 +122,42 @@ export default defineEventHandler(async (event) => {
   } else if (wasOrIsPublished) {
     bumpFeedLastModified(podcastId)
     maybeAutoTrigger(podcastId, 'episode-update')
+  }
+
+  // Recording-change notification. Three transitions worth signalling:
+  //   - none → set      : 'scheduled'
+  //   - set → different : 'moved'  (either timestamp or duration changed)
+  //   - set → none      : 'cancelled'
+  // A duration-only change with no start-time change still counts as 'moved'
+  // since it shifts the block end on subscribers' calendars.
+  const prevStarts = (beforeRow.recording_starts_at as string | null | undefined) ?? null
+  const prevDuration = (beforeRow.recording_duration_minutes as number | null | undefined) ?? null
+  const nextStarts = (updated.recording_starts_at as string | null | undefined) ?? null
+  const nextDuration = (updated.recording_duration_minutes as number | null | undefined) ?? null
+  const startsChanged = (prevStarts || null) !== (nextStarts || null)
+  const durationChanged = (prevDuration ?? null) !== (nextDuration ?? null)
+  if (startsChanged || durationChanged) {
+    let recKind: 'scheduled' | 'moved' | 'cancelled' | null = null
+    if (!prevStarts && nextStarts) recKind = 'scheduled'
+    else if (prevStarts && !nextStarts) recKind = 'cancelled'
+    else if (prevStarts && nextStarts) recKind = 'moved'
+    // Note: !prevStarts && !nextStarts is impossible here — that's the
+    // "no change" branch, which means startsChanged must have been false.
+    // A pure duration-only change with both timestamps null also stays out
+    // (calendar has no event to update).
+    if (recKind) {
+      await fireRecordingEvent({
+        podcastId,
+        episodeId: Number(id),
+        kind: recKind,
+        newStartsAt: nextStarts,
+        newDurationMinutes: nextDuration,
+        previousStartsAt: prevStarts,
+        previousDurationMinutes: prevDuration,
+        actorUserId: user.id,
+        actorApiKeyId: event.context.apiKeyId ?? null,
+      })
+    }
   }
 
   return updated

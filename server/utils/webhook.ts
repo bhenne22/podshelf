@@ -28,6 +28,24 @@ export interface WebhookEpisodePayload {
   published_at: string | null
 }
 
+export type RecordingChangeKind = 'scheduled' | 'moved' | 'cancelled'
+
+export interface WebhookRecordingPayload {
+  kind: RecordingChangeKind
+  episode_title: string
+  episode_url: string
+  episode_number: number | null
+  season_number: number | null
+  // Always UTC ISO; the formatter renders in the podcast's timezone for
+  // the chat-readable string but keeps the raw ISO in the generic payload.
+  new_starts_at: string | null
+  new_duration_minutes: number | null
+  previous_starts_at: string | null
+  previous_duration_minutes: number | null
+  // IANA name used for the human-readable date/time in messages.
+  podcast_timezone: string
+}
+
 export interface WebhookPodcastPayload {
   slug: string
   title: string
@@ -195,6 +213,114 @@ function buildBody(
       fired_at: new Date().toISOString(),
     }),
     contentType: 'application/json',
+  }
+}
+
+function formatRecordingMoment(iso: string | null, tz: string): string {
+  if (!iso) return ''
+  try {
+    return new Date(iso).toLocaleString('en-US', {
+      timeZone: tz,
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZoneName: 'short',
+    })
+  } catch {
+    return iso
+  }
+}
+
+function recordingEpisodeLabel(p: WebhookRecordingPayload): string {
+  if (p.season_number && p.episode_number) return `S${p.season_number}E${p.episode_number}: ${p.episode_title}`
+  if (p.episode_number) return `E${p.episode_number}: ${p.episode_title}`
+  return p.episode_title
+}
+
+function buildRecordingHeadline(p: WebhookRecordingPayload): string {
+  const label = recordingEpisodeLabel(p)
+  const newWhen = formatRecordingMoment(p.new_starts_at, p.podcast_timezone)
+  const prevWhen = formatRecordingMoment(p.previous_starts_at, p.podcast_timezone)
+  const durStr = (m: number | null) => (m ? ` (${m} min)` : '')
+  if (p.kind === 'scheduled') {
+    return `Recording scheduled for ${label} — ${newWhen}${durStr(p.new_duration_minutes)}`
+  }
+  if (p.kind === 'moved') {
+    return `Recording moved for ${label} — now ${newWhen}${durStr(p.new_duration_minutes)} (was ${prevWhen || 'unscheduled'})`
+  }
+  return `Recording cancelled for ${label}${prevWhen ? ` — was ${prevWhen}` : ''}`
+}
+
+function buildRecordingBody(
+  config: WebhookConfig,
+  podcast: WebhookPodcastPayload,
+  rec: WebhookRecordingPayload,
+): { body: string; contentType: string } {
+  const headline = buildRecordingHeadline(rec)
+  if (config.format === 'discord') {
+    const embed: Record<string, unknown> = {
+      title: rec.episode_title,
+      url: rec.episode_url,
+      description: headline,
+      author: { name: podcast.title, url: podcast.website || podcast.feed_url },
+    }
+    return {
+      body: JSON.stringify({
+        content: `📅 ${headline}`,
+        embeds: [embed],
+      }),
+      contentType: 'application/json',
+    }
+  }
+  if (config.format === 'slack') {
+    return {
+      body: JSON.stringify({
+        text: headline,
+        blocks: [
+          {
+            type: 'section',
+            text: { type: 'mrkdwn', text: `*${headline}*\n<${rec.episode_url}|Open episode>` },
+          },
+        ],
+      }),
+      contentType: 'application/json',
+    }
+  }
+  // generic
+  return {
+    body: JSON.stringify({
+      event: `episode.recording.${rec.kind}`,
+      podcast,
+      recording: rec,
+      headline,
+      fired_at: new Date().toISOString(),
+    }),
+    contentType: 'application/json',
+  }
+}
+
+/** Same shape + non-throwing contract as sendPublishWebhook. */
+export async function sendRecordingWebhook(
+  config: WebhookConfig,
+  podcast: WebhookPodcastPayload,
+  rec: WebhookRecordingPayload,
+): Promise<{ ok: boolean; status?: number; message?: string }> {
+  try {
+    const { body, contentType } = buildRecordingBody(config, podcast, rec)
+    const res = await fetch(config.url, {
+      method: 'POST',
+      headers: { 'Content-Type': contentType },
+      body,
+    })
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      return { ok: false, status: res.status, message: text.slice(0, 200) || res.statusText }
+    }
+    return { ok: true, status: res.status }
+  } catch (err: unknown) {
+    return { ok: false, message: err instanceof Error ? err.message : 'webhook failed' }
   }
 }
 

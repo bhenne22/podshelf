@@ -3,6 +3,7 @@ import { requirePodcastAccess } from '../../../../utils/auth'
 import { validateEpisodeFields } from '../../../../utils/validate'
 import { logAudit } from '../../../../utils/audit'
 import { firePublishEvent } from '../../../../utils/publish-event'
+import { fireRecordingEvent } from '../../../../utils/recording-event'
 import { resolvePublishTiming } from '../../../../utils/scheduler'
 import getDb from '../../../../db/index'
 
@@ -143,6 +144,22 @@ export default defineEventHandler(async (event) => {
   // Only kick a rebuild if this episode lands in the published feed.
   if (episode.status === 'published') {
     await firePublishEvent(podcastId, episodeId, 'episode-create', user.id, event.context.apiKeyId ?? null)
+  }
+
+  // Fire the recording webhook when this episode was created with a
+  // recording slot already set — same notification a later PATCH would fire.
+  if (recordingStartsAt) {
+    await fireRecordingEvent({
+      podcastId,
+      episodeId,
+      kind: 'scheduled',
+      newStartsAt: recordingStartsAt,
+      newDurationMinutes: recordingDurationMinutes,
+      previousStartsAt: null,
+      previousDurationMinutes: null,
+      actorUserId: user.id,
+      actorApiKeyId: event.context.apiKeyId ?? null,
+    })
   }
 
   event.node.res.statusCode = 201
