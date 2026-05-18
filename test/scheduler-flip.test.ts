@@ -24,9 +24,17 @@ function makeDb() {
 
 test('raw `<= datetime("now")` is broken for T-separator stored values', () => {
   const db = makeDb()
-  const r1 = db.prepare("SELECT '2026-05-11T00:00' <= datetime('now') AS r").get() as { r: number }
-  const r2 = db.prepare("SELECT '2026-05-11T00:00:00.000Z' <= datetime('now') AS r").get() as { r: number }
-  // Both moments are clearly in the past, but bytewise compare says false.
+  // Derive the fixture date from SQLite's own clock so the YYYY-MM-DD prefix
+  // matches what datetime('now') returns. The bytewise bug only manifests
+  // when the prefix is identical and the comparison lands on the T-vs-space
+  // character at position 10 (T=84, space=32 → T > space → "<=" returns 0).
+  // A hardcoded past date eventually diverges on earlier digits and the
+  // bytewise compare coincidentally gives the right answer.
+  const today = (db.prepare("SELECT strftime('%Y-%m-%d', 'now') AS d").get() as { d: string }).d
+  const r1 = db.prepare("SELECT ? <= datetime('now') AS r").get(`${today}T00:00`) as { r: number }
+  const r2 = db.prepare("SELECT ? <= datetime('now') AS r").get(`${today}T00:00:00.000Z`) as { r: number }
+  // Both moments are clearly in the past (today midnight UTC ≤ now), but
+  // bytewise compare says false.
   assert.equal(r1.r, 0, 'naked compare incorrectly says T00:00 form is NOT in the past')
   assert.equal(r2.r, 0, 'naked compare incorrectly says ISO-Z form is NOT in the past')
 })
