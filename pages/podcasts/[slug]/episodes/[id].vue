@@ -74,55 +74,42 @@
             </button>
           </div>
 
-          <div class="form-section publishing-section">
+          <div class="form-section schedule-section">
             <div class="publishing-header">
-              <h2>Publishing</h2>
+              <h2>Schedule</h2>
               <span :class="['status-pill', form.status]">{{ statusLabel }}</span>
+              <span class="schedule-status-text">
+                <template v-if="form.status === 'published' && form.published_at">Live since {{ publishedDateDisplay }}.</template>
+                <template v-else-if="form.status === 'scheduled' && form.published_at">Scheduled for {{ publishedDateTimeDisplay }}.</template>
+                <template v-else>Draft — set a publish date to schedule, or publish immediately.</template>
+              </span>
             </div>
-            <p v-if="form.status === 'published' && form.published_at" class="hint section-hint">
-              Live since {{ publishedDateDisplay }}.
-            </p>
-            <p v-else-if="form.status === 'scheduled' && form.published_at" class="hint section-hint">
-              Scheduled for {{ publishedDateTimeDisplay }}.
-            </p>
-            <p v-else class="hint section-hint">
-              Currently a draft. Set a publish date to schedule, or publish immediately.
-            </p>
 
             <div class="form-row">
               <div class="form-group flex-2">
                 <label for="published_at_top">Publish Date</label>
                 <input id="published_at_top" v-model="form.published_at" type="datetime-local" />
-                <p class="hint">Times are in the podcast's timezone: <strong>{{ podcastTz }}</strong> ({{ tzAbbr }}).</p>
               </div>
-            </div>
-
-            <NetworkConflictHint :podcast-slug="podcastSlug" :publish-at="publishAtIso" />
-          </div>
-
-          <div class="form-section">
-            <h2>Recording</h2>
-            <p class="hint section-hint">
-              Optional. Adds a timed event to the calendar feed for the
-              recording session itself. Independent of the publish date.
-            </p>
-
-            <div class="form-row">
               <div class="form-group flex-2">
                 <label for="recording_starts_at">Recording date &amp; time</label>
                 <input id="recording_starts_at"
                   v-model="form.recording_starts_at"
                   type="datetime-local" />
-                <p class="hint">Times are in the podcast's timezone: <strong>{{ podcastTz }}</strong> ({{ tzAbbr }}).</p>
               </div>
               <div class="form-group">
-                <label for="recording_duration_minutes">Duration (minutes)</label>
+                <label for="recording_duration_minutes">Duration (min)</label>
                 <input id="recording_duration_minutes"
                   v-model.number="form.recording_duration_minutes"
                   type="number" min="1" step="1"
                   :placeholder="String(recordingDurationDefault)" />
               </div>
             </div>
+
+            <p class="hint schedule-tz-hint">
+              Times in <strong>{{ podcastTz }}</strong> ({{ tzAbbr }}). Recording date is optional — adds a calendar event independent of the publish date.
+            </p>
+
+            <NetworkConflictHint :podcast-slug="podcastSlug" :publish-at="publishAtIso" />
           </div>
 
           <div class="form-section">
@@ -1431,9 +1418,24 @@ h1 { margin: 0; font-size: 1.5rem; color: #1a202c; }
   display: flex;
   align-items: center;
   gap: 0.875rem;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
 }
 .publishing-header h2 { margin: 0; }
+
+.schedule-section { padding: 1rem 1.25rem 1.1rem; }
+.schedule-section h2 { margin: 0; }
+.schedule-status-text {
+  font-size: 0.82rem;
+  color: #4a5568;
+  flex: 1;
+  min-width: 0;
+}
+.schedule-tz-hint {
+  font-size: 0.78rem;
+  color: #718096;
+  margin: 0.5rem 0 0;
+}
 
 .status-pill {
   font-size: 0.72rem;
