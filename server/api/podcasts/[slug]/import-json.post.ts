@@ -86,9 +86,11 @@ const PODCAST_RESTORE_FIELDS = [
  *
  * Body: a Podshelf JSON archive (output of `GET .../export.json`).
  *
- * Restores everything except secrets (storage / github token / webhook URL),
- * which the user re-configures on the target instance. Empty-podcast only —
- * same constraint as the RSS importer.
+ * Restores everything except secrets (storage / github token / webhook URLs),
+ * which the user re-configures on the target instance. Webhook rows in the
+ * archive carry format + events + name but no URL — they're noted in the
+ * audit log on import so the user knows to re-paste the URLs. Empty-podcast
+ * only — same constraint as the RSS importer.
  */
 export default defineEventHandler(async (event) => {
   const slug = getRouterParam(event, 'slug') as string

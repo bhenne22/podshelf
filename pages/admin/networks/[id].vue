@@ -295,6 +295,17 @@
             />
           </div>
         </section>
+
+        <section class="card">
+          <h2 class="card-heading">Webhooks</h2>
+          <p class="hint">
+            Webhooks defined here fire for every podcast in this network when
+            the matching event occurs (in addition to per-podcast webhooks).
+            Useful for a single "network operations" channel that watches the
+            whole roster.
+          </p>
+          <WebhookManager :base-url="`/api/admin/networks/${id}/webhooks`" />
+        </section>
       </template>
     </div>
 

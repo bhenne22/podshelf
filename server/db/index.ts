@@ -54,9 +54,6 @@ CREATE TABLE IF NOT EXISTS podcasts (
   verify_txt               TEXT,
   license_identifier       TEXT,
   license_url              TEXT,
-  webhook_url_encrypted    TEXT,
-  webhook_format           TEXT NOT NULL DEFAULT 'generic',
-  webhook_enabled          INTEGER NOT NULL DEFAULT 0,
   episode_title_template       TEXT,
   episode_description_template TEXT,
   seasons_enabled          INTEGER NOT NULL DEFAULT 1,
@@ -311,6 +308,27 @@ CREATE INDEX IF NOT EXISTS idx_downloads_episode_id ON downloads(episode_id);
 CREATE INDEX IF NOT EXISTS idx_downloads_downloaded_at ON downloads(downloaded_at);
 CREATE INDEX IF NOT EXISTS idx_downloads_ip_hash_episode ON downloads(ip_hash, episode_id);
 
+-- Per-tenant publish + recording webhooks. A row belongs to EITHER a podcast
+-- OR a network (CHECK enforces XOR). events is a JSON array of event names
+-- the webhook should fire for; loadWebhooksForEvent() does the membership
+-- test. Network-scoped rows fan out across every member podcast.
+CREATE TABLE IF NOT EXISTS webhooks (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  podcast_id      INTEGER REFERENCES podcasts(id) ON DELETE CASCADE,
+  network_id      INTEGER REFERENCES networks(id) ON DELETE CASCADE,
+  name            TEXT NOT NULL DEFAULT '',
+  url_encrypted   TEXT NOT NULL,
+  format          TEXT NOT NULL DEFAULT 'generic',
+  enabled         INTEGER NOT NULL DEFAULT 1,
+  events          TEXT NOT NULL DEFAULT '[]',
+  created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  CHECK ((podcast_id IS NULL) <> (network_id IS NULL))
+);
+
+CREATE INDEX IF NOT EXISTS idx_webhooks_podcast ON webhooks(podcast_id);
+CREATE INDEX IF NOT EXISTS idx_webhooks_network ON webhooks(network_id);
+
 CREATE TABLE IF NOT EXISTS schedule_tokens (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -427,15 +445,6 @@ function applyMigrations(db: Database.Database) {
   if (!podcastCols.includes('license_url')) {
     db.exec('ALTER TABLE podcasts ADD COLUMN license_url TEXT')
   }
-  if (!podcastCols.includes('webhook_url_encrypted')) {
-    db.exec('ALTER TABLE podcasts ADD COLUMN webhook_url_encrypted TEXT')
-  }
-  if (!podcastCols.includes('webhook_format')) {
-    db.exec("ALTER TABLE podcasts ADD COLUMN webhook_format TEXT NOT NULL DEFAULT 'generic'")
-  }
-  if (!podcastCols.includes('webhook_enabled')) {
-    db.exec('ALTER TABLE podcasts ADD COLUMN webhook_enabled INTEGER NOT NULL DEFAULT 0')
-  }
   if (!podcastCols.includes('episode_title_template')) {
     db.exec('ALTER TABLE podcasts ADD COLUMN episode_title_template TEXT')
   }
@@ -529,6 +538,53 @@ function applyMigrations(db: Database.Database) {
   const networkPropDefCols = cols('network_property_definitions')
   if (networkPropDefCols.length > 0 && !networkPropDefCols.includes('description')) {
     db.exec('ALTER TABLE network_property_definitions ADD COLUMN description TEXT')
+  }
+
+  // Migrate the single per-podcast webhook config (3 columns on `podcasts`)
+  // into the `webhooks` table. Existing config moves into one row with all
+  // four currently-firing events selected so behavior is preserved exactly.
+  // Then the old columns are dropped — SQLite 3.35+ supports DROP COLUMN.
+  const podcastColsAfter = cols('podcasts')
+  const hasLegacyWebhookCols =
+    podcastColsAfter.includes('webhook_url_encrypted') &&
+    podcastColsAfter.includes('webhook_format') &&
+    podcastColsAfter.includes('webhook_enabled')
+  if (hasLegacyWebhookCols) {
+    const legacyRows = db.prepare(`
+      SELECT id, webhook_url_encrypted, webhook_format, webhook_enabled
+      FROM podcasts
+      WHERE webhook_url_encrypted IS NOT NULL
+    `).all() as Array<{
+      id: number
+      webhook_url_encrypted: string
+      webhook_format: string
+      webhook_enabled: number
+    }>
+    const allEvents = JSON.stringify([
+      'episode.publish',
+      'episode.recording.scheduled',
+      'episode.recording.moved',
+      'episode.recording.cancelled',
+    ])
+    const insertWebhook = db.prepare(`
+      INSERT INTO webhooks (podcast_id, name, url_encrypted, format, enabled, events)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `)
+    db.transaction(() => {
+      for (const r of legacyRows) {
+        const exists = db.prepare(
+          'SELECT 1 FROM webhooks WHERE podcast_id = ? AND url_encrypted = ?'
+        ).get(r.id, r.webhook_url_encrypted)
+        if (exists) continue
+        const format = (r.webhook_format === 'discord' || r.webhook_format === 'slack')
+          ? r.webhook_format
+          : 'generic'
+        insertWebhook.run(r.id, 'Default webhook', r.webhook_url_encrypted, format, r.webhook_enabled ? 1 : 0, allEvents)
+      }
+    })()
+    db.exec('ALTER TABLE podcasts DROP COLUMN webhook_url_encrypted')
+    db.exec('ALTER TABLE podcasts DROP COLUMN webhook_format')
+    db.exec('ALTER TABLE podcasts DROP COLUMN webhook_enabled')
   }
 }
 

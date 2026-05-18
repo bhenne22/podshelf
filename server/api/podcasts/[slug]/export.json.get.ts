@@ -12,6 +12,9 @@ const SCHEMA_VERSION = 1
  * Excludes: secrets (storage/github/webhook-url), members, api_keys,
  * audit_log, downloads. Importable into another Podshelf instance via
  * `POST /api/podcasts/[slug]/import-json` on an empty target podcast.
+ *
+ * Webhooks: emits format + enabled + events + name per row; URLs are NOT
+ * exported (they're secrets — re-paste on the target instance).
  */
 export default defineEventHandler((event) => {
   const slug = getRouterParam(event, 'slug') as string
@@ -28,10 +31,16 @@ export default defineEventHandler((event) => {
       episode_title_template, episode_description_template,
       recording_default_duration_minutes,
       guid, status, created_at, updated_at,
-      webhook_format, webhook_enabled,
       github_owner, github_repo, github_event_type, github_auto_trigger
     FROM podcasts WHERE id = ?
   `).get(podcastId)
+
+  const webhooks = db.prepare(`
+    SELECT name, format, enabled, events, created_at, updated_at
+    FROM webhooks
+    WHERE podcast_id = ?
+    ORDER BY id
+  `).all(podcastId)
 
   const episodes = db.prepare(`
     SELECT
@@ -79,6 +88,7 @@ export default defineEventHandler((event) => {
     people,
     episode_people: episodePeople,
     slug_aliases: slugAliases,
+    webhooks,
   }
 
   const filename = `${slug}.podshelf.json`

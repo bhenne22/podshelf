@@ -52,9 +52,6 @@ CREATE TABLE IF NOT EXISTS podcasts (
   verify_txt               TEXT,
   license_identifier       TEXT,
   license_url              TEXT,
-  webhook_url_encrypted    TEXT,
-  webhook_format           TEXT NOT NULL DEFAULT 'generic',
-  webhook_enabled          INTEGER NOT NULL DEFAULT 0,
   episode_title_template       TEXT,
   episode_description_template TEXT,
   seasons_enabled          INTEGER NOT NULL DEFAULT 1,
@@ -349,6 +346,27 @@ CREATE TABLE IF NOT EXISTS downloads (
 CREATE INDEX IF NOT EXISTS idx_downloads_episode_id ON downloads(episode_id);
 CREATE INDEX IF NOT EXISTS idx_downloads_downloaded_at ON downloads(downloaded_at);
 CREATE INDEX IF NOT EXISTS idx_downloads_ip_hash_episode ON downloads(ip_hash, episode_id);
+
+-- Per-tenant publish + recording webhooks. A row belongs to EITHER a podcast
+-- OR a network (CHECK enforces XOR). `events` is a JSON array of event names
+-- the webhook should fire for; loadWebhooksForEvent() does the membership
+-- test. Network-scoped rows fan out across every member podcast.
+CREATE TABLE IF NOT EXISTS webhooks (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  podcast_id      INTEGER REFERENCES podcasts(id) ON DELETE CASCADE,
+  network_id      INTEGER REFERENCES networks(id) ON DELETE CASCADE,
+  name            TEXT NOT NULL DEFAULT '',
+  url_encrypted   TEXT NOT NULL,
+  format          TEXT NOT NULL DEFAULT 'generic',
+  enabled         INTEGER NOT NULL DEFAULT 1,
+  events          TEXT NOT NULL DEFAULT '[]',
+  created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  CHECK ((podcast_id IS NULL) <> (network_id IS NULL))
+);
+
+CREATE INDEX IF NOT EXISTS idx_webhooks_podcast ON webhooks(podcast_id);
+CREATE INDEX IF NOT EXISTS idx_webhooks_network ON webhooks(network_id);
 
 -- Per-user opaque tokens for subscribing to .ics calendar feeds. Calendar
 -- apps can't send X-Api-Key headers, so feed URLs embed an unguessable

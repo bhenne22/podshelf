@@ -1332,43 +1332,117 @@ paths:
                       scheduled_for:  { type: string, format: date-time, nullable: true }
                       debounce_minutes: { type: integer }
 
-  /api/podcasts/{slug}/webhook:
+  /api/podcasts/{slug}/webhooks:
     parameters:
       - { $ref: '#/components/parameters/Slug' }
     get:
       tags: [Webhook & build]
-      summary: Describe publish-webhook config (redacted)
-      description: 'Returns `{ has_url, format, enabled, url_host }`. URL itself is encrypted at rest and never returned.'
+      summary: List webhooks attached to this podcast (redacted)
+      description: |
+        Returns an array of webhook rows; URLs are never returned (encrypted at
+        rest, may include a token). Each row exposes `url_host` as a hint.
       responses:
         '200':
-          description: Redacted webhook config.
+          description: Webhook list.
     post:
       tags: [Webhook & build]
-      summary: Save publish-webhook config
+      summary: Create a webhook on this podcast
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [format, enabled]
+              required: [url, format, events]
               properties:
+                name: { type: string }
+                url: { type: string, format: uri }
+                format: { type: string, enum: [discord, slack, generic] }
+                enabled: { type: boolean, default: true }
+                events:
+                  type: array
+                  items:
+                    type: string
+                    enum:
+                      - episode.publish
+                      - episode.recording.scheduled
+                      - episode.recording.moved
+                      - episode.recording.cancelled
+      responses:
+        '201':
+          description: Created.
+
+  /api/podcasts/{slug}/webhooks/{id}:
+    parameters:
+      - { $ref: '#/components/parameters/Slug' }
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer }
+    get:
+      tags: [Webhook & build]
+      summary: Get a single webhook (redacted)
+      responses:
+        '200': { description: Webhook. }
+        '404': { description: Not found. }
+    patch:
+      tags: [Webhook & build]
+      summary: Update a webhook (partial)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
                 url:
                   type: string
                   format: uri
-                  description: Omit to keep existing; empty string clears.
+                  description: Omit to keep existing URL; empty string is a no-op (use DELETE to remove).
                 format: { type: string, enum: [discord, slack, generic] }
                 enabled: { type: boolean }
+                events:
+                  type: array
+                  items:
+                    type: string
+                    enum:
+                      - episode.publish
+                      - episode.recording.scheduled
+                      - episode.recording.moved
+                      - episode.recording.cancelled
       responses:
-        '200':
-          description: Saved.
+        '200': { description: Updated. }
+    delete:
+      tags: [Webhook & build]
+      summary: Delete a webhook
+      responses:
+        '200': { description: Deleted. }
 
-  /api/podcasts/{slug}/webhook/test:
+  /api/podcasts/{slug}/webhooks/{id}/test:
     parameters:
       - { $ref: '#/components/parameters/Slug' }
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer }
     post:
       tags: [Webhook & build]
-      summary: Send a synthetic test event through the webhook
+      summary: Fire a synthetic event through the webhook
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                event:
+                  type: string
+                  enum:
+                    - episode.publish
+                    - episode.recording.scheduled
+                    - episode.recording.moved
+                    - episode.recording.cancelled
       responses:
         '200':
           description: Delivered.

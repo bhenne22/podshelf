@@ -1,5 +1,5 @@
 import getDb from '../db/index'
-import { loadWebhookConfig, sendRecordingWebhook, type RecordingChangeKind } from './webhook'
+import { loadWebhooksForEvent, sendRecordingWebhook, type RecordingChangeKind, type WebhookEvent, type WebhookRow } from './webhook'
 import { logAudit } from './audit'
 
 interface PodcastRow {
@@ -30,10 +30,19 @@ export interface RecordingEventInput {
   actorApiKeyId?: number | null
 }
 
+interface WebhookResult {
+  ok: boolean
+  status?: number
+  message?: string
+  webhook_id: number
+  scope: 'podcast' | 'network'
+}
+
 /**
- * Fire a recording-change notification. Mirrors the contract of
- * firePublishEvent: webhook errors are captured (never thrown) and surfaced
- * via the audit log so the originating mutation always succeeds.
+ * Fire a recording-change notification across every webhook subscribed to
+ * the matching `episode.recording.<kind>` event. Mirrors firePublishEvent's
+ * contract: webhook errors are captured (never thrown) and surfaced via the
+ * audit log so the originating mutation always succeeds.
  *
  * Distinct from publish events because the payload semantics are different
  * (a moved recording isn't a "new episode") and the webhook formatter needs
@@ -41,7 +50,7 @@ export interface RecordingEventInput {
  */
 export async function fireRecordingEvent(
   input: RecordingEventInput,
-): Promise<{ webhook?: { ok: boolean; status?: number; message?: string } }> {
+): Promise<{ webhooks?: WebhookResult[] }> {
   const db = getDb()
 
   const podcast = db.prepare(`
@@ -57,8 +66,9 @@ export async function fireRecordingEvent(
   // that delete must pass enough context (title, episode_number, etc.) via
   // a stashed snapshot before they DELETE; we accept null here and degrade.
 
-  const config = loadWebhookConfig(input.podcastId)
-  if (!config || !config.enabled) return {}
+  const eventName = `episode.recording.${input.kind}` as WebhookEvent
+  const webhooks = loadWebhooksForEvent(input.podcastId, eventName)
+  if (webhooks.length === 0) return {}
 
   const siteUrl = (process.env.SITE_URL || (useRuntimeConfig().public.siteUrl as string) || '').replace(/\/+$/, '')
   const feedUrl = `${siteUrl}/feeds/${podcast.slug}.xml`
@@ -69,35 +79,56 @@ export async function fireRecordingEvent(
     ? `${websiteBase}/episodes/${episode.slug}`
     : feedUrl
 
-  const result = await sendRecordingWebhook(
-    config,
-    { slug: podcast.slug, title: podcast.title, feed_url: feedUrl, website: podcast.website },
-    {
-      kind: input.kind,
-      episode_title: episode?.title ?? '(deleted episode)',
-      episode_url: episodeUrl,
-      episode_number: episode?.episode_number ?? null,
-      season_number: episode?.season_number ?? null,
-      new_starts_at: input.newStartsAt,
-      new_duration_minutes: input.newDurationMinutes,
-      previous_starts_at: input.previousStartsAt,
-      previous_duration_minutes: input.previousDurationMinutes,
-      podcast_timezone: podcast.timezone || 'UTC',
-    },
+  const podcastPayload = { slug: podcast.slug, title: podcast.title, feed_url: feedUrl, website: podcast.website }
+  const recordingPayload = {
+    kind: input.kind,
+    episode_title: episode?.title ?? '(deleted episode)',
+    episode_url: episodeUrl,
+    episode_number: episode?.episode_number ?? null,
+    season_number: episode?.season_number ?? null,
+    new_starts_at: input.newStartsAt,
+    new_duration_minutes: input.newDurationMinutes,
+    previous_starts_at: input.previousStartsAt,
+    previous_duration_minutes: input.previousDurationMinutes,
+    podcast_timezone: podcast.timezone || 'UTC',
+  }
+
+  const results = await Promise.all(
+    webhooks.map(async (w: WebhookRow): Promise<WebhookResult> => {
+      const r = await sendRecordingWebhook(w, podcastPayload, recordingPayload)
+      return {
+        ok: r.ok,
+        status: r.status,
+        message: r.message,
+        webhook_id: w.id,
+        scope: w.podcast_id !== null ? 'podcast' : 'network',
+      }
+    }),
   )
 
-  logAudit({
-    podcastId: input.podcastId,
-    userId: input.actorUserId ?? null,
-    apiKeyId: input.actorApiKeyId ?? null,
-    action: result.ok ? 'webhook.recording.ok' : 'webhook.recording.fail',
-    entityType: 'episode',
-    entityId: input.episodeId,
-    summary: result.ok
-      ? `Recording webhook fired (${config.format}, ${input.kind})`
-      : `Recording webhook failed (${config.format}, ${input.kind}): ${result.message ?? 'unknown'}`,
-    details: { format: config.format, kind: input.kind, status: result.status, message: result.message },
-  })
+  for (const r of results) {
+    const w = webhooks.find((x) => x.id === r.webhook_id)
+    if (!w) continue
+    logAudit({
+      podcastId: input.podcastId,
+      userId: input.actorUserId ?? null,
+      apiKeyId: input.actorApiKeyId ?? null,
+      action: r.ok ? 'webhook.recording.ok' : 'webhook.recording.fail',
+      entityType: 'episode',
+      entityId: input.episodeId,
+      summary: r.ok
+        ? `Recording webhook fired (${w.format}, ${input.kind}, ${r.scope}#${w.id}${w.name ? ` "${w.name}"` : ''})`
+        : `Recording webhook failed (${w.format}, ${input.kind}, ${r.scope}#${w.id}${w.name ? ` "${w.name}"` : ''}): ${r.message ?? 'unknown'}`,
+      details: {
+        format: w.format,
+        kind: input.kind,
+        scope: r.scope,
+        webhook_id: w.id,
+        status: r.status,
+        message: r.message,
+      },
+    })
+  }
 
-  return { webhook: result }
+  return { webhooks: results }
 }

@@ -184,22 +184,45 @@ Each entry has `action`, `summary`, `user_email`, `created_at`, and a parsed
 `details` object — for setting/episode updates this includes `changed[]`,
 `before`, and `after`.
 
-### `GET /api/podcasts/[slug]/webhook`
+### `GET /api/podcasts/[slug]/webhooks`
 
-Returns the redacted webhook config: `{ has_url, format, enabled, url_host }`.
-URL itself is never returned (it's encrypted at rest and may include a token
-in the path).
+Returns the list of webhooks attached to this podcast, redacted. Each row:
+`{ id, scope, scope_id, name, format, enabled, events, url_host, created_at, updated_at }`.
+URLs themselves are never returned (they're encrypted at rest and may include
+a token in the path).
 
-### `POST /api/podcasts/[slug]/webhook`
+### `POST /api/podcasts/[slug]/webhooks`
 
-Body: `{ url?, format, enabled }`. `format` is `discord` / `slack` / `generic`.
-Omitting `url` preserves the existing one; sending an empty string clears it.
-Saves encrypted at rest.
+Body: `{ name?, url, format, enabled?, events }`. `format` is
+`discord` / `slack` / `generic`. `events` is an array selected from:
+`episode.publish`, `episode.recording.scheduled`, `episode.recording.moved`,
+`episode.recording.cancelled`. Returns the new redacted webhook row with
+status 201.
 
-### `POST /api/podcasts/[slug]/webhook/test`
+### `PATCH /api/podcasts/[slug]/webhooks/[id]`
 
-Fires a synthetic test episode through the configured webhook. 502s with the
-upstream error if delivery fails.
+Partial update. Any of `name`, `url`, `format`, `enabled`, `events` can be
+sent. Sending a new `url` rotates the encrypted secret; omitting `url`
+preserves the previous one. Sending an empty `url` is a no-op (use DELETE
+to remove a webhook entirely).
+
+### `DELETE /api/podcasts/[slug]/webhooks/[id]`
+
+Removes a webhook permanently.
+
+### `POST /api/podcasts/[slug]/webhooks/[id]/test`
+
+Fires a synthetic event through the webhook. Body: `{ event? }` — defaults
+to the first event the webhook subscribes to (or `episode.publish`). 502s
+with the upstream error if delivery fails.
+
+### Network-scoped webhooks (admin-only)
+
+The same shape lives under
+`/api/admin/networks/[id]/webhooks` (+`/[webhook_id]`, `/[webhook_id]/test`).
+Network webhooks fan out across every podcast in the network when a matching
+event fires (in addition to any per-podcast webhooks). All five endpoints
+require admin auth — scoped API keys cannot manage network webhooks.
 
 ### `GET /api/podcasts/[slug]/aliases`
 
