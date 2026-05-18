@@ -31,7 +31,12 @@ export default defineNuxtConfig({
     encryptionKey: process.env.PODSHELF_ENCRYPTION_KEY || '',
     geoipDbPath: process.env.GEOIP_DB_PATH || '',
 
-    // Public — exposed to client
+    // Public — exposed to client.
+    // `runtimeConfig.public.*` is BAKED IN AT BUILD TIME, so `process.env.SITE_URL`
+    // is only read on the build host (Bob's Mac, where it's usually unset → falls
+    // back to localhost). At runtime, Nuxt overrides this from `NUXT_PUBLIC_SITE_URL`
+    // — that's the env var the Linode's /opt/podshelf/.env sets. Don't rename the key
+    // without updating the .env there.
     public: {
       siteUrl: process.env.SITE_URL || 'http://localhost:3000',
     },
