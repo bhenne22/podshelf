@@ -286,8 +286,6 @@ paths:
             schema:
               allOf:
                 - { $ref: '#/components/schemas/EpisodeWritable' }
-                - type: object
-                  required: [title]
       responses:
         '201':
           description: Created.
@@ -1709,8 +1707,8 @@ components:
       type: object
       description: Fields accepted by the create / update endpoints.
       properties:
-        title: { type: string }
-        slug: { type: string, description: 'Auto-derived from title when blank.' }
+        title: { type: string, nullable: true, description: 'Optional for drafts; required when status is "scheduled" or "published" (server returns 400 otherwise).' }
+        slug: { type: string, description: 'Auto-derived from title when blank. Falls back to `untitled-YYYY-MM-DD` (with a numeric collision suffix if needed) when title is also blank.' }
         episode_number: { type: integer, nullable: true }
         season_number: { type: integer, nullable: true }
         description: { type: string, nullable: true, description: 'HTML allowed; rendered as the episode show notes.' }

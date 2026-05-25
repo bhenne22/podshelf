@@ -486,7 +486,9 @@ curl -H "X-Api-Key: $KEY" "$SITE/api/podcasts/yousaid100miles/episodes?slug=ep-4
 
 ### `POST /api/podcasts/[slug]/episodes`
 
-Create an episode. Required: `title`. Recommended: `audio_url` (or upload
+Create an episode. `title` is optional for drafts but required when `status`
+is `scheduled` or `published` — the server returns 400 if you try to
+publish a title-less episode. Recommended: `audio_url` (or upload
 first — see `/upload` below). Optional fields are filled with sensible
 defaults.
 
@@ -519,6 +521,11 @@ inherit the channel-level podcast artwork. `image_filename` is the basename
 on disk (used by the file browser to detect references).
 
 If `slug` is omitted it's auto-derived from `title` with collision handling.
+When both are blank (title-less draft), the slug falls back to
+`untitled-YYYY-MM-DD` with a numeric suffix on collision. On a later PATCH
+that fills in the title, the placeholder slug regenerates from the new
+title automatically — unless you supply an explicit `slug` in the same
+patch, in which case yours wins.
 
 Additional Podcasting 2.0 fields accepted on create / update:
 
