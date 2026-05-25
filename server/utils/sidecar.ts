@@ -55,8 +55,8 @@ export function parseSrt(raw: string): Cue[] {
     if (Number.isNaN(t)) continue
     let text = lines.slice(tsLineIdx + 1).join(' ').trim()
     let speaker = ''
-    const spMatch = text.match(/^([A-Z][A-Z0-9 _-]{0,15}):\s*(.+)$/)
-                 || text.match(/^\[([A-Z][A-Z0-9 _-]{0,15})\]\s*(.+)$/)
+    const spMatch = text.match(/^([A-Za-z][A-Za-z0-9 _-]{0,15}):\s*(.+)$/)
+                 || text.match(/^\[([A-Za-z][A-Za-z0-9 _-]{0,15})\]\s*(.+)$/)
     if (spMatch) {
       speaker = spMatch[1].trim()
       text = spMatch[2].trim()
