@@ -124,7 +124,7 @@
             </td>
             <td class="col-title">
               <NuxtLink :to="`/podcasts/${podcastSlug}/episodes/${ep.id}`" class="ep-title">
-                {{ ep.title }}
+                {{ ep.title || 'Untitled episode' }}
                 <span
                   v-if="ep.episode_type && ep.episode_type !== 'full'"
                   :class="['ep-type-badge', ep.episode_type]"
@@ -209,7 +209,7 @@
     <div v-if="deleteTarget" class="modal-overlay" @click.self="deleteTarget = null">
       <div class="modal">
         <h3>Delete Episode?</h3>
-        <p>Are you sure you want to delete <strong>{{ deleteTarget.title }}</strong>? This cannot be undone.</p>
+        <p>Are you sure you want to delete <strong>{{ deleteTarget.title || 'Untitled episode' }}</strong>? This cannot be undone.</p>
         <div class="modal-actions">
           <button @click="deleteTarget = null" class="btn-secondary">Cancel</button>
           <button @click="doDelete" class="btn-danger" :disabled="deleting">

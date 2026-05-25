@@ -147,7 +147,7 @@ function episodeUrl(ep: IcsEpisode): string {
 
 function buildSummary(prefix: 'REC' | 'DROP', ep: IcsEpisode, scope: IcsScopeKind): string {
   const showPrefix = scope === 'network' ? `${ep.podcast_title} — ` : ''
-  return `${prefix}: ${showPrefix}${ep.title}`
+  return `${prefix}: ${showPrefix}${ep.title || 'Untitled episode'}`
 }
 
 function buildDescription(ep: IcsEpisode): string {

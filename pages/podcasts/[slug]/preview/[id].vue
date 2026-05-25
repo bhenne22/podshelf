@@ -19,7 +19,7 @@
             <div v-else class="ep-art-placeholder">No artwork</div>
           </div>
 
-          <h1 class="ep-title">{{ episode.title }}</h1>
+          <h1 class="ep-title">{{ episode.title || 'Untitled episode' }}</h1>
           <p class="ep-show">{{ podcast.title }}</p>
 
           <div class="ep-meta">
@@ -123,7 +123,7 @@
             <span class="ep-nav-arrow">←</span>
             <span class="ep-nav-meta">
               <span class="ep-nav-label">Previous</span>
-              <span class="ep-nav-title">{{ prevEpisode.title }}</span>
+              <span class="ep-nav-title">{{ prevEpisode.title || 'Untitled episode' }}</span>
             </span>
           </NuxtLink>
           <span v-else class="ep-nav-link disabled">
@@ -138,7 +138,7 @@
           >
             <span class="ep-nav-meta">
               <span class="ep-nav-label">Next</span>
-              <span class="ep-nav-title">{{ nextEpisode.title }}</span>
+              <span class="ep-nav-title">{{ nextEpisode.title || 'Untitled episode' }}</span>
             </span>
             <span class="ep-nav-arrow">→</span>
           </NuxtLink>

@@ -88,7 +88,7 @@ export function processScheduledFlips(podcastId?: number): number {
       action: 'episode.publish',
       entityType: 'episode',
       entityId: row.id,
-      summary: `Auto-published scheduled episode "${row.title}"`,
+      summary: `Auto-published scheduled episode "${row.title || 'Untitled episode'}"`,
       details: { source: 'scheduler', published_at: row.published_at },
     })
 

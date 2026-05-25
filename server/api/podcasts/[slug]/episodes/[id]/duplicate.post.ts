@@ -1,17 +1,8 @@
 import { defineEventHandler, getRouterParam, createError } from 'h3'
 import { requirePodcastAccess } from '../../../../../utils/auth'
 import { logAudit } from '../../../../../utils/audit'
+import { slugify } from '../../../../../utils/text'
 import getDb from '../../../../../db/index'
-
-function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9\s-]/g, '')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
-}
 
 /**
  * POST /api/podcasts/[slug]/episodes/[id]/duplicate
@@ -51,7 +42,7 @@ export default defineEventHandler((event) => {
     throw createError({ statusCode: 404, statusMessage: 'Episode not found' })
   }
 
-  const newTitle = `${source.title} (Copy)`
+  const newTitle = source.title ? `${source.title} (Copy)` : 'Untitled (Copy)'
   const baseSlug = slugify(`${source.slug}-copy`) || `${source.slug}-copy`
   let newSlug = baseSlug
   let suffix = 2
@@ -119,7 +110,7 @@ export default defineEventHandler((event) => {
     action: 'episode.duplicate',
     entityType: 'episode',
     entityId: newId,
-    summary: `Duplicated "${source.title}" → "${newTitle}"`,
+    summary: `Duplicated "${source.title || 'Untitled episode'}" → "${newTitle}"`,
     details: { source_id: sourceId, new_slug: newSlug },
   })
 

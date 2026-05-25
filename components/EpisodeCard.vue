@@ -9,7 +9,7 @@
       </span>
     </div>
     <h2 class="episode-title">
-      <NuxtLink :to="`/episodes/${episode.slug}`">{{ episode.title }}</NuxtLink>
+      <NuxtLink :to="`/episodes/${episode.slug}`">{{ episode.title || 'Untitled episode' }}</NuxtLink>
     </h2>
     <p v-if="episode.description" class="episode-description">
       {{ truncate(episode.description, 200) }}

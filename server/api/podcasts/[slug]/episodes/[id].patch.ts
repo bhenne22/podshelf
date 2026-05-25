@@ -7,6 +7,7 @@ import { logAudit, diffFields, summarizeChanges } from '../../../../utils/audit'
 import { firePublishEvent } from '../../../../utils/publish-event'
 import { fireRecordingEvent } from '../../../../utils/recording-event'
 import { resolvePublishTiming } from '../../../../utils/scheduler'
+import { slugify, isPlaceholderSlug } from '../../../../utils/text'
 import getDb from '../../../../db/index'
 
 const UPDATABLE = [
@@ -44,11 +45,43 @@ export default defineEventHandler(async (event) => {
   const body = await readBody(event)
   validateEpisodeFields(body)
 
+  // Going live or scheduling requires a non-empty title — drafts can stay
+  // title-less, but once it's heading for the feed it has to have a title.
+  if (body.status === 'published' || body.status === 'scheduled') {
+    const titleAfterPatch = ('title' in body ? body.title : beforeRow.title) as string | null | undefined
+    if (!titleAfterPatch || (typeof titleAfterPatch === 'string' && titleAfterPatch.trim() === '')) {
+      throw createError({ statusCode: 400, statusMessage: 'title is required to publish or schedule an episode' })
+    }
+  }
+
   if (body.status === 'published') {
     const incomingPubDate = 'published_at' in body ? body.published_at : beforeRow.published_at
     const resolved = resolvePublishTiming('published', incomingPubDate as string | null | undefined)
     body.status = resolved.status
     body.published_at = resolved.publishedAt
+  }
+
+  // When a title-less draft gets its title filled in, migrate the placeholder
+  // slug (untitled-YYYY-MM-DD) to one derived from the new title. Skip when
+  // the user explicitly supplies a slug in the same patch — they're telling
+  // us what they want.
+  if (
+    'title' in body &&
+    typeof body.title === 'string' &&
+    body.title.trim() !== '' &&
+    !('slug' in body) &&
+    isPlaceholderSlug(beforeRow.slug as string | null | undefined)
+  ) {
+    const base = slugify(body.title)
+    if (base) {
+      let candidate = base
+      let suffix = 2
+      while (db.prepare('SELECT 1 FROM episodes WHERE podcast_id = ? AND slug = ? AND id != ?').get(podcastId, candidate, id)) {
+        candidate = `${base}-${suffix}`
+        suffix++
+      }
+      body.slug = candidate
+    }
   }
 
   // Empty strings from the form mean "no value" for the recording fields —
@@ -91,15 +124,16 @@ export default defineEventHandler(async (event) => {
     // Status flips get their own action so the audit feed is readable
     // (publish / unpublish / schedule are the events users actually care
     // about, vs general field edits).
+    const displayTitle = updated.title || 'Untitled episode'
     let action = 'episode.update'
-    let summary = summarizeChanges(`Updated episode "${updated.title}"`, diff.changed)
+    let summary = summarizeChanges(`Updated episode "${displayTitle}"`, diff.changed)
     if (diff.changed.includes('status')) {
       const newStatus = updated.status
       if (newStatus === 'published') action = 'episode.publish'
       else if (newStatus === 'draft' && beforeStatus === 'published') action = 'episode.unpublish'
       summary = `${action === 'episode.publish' ? 'Published' :
                   action === 'episode.unpublish' ? 'Reverted to draft' :
-                  'Updated'} "${updated.title}"`
+                  'Updated'} "${displayTitle}"`
     }
     logAudit(event, {
       podcastId,

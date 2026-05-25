@@ -19,7 +19,7 @@
       </div>
       <h3 class="episode-title">
         <NuxtLink :to="`/podcasts/${podcastSlug}/preview/${episode.id}`" class="episode-title-link">
-          {{ episode.title }}
+          {{ episode.title || 'Untitled episode' }}
         </NuxtLink>
       </h3>
 

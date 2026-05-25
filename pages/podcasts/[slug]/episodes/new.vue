@@ -66,13 +66,12 @@
           <h2>Basic Info</h2>
           <div class="form-row">
             <div class="form-group flex-2">
-              <label for="title">Title <span class="required">*</span></label>
+              <label for="title">Title <span class="hint">(required to publish or schedule)</span></label>
               <input
                 id="title"
                 v-model="form.title"
                 type="text"
                 placeholder="Episode title"
-                required
                 @input="autoSlug"
               />
             </div>

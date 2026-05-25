@@ -49,7 +49,7 @@
                   <template v-if="data.latest_published.season_number">S{{ data.latest_published.season_number }}E{{ data.latest_published.episode_number }}</template>
                   <template v-else>#{{ data.latest_published.episode_number }}</template>
                 </span>
-                {{ data.latest_published.title }}
+                {{ data.latest_published.title || 'Untitled episode' }}
               </NuxtLink>
               <div class="recent-meta">{{ formatDate(data.latest_published.published_at) }}</div>
             </div>
@@ -64,7 +64,7 @@
                   <template v-if="data.newest_draft.season_number">S{{ data.newest_draft.season_number }}E{{ data.newest_draft.episode_number }}</template>
                   <template v-else>#{{ data.newest_draft.episode_number }}</template>
                 </span>
-                {{ data.newest_draft.title }}
+                {{ data.newest_draft.title || 'Untitled episode' }}
               </NuxtLink>
               <div class="recent-meta">created {{ formatDate(data.newest_draft.created_at) }}</div>
             </div>

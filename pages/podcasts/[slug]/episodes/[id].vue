@@ -17,7 +17,7 @@
             <span class="ep-nav-arrow">←</span>
             <span class="ep-nav-meta">
               <span class="ep-nav-label">Previous (older)</span>
-              <span class="ep-nav-title">{{ prevEpisode.title }}</span>
+              <span class="ep-nav-title">{{ prevEpisode.title || 'Untitled episode' }}</span>
             </span>
           </NuxtLink>
           <span v-else class="ep-nav-link disabled" aria-disabled="true">
@@ -35,7 +35,7 @@
           >
             <span class="ep-nav-meta">
               <span class="ep-nav-label">Next (newer)</span>
-              <span class="ep-nav-title">{{ nextEpisode.title }}</span>
+              <span class="ep-nav-title">{{ nextEpisode.title || 'Untitled episode' }}</span>
             </span>
             <span class="ep-nav-arrow">→</span>
           </NuxtLink>
@@ -116,8 +116,8 @@
             <h2>Basic Info</h2>
             <div class="form-row">
               <div class="form-group flex-2">
-                <label for="title">Title <span class="required">*</span></label>
-                <input id="title" v-model="form.title" type="text" required />
+                <label for="title">Title <span class="hint">(required to publish or schedule)</span></label>
+                <input id="title" v-model="form.title" type="text" />
               </div>
               <div v-if="episodeNumbersEnabled" class="form-group">
                 <label for="episode_number">Episode #</label>
@@ -1318,7 +1318,7 @@ const publishedDateTimeDisplay = computed(() => {
   })
 })
 
-useHead({ title: () => `Edit: ${form.title || '…'} — Podshelf Admin` })
+useHead({ title: () => `Edit: ${form.title || 'Untitled episode'} — Podshelf Admin` })
 </script>
 
 <style scoped>

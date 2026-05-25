@@ -5,17 +5,8 @@ import { logAudit } from '../../../../utils/audit'
 import { firePublishEvent } from '../../../../utils/publish-event'
 import { fireRecordingEvent } from '../../../../utils/recording-event'
 import { resolvePublishTiming } from '../../../../utils/scheduler'
+import { slugify } from '../../../../utils/text'
 import getDb from '../../../../db/index'
-
-function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9\s-]/g, '')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
-}
 
 /**
  * POST /api/podcasts/[slug]/episodes
@@ -25,16 +16,26 @@ export default defineEventHandler(async (event) => {
   const { user, podcastId } = requirePodcastAccess(event, slugParam)
 
   const body = await readBody(event)
-  if (!body?.title) {
-    throw createError({ statusCode: 400, statusMessage: 'title is required' })
-  }
   validateEpisodeFields(body)
+
+  // Title is only required when the episode will be live or scheduled — drafts
+  // can be created title-less so the user can reserve a recording slot before
+  // they know what to call it. The slug then falls back to a date-based
+  // placeholder (handled below) so the row still has a valid URL key.
+  const title = typeof body?.title === 'string' ? body.title.trim() : ''
+  const incomingStatus = body?.status ?? 'draft'
+  if ((incomingStatus === 'published' || incomingStatus === 'scheduled') && !title) {
+    throw createError({ statusCode: 400, statusMessage: 'title is required to publish or schedule an episode' })
+  }
 
   const db = getDb()
 
-  let slug = body.slug ? slugify(String(body.slug)) : slugify(String(body.title))
+  let slug = body.slug ? slugify(String(body.slug)) : (title ? slugify(title) : '')
   if (!slug) {
-    throw createError({ statusCode: 400, statusMessage: 'unable to derive a slug from title' })
+    // No title (or title slugified to empty, e.g. emoji-only). Use today's date
+    // as a stable placeholder; the collision loop below will suffix as needed.
+    const today = new Date().toISOString().slice(0, 10)
+    slug = `untitled-${today}`
   }
 
   // Slug uniqueness is per-podcast.
@@ -82,7 +83,7 @@ export default defineEventHandler(async (event) => {
     )
   `).run({
     podcast_id: podcastId,
-    title: body.title,
+    title,
     slug,
     episode_number: body.episode_number ?? null,
     season_number: body.season_number ?? null,
@@ -138,7 +139,7 @@ export default defineEventHandler(async (event) => {
     action: 'episode.create',
     entityType: 'episode',
     entityId: episodeId,
-    summary: `Created episode "${body.title}" as ${episode.status}`,
+    summary: `Created episode "${title || 'Untitled episode'}" as ${episode.status}`,
   })
 
   // Only kick a rebuild if this episode lands in the published feed.

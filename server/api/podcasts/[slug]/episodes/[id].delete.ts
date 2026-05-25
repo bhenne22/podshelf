@@ -60,7 +60,7 @@ export default defineEventHandler(async (event) => {
     action: 'episode.delete',
     entityType: 'episode',
     entityId: Number(id),
-    summary: `Deleted episode "${existing.title}" (was ${existing.status})`,
+    summary: `Deleted episode "${existing.title || 'Untitled episode'}" (was ${existing.status})`,
   })
 
   if (existing.status === 'published') {

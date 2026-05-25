@@ -37,6 +37,33 @@ function safeFromCode(n: number): string {
 }
 
 /**
+ * Lowercase, ASCII-only, hyphen-separated slug derived from arbitrary text.
+ * Strips characters outside [a-z0-9 -], collapses whitespace and repeated
+ * hyphens, and trims leading/trailing hyphens. Returns "" if no slug-worthy
+ * characters survive (emoji-only input, etc.).
+ */
+export function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+}
+
+/**
+ * True when a slug looks like the auto-generated placeholder assigned to a
+ * title-less draft (`untitled-YYYY-MM-DD` with an optional collision suffix
+ * like `-2`, `-3`). Used by the PATCH handler to decide whether to regenerate
+ * the slug from a freshly-added title rather than leave the placeholder stuck.
+ */
+export function isPlaceholderSlug(slug: string | null | undefined): boolean {
+  if (!slug) return false
+  return /^untitled-\d{4}-\d{2}-\d{2}(-\d+)?$/.test(slug)
+}
+
+/**
  * Pull an episode number out of a title.
  *
  * Patterns recognized, in priority order:
