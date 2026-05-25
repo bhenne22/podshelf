@@ -95,8 +95,7 @@ export default defineEventHandler((event) => {
 
   sql += `
     ORDER BY
-      CASE WHEN published_at IS NULL THEN 1 ELSE 0 END,
-      published_at DESC,
+      COALESCE(published_at, recording_starts_at, created_at) DESC,
       created_at DESC
   `
 
