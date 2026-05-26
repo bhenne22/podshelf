@@ -1345,6 +1345,12 @@ paths:
     post:
       tags: [Webhook & build]
       summary: Create a webhook on this podcast
+      description: |
+        Discord URLs (discord.com / discordapp.com / ptb.discord.com /
+        canary.discord.com) must use `format=discord`; Slack URLs
+        (hooks.slack.com) must use `format=slack`. Other combinations are
+        rejected with 400 because the platforms reject the generic payload
+        (Discord returns 50006 "Cannot send an empty message").
       requestBody:
         required: true
         content:
@@ -1369,6 +1375,8 @@ paths:
       responses:
         '201':
           description: Created.
+        '400':
+          description: Validation error (e.g. Discord/Slack URL with wrong format).
 
   /api/podcasts/{slug}/webhooks/{id}:
     parameters:
@@ -1386,6 +1394,10 @@ paths:
     patch:
       tags: [Webhook & build]
       summary: Update a webhook (partial)
+      description: |
+        Patches that change `url` or `format` are re-validated against the
+        merged resulting pair. Discord URLs require `format=discord`; Slack
+        URLs require `format=slack`. Mismatches are rejected with 400.
       requestBody:
         required: true
         content:
@@ -1411,6 +1423,8 @@ paths:
                       - episode.recording.cancelled
       responses:
         '200': { description: Updated. }
+        '400':
+          description: Validation error (e.g. Discord/Slack URL with wrong format).
     delete:
       tags: [Webhook & build]
       summary: Delete a webhook

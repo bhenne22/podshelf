@@ -199,12 +199,20 @@ Body: `{ name?, url, format, enabled?, events }`. `format` is
 `episode.recording.cancelled`. Returns the new redacted webhook row with
 status 201.
 
+**Format / URL compatibility.** Discord URLs (`discord.com`,
+`discordapp.com`, `ptb.discord.com`, `canary.discord.com`) must use
+`format='discord'`; Slack URLs (`hooks.slack.com`) must use `format='slack'`.
+Other combinations are rejected with 400 at create + update time, because
+Discord's API returns 50006 "Cannot send an empty message" and Slack's
+returns "no_text" when handed the generic JSON payload.
+
 ### `PATCH /api/podcasts/[slug]/webhooks/[id]`
 
 Partial update. Any of `name`, `url`, `format`, `enabled`, `events` can be
 sent. Sending a new `url` rotates the encrypted secret; omitting `url`
 preserves the previous one. Sending an empty `url` is a no-op (use DELETE
-to remove a webhook entirely).
+to remove a webhook entirely). Patches that change `url` or `format` are
+re-validated against the merged resulting pair (see compatibility rule above).
 
 ### `DELETE /api/podcasts/[slug]/webhooks/[id]`
 
