@@ -145,13 +145,22 @@ scoped to its own slug.
 `firePublishEvent()` in `server/utils/publish-event.ts` is the single fan-out point:
 
 1. **Feed cache bump.** Forces revalidation on cached feed responses.
-2. **`maybeAutoTrigger(podcastId, source)`** — marks the podcast dirty. The
-   in-process scheduler (`server/utils/github.ts`, `PUBLISH_DEBOUNCE_MINUTES = 15`)
-   debounces and then calls `dispatchRepositoryEvent()`. The dispatch posts to
-   `https://api.github.com/repos/<owner>/<repo>/dispatches` with
-   `event_type` and `client_payload: { slug, reason, podcast_id, fired_at }`. The
-   debounce coalesces a flurry of edits into one build; the per-podcast kill switch
-   on `/podcasts/<slug>/build` blocks all paths (auto, manual, test).
+2. **GitHub dispatch.** Two paths, branched on `source`:
+   - `episode-create` / `episode-update` → **`maybeAutoTrigger(podcastId, source)`** marks
+     the podcast dirty. The in-process scheduler (`server/utils/github.ts`,
+     `PUBLISH_DEBOUNCE_MINUTES = 15`) debounces and then calls
+     `dispatchRepositoryEvent()`. The debounce coalesces a flurry of edits into one
+     build. Gated on the `github_auto_trigger` flag.
+   - `episode-schedule` (the scheduler flipping a scheduled episode to published) →
+     `dispatchRepositoryEvent()` fires **immediately**, bypassing both `auto_trigger`
+     and the debounce. A scheduled go-live is a single committed event, not part of an
+     edit flurry, and the user already opted in when they scheduled it. Pending dirty
+     markers are cleared so the debounced path won't fire a redundant build minutes later.
+   Both paths post to `https://api.github.com/repos/<owner>/<repo>/dispatches` with
+   `event_type` and `client_payload: { slug, reason, podcast_id, fired_at }` (the
+   scheduled path also includes `episode_id`). The per-podcast `deploys_paused` kill
+   switch on `/podcasts/<slug>/build` blocks **all** paths (auto, manual, test, and the
+   scheduled go-live).
 3. **`sendPublishWebhook()`** — optional Discord / Slack / generic JSON post.
 
 The configured repo is **whichever site owns the show's listener experience**:

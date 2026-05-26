@@ -1,6 +1,12 @@
 import getDb from '../db/index'
 import { bumpFeedLastModified } from './feed-cache'
-import { maybeAutoTrigger } from './github'
+import {
+  clearPublishDirty,
+  dispatchRepositoryEvent,
+  isDeploysPaused,
+  loadGithubConfig,
+  maybeAutoTrigger,
+} from './github'
 import { loadWebhooksForEvent, sendPublishWebhook, type WebhookRow } from './webhook'
 import { logAudit } from './audit'
 
@@ -57,12 +63,23 @@ export async function firePublishEvent(
   const db = getDb()
 
   bumpFeedLastModified(podcastId)
-  maybeAutoTrigger(podcastId, source)
 
   const podcast = db.prepare(`
     SELECT id, slug, title, website FROM podcasts WHERE id = ?
   `).get(podcastId) as PublishablePodcast | undefined
   if (!podcast) return {}
+
+  // Scheduled flips fire a GitHub dispatch immediately, bypassing both the
+  // `github_auto_trigger` gate and the 15-minute debounce. Rationale: the
+  // user already committed to the publish when they hit "Schedule"; the
+  // auto_trigger flag exists to coalesce flurries of human edits, not to
+  // gate one-shot scheduled go-lives. The `deploys_paused` kill switch is
+  // still honored — that's the explicit "do not deploy" signal.
+  if (source === 'episode-schedule') {
+    fireScheduledPublishDispatch(podcast, episodeId)
+  } else {
+    maybeAutoTrigger(podcastId, source)
+  }
 
   const episode = db.prepare(`
     SELECT id, title, slug, description, audio_url, image_url,
@@ -124,4 +141,50 @@ export async function firePublishEvent(
   }
 
   return { webhooks: results }
+}
+
+/**
+ * Fire-and-forget a repository_dispatch for a scheduled episode going live.
+ * Clears any pending dirty markers so the debounced auto-publish path won't
+ * fire a redundant build minutes later. Audits both success and failure.
+ */
+function fireScheduledPublishDispatch(podcast: PublishablePodcast, episodeId: number): void {
+  if (isDeploysPaused(podcast.id)) return
+  const config = loadGithubConfig(podcast.id)
+  if (!config) return
+
+  clearPublishDirty(podcast.id)
+
+  const payload = {
+    slug: podcast.slug,
+    reason: 'podshelf:scheduled-publish',
+    podcast_id: podcast.id,
+    episode_id: episodeId,
+    fired_at: new Date().toISOString(),
+  }
+
+  void dispatchRepositoryEvent(config, payload)
+    .then(() => {
+      logAudit({
+        podcastId: podcast.id,
+        userId: null,
+        action: 'podcast.github.scheduled-publish',
+        entityType: 'episode',
+        entityId: episodeId,
+        summary: 'Auto-fired GitHub rebuild for scheduled publish',
+      })
+    })
+    .catch((err) => {
+      const message = err instanceof Error ? err.message : String(err)
+      console.error(`[publish-event] scheduled-publish dispatch failed for podcast ${podcast.id}: ${message}`)
+      logAudit({
+        podcastId: podcast.id,
+        userId: null,
+        action: 'podcast.github.scheduled-publish.fail',
+        entityType: 'episode',
+        entityId: episodeId,
+        summary: `Auto-dispatch for scheduled publish failed: ${message}`,
+        details: { error: message },
+      })
+    })
 }

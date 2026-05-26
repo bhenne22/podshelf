@@ -981,6 +981,15 @@ When `auto_trigger=false`, dirty markers still accumulate (the banner shows
 "5 edits since 2:13 PM") but the scheduler won't fire — the user must hit
 **Rebuild Now**.
 
+**Exception: scheduled-episode go-lives.** When the in-process scheduler flips
+a `scheduled` episode to `published` (the `episode-schedule` source path), the
+GitHub dispatch fires **immediately and unconditionally** — it bypasses both
+`auto_trigger` and the 15-minute debounce. Rationale: the user committed to the
+publish when they scheduled it, and `auto_trigger` exists to coalesce human edit
+flurries, not gate one-shot scheduled go-lives. The `deploys_paused` kill switch
+is still honored. The audit log records this as
+`podcast.github.scheduled-publish` (or `…scheduled-publish.fail`).
+
 ### Workflow snippet
 
 In your static-site repo:
