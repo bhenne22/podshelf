@@ -1,3 +1,4 @@
+import { createError } from 'h3'
 import { encryptString, decryptString } from './crypto'
 import getDb from '../db/index'
 
@@ -172,6 +173,41 @@ export interface CreateWebhookInput {
   events: WebhookEvent[]
 }
 
+/**
+ * Discord and Slack webhook endpoints reject the `generic` JSON payload —
+ * Discord with "Cannot send an empty message" (50006), Slack with "no_text" —
+ * because that payload doesn't include the platform-required `content` /
+ * `embeds` / `text` fields. Catch the format/URL mismatch at write time so a
+ * misconfigured webhook can't silently fail at fire time.
+ */
+export function assertFormatMatchesUrl(url: string, format: WebhookFormat): void {
+  let host: string
+  try {
+    host = new URL(url).host.toLowerCase()
+  } catch {
+    // Bad URLs are rejected upstream by the endpoint validators.
+    return
+  }
+  const isDiscord =
+    host === 'discord.com' ||
+    host === 'discordapp.com' ||
+    host === 'ptb.discord.com' ||
+    host === 'canary.discord.com'
+  const isSlack = host === 'hooks.slack.com'
+  if (isDiscord && format !== 'discord') {
+    throw createError({
+      statusCode: 400,
+      statusMessage: `Discord webhook URL must use format='discord' (got '${format}'). The generic payload is rejected by Discord.`,
+    })
+  }
+  if (isSlack && format !== 'slack') {
+    throw createError({
+      statusCode: 400,
+      statusMessage: `Slack webhook URL must use format='slack' (got '${format}'). The generic payload is rejected by Slack.`,
+    })
+  }
+}
+
 function sanitizeEvents(events: WebhookEvent[]): WebhookEvent[] {
   const seen = new Set<WebhookEvent>()
   const out: WebhookEvent[] = []
@@ -189,6 +225,8 @@ function insertWebhook(
   scopeId: number,
   input: CreateWebhookInput,
 ): number {
+  const trimmedUrl = input.url.trim()
+  assertFormatMatchesUrl(trimmedUrl, input.format)
   const db = getDb()
   const result = db.prepare(`
     INSERT INTO webhooks (${scopeColumn}, name, url_encrypted, format, enabled, events)
@@ -196,7 +234,7 @@ function insertWebhook(
   `).run(
     scopeId,
     (input.name ?? '').trim(),
-    encryptString(input.url.trim()),
+    encryptString(trimmedUrl),
     input.format,
     input.enabled === false ? 0 : 1,
     JSON.stringify(sanitizeEvents(input.events)),
@@ -222,6 +260,21 @@ export interface UpdateWebhookInput {
 
 export function updateWebhook(id: number, input: UpdateWebhookInput): void {
   const db = getDb()
+
+  // When either url or format is changing, validate the resulting pair so a
+  // partial update can't sneak a Discord URL into a generic-format row (or
+  // vice versa). Load the current row only when one side is being patched.
+  const newUrl = typeof input.url === 'string' ? input.url.trim() : undefined
+  const newFormat = input.format
+  if (newUrl || newFormat) {
+    const existing = getWebhookFull(id)
+    const effectiveUrl = newUrl && newUrl.length > 0 ? newUrl : existing?.url
+    const effectiveFormat = newFormat ?? existing?.format
+    if (effectiveUrl && effectiveFormat) {
+      assertFormatMatchesUrl(effectiveUrl, effectiveFormat)
+    }
+  }
+
   const updates: string[] = []
   const params: (string | number | null)[] = []
   if (typeof input.name === 'string') {
