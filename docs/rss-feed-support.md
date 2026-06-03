@@ -77,7 +77,7 @@ Namespace declarations on the `<rss>` root: `itunes`, `content`, `atom`,
 | `<guid isPermaLink="false">` | `episodes.guid` (lazily computed if null — see above) |
 | `<itunes:summary>` | `episodes.description` |
 | `<itunes:duration>` | `episodes.audio_duration_seconds` (formatted `H:MM:SS` or `MM:SS`) |
-| `<itunes:episode>` | `episodes.episode_number` (omitted if blank) |
+| `<itunes:episode>` | `episodes.episode_number` (omitted if blank **or if `episode_type` is `bonus`** — Apple Podcasts silently drops bonus episodes that share a number with a full episode in the same season) |
 | `<itunes:season>` | `episodes.season_number` (omitted if blank) |
 | `<itunes:image>` | `episodes.image_url` (omitted if blank) |
 | `<itunes:episodeType>` | `episodes.episode_type` (`full`, `trailer`, or `bonus`) |
