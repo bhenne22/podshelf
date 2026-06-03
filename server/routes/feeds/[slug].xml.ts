@@ -316,7 +316,7 @@ export default defineEventHandler((event) => {
       xml += `      <itunes:explicit>${ep.itunes_explicit}</itunes:explicit>\n`
     }
 
-    if (ep.episode_number !== null && ep.episode_number !== undefined) {
+    if (ep.episode_number !== null && ep.episode_number !== undefined && ep.episode_type !== 'bonus') {
       xml += `      <itunes:episode>${ep.episode_number}</itunes:episode>\n`
       // Podcasting 2.0 sibling. `display` is optional.
       const displayAttr = ep.episode_display && ep.episode_display.trim()
