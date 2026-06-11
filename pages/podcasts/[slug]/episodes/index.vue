@@ -602,9 +602,17 @@ h1 {
   background: white;
   border: 1px solid #e2e8f0;
   border-radius: 10px;
-  border-collapse: collapse;
-  overflow: hidden;
+  border-collapse: separate;
+  border-spacing: 0;
 }
+/* Corners rounded per-cell instead of overflow:hidden on the table —
+   overflow would clip the row hamburger menu on the last rows.
+   (border-radius is ignored under border-collapse: collapse, hence
+   separate + border-spacing: 0 above.) */
+.episodes-table th:first-child { border-top-left-radius: 10px; }
+.episodes-table th:last-child  { border-top-right-radius: 10px; }
+.episodes-table tbody tr:last-child td:first-child { border-bottom-left-radius: 10px; }
+.episodes-table tbody tr:last-child td:last-child  { border-bottom-right-radius: 10px; }
 
 .episodes-table th {
   background: #f7fafc;
@@ -919,11 +927,12 @@ h1 {
 }
 
 .table-wrap {
-  /* Horizontal scroll on small viewports — preserves all columns. */
   width: 100%;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
   border-radius: 10px;
+  /* No overflow constraint at desktop widths — keeps the row hamburger
+     menu from being clipped when it drops down past the table. The
+     horizontal-scroll constraint is only needed at narrow widths and is
+     applied in the media query below. */
 }
 
 .pagination {
@@ -999,6 +1008,10 @@ h1 {
   .col-status { min-width: 90px; width: auto; }
   .col-date { min-width: 110px; width: auto; }
   .col-actions { min-width: 64px; width: auto; }
+  .table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
   .episodes-table { min-width: 720px; /* force horizontal scroll instead of cramming */ }
   .modal { padding: 1.25rem; }
   .modal-actions button { min-height: 44px; }

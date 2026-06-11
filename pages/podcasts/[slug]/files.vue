@@ -680,9 +680,17 @@ h1 { margin: 0 0 0.25rem; font-size: 1.5rem; color: #1a202c; }
   background: white;
   border: 1px solid #e2e8f0;
   border-radius: 10px;
-  border-collapse: collapse;
-  overflow: hidden;
+  border-collapse: separate;
+  border-spacing: 0;
 }
+/* Corners rounded per-cell instead of overflow:hidden on the table —
+   overflow would clip the row hamburger menu on the last rows.
+   (border-radius is ignored under border-collapse: collapse, hence
+   separate + border-spacing: 0 above.) */
+.files-table th:first-child { border-top-left-radius: 10px; }
+.files-table th:last-child  { border-top-right-radius: 10px; }
+.files-table tbody tr:last-child td:first-child { border-bottom-left-radius: 10px; }
+.files-table tbody tr:last-child td:last-child  { border-bottom-right-radius: 10px; }
 .files-table th {
   background: #f7fafc;
   text-align: left;
@@ -989,9 +997,11 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
 
 .table-wrap {
   width: 100%;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
   border-radius: 10px;
+  /* No overflow constraint at desktop widths — keeps the row hamburger
+     menu from being clipped when it drops down past the table. The
+     horizontal-scroll constraint is only needed at narrow widths and is
+     applied in the media query below. */
 }
 
 .pagination {
@@ -1042,6 +1052,10 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
   }
   .btn-upload { min-height: 44px; padding: 0.6rem 1rem; justify-content: center; }
   .dir-info { font-size: 0.75rem; }
+  .table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
   .files-table { min-width: 720px; }
   .files-table th,
   .files-table td {
