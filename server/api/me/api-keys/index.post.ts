@@ -1,6 +1,6 @@
 import { defineEventHandler, readBody, createError } from 'h3'
 import { randomBytes, createHash } from 'crypto'
-import { requireAuth } from '../../../utils/auth'
+import { requireSessionAuth } from '../../../utils/auth'
 import getDb from '../../../db/index'
 
 /**
@@ -16,7 +16,7 @@ import getDb from '../../../db/index'
  *     or null = unrestricted (inherits all of user's podcast access).
  */
 export default defineEventHandler(async (event) => {
-  const user = requireAuth(event)
+  const user = requireSessionAuth(event)
   const body = await readBody(event)
 
   const label = String(body?.label || '').trim()

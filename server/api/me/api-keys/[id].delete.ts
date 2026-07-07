@@ -1,5 +1,5 @@
 import { defineEventHandler, getRouterParam, createError, setResponseStatus } from 'h3'
-import { requireAuth } from '../../../utils/auth'
+import { requireSessionAuth } from '../../../utils/auth'
 import getDb from '../../../db/index'
 
 /**
@@ -8,7 +8,7 @@ import getDb from '../../../db/index'
  * Revokes (permanently deletes) a key the current user owns.
  */
 export default defineEventHandler((event) => {
-  const user = requireAuth(event)
+  const user = requireSessionAuth(event)
   const id = getRouterParam(event, 'id')
   if (!id) throw createError({ statusCode: 400, statusMessage: 'id is required' })
 

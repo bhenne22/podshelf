@@ -175,6 +175,24 @@ export function requireAuth(event: H3Event): AuthUser {
 }
 
 /**
+ * Operations that must not be reachable with an API key — API-key management
+ * itself. Minting or widening a key from another key is a privilege-escalation
+ * path: a scoped or read/write key could hand itself an unrestricted `full`
+ * key, defeating its own ceiling. These endpoints require an interactive
+ * session (cookie auth, where permissionLevel is null).
+ */
+export function requireSessionAuth(event: H3Event): AuthUser {
+  const ctx = requireAuthContext(event)
+  if (ctx.permissionLevel !== null) {
+    throw createError({
+      statusCode: 403,
+      statusMessage: 'API-key management requires an interactive login session, not an API key',
+    })
+  }
+  return ctx.user
+}
+
+/**
  * Admin-only operations. Scoped API keys cannot use these endpoints even if
  * the underlying user is an admin — that's the whole point of restricting
  * a key to a single podcast.
