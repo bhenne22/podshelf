@@ -4,6 +4,12 @@ import getDb from '../db/index'
 
 export type WebhookFormat = 'discord' | 'slack' | 'generic'
 
+// Cap on outbound webhook delivery. firePublishEvent is awaited on the publish
+// request path, so without this a webhook host that accepts the connection and
+// stalls would hold the user's publish open until undici's ~300s header timeout.
+// On abort, fetch throws and the send functions' catch returns { ok: false }.
+const WEBHOOK_TIMEOUT_MS = 10_000
+
 export const WEBHOOK_EVENTS = [
   'episode.publish',
   'episode.recording.scheduled',
@@ -547,6 +553,7 @@ export async function sendRecordingWebhook(
       method: 'POST',
       headers: { 'Content-Type': contentType },
       body,
+      signal: AbortSignal.timeout(WEBHOOK_TIMEOUT_MS),
     })
     if (!res.ok) {
       const text = await res.text().catch(() => '')
@@ -573,6 +580,7 @@ export async function sendPublishWebhook(
       method: 'POST',
       headers: { 'Content-Type': contentType },
       body,
+      signal: AbortSignal.timeout(WEBHOOK_TIMEOUT_MS),
     })
     if (!res.ok) {
       const text = await res.text().catch(() => '')

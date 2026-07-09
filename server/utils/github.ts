@@ -215,6 +215,10 @@ export async function dispatchRepositoryEvent(
       event_type: config.event_type,
       client_payload: clientPayload || {},
     }),
+    // Cap the dispatch so a stalled GitHub connection can't hang the publish
+    // path (fire-and-forget) or a manual/test request. On abort fetch throws,
+    // which surfaces as a normal dispatch failure to the caller.
+    signal: AbortSignal.timeout(10_000),
   })
 
   if (!res.ok) {
