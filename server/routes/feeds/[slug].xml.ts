@@ -94,6 +94,20 @@ function cdata(str: string): string {
   return `<![CDATA[${stripInvalidXml(str).replace(/\]\]>/g, ']]]]><![CDATA[>')}]]>`
 }
 
+// Best-effort MIME type from the audio URL's extension. Podcast clients use
+// the enclosure `type` to decide playback; advertising audio/mpeg for an m4a
+// (which the upload endpoint accepts) makes some clients refuse the file.
+function mimeForAudio(url: string): string {
+  const u = url.split(/[?#]/)[0].toLowerCase()
+  if (u.endsWith('.m4a') || u.endsWith('.mp4') || u.endsWith('.m4b')) return 'audio/mp4'
+  if (u.endsWith('.aac')) return 'audio/aac'
+  if (u.endsWith('.opus')) return 'audio/opus'
+  if (u.endsWith('.ogg') || u.endsWith('.oga')) return 'audio/ogg'
+  if (u.endsWith('.wav')) return 'audio/wav'
+  if (u.endsWith('.flac')) return 'audio/flac'
+  return 'audio/mpeg'
+}
+
 function formatDuration(seconds: number): string {
   const h = Math.floor(seconds / 3600)
   const m = Math.floor((seconds % 3600) / 60)
@@ -304,7 +318,7 @@ export default defineEventHandler((event) => {
       const feedAudioUrl = audioTrackingPrefix
         ? audioTrackingPrefix + audioUrl.replace(/^https?:\/\//, '')
         : audioUrl
-      xml += `      <enclosure url="${escapeXml(feedAudioUrl)}" length="${audioSize}" type="audio/mpeg"/>\n`
+      xml += `      <enclosure url="${escapeXml(feedAudioUrl)}" length="${audioSize}" type="${mimeForAudio(audioUrl)}"/>\n`
     }
 
     xml += `      <guid isPermaLink="false">${escapeXml(ep.guid || episodeUrl)}</guid>\n`
