@@ -5,6 +5,7 @@ import {
   PUBLISH_DEBOUNCE_MINUTES,
   loadGithubConfig,
   clearPublishDirty,
+  markPublishDirty,
   dispatchRepositoryEvent,
   isDeploysPaused,
 } from './github'
@@ -132,7 +133,13 @@ export function processPendingPublishes(): number {
     if (!config) continue
 
     // Clear FIRST so a fast follow-up edit re-marks dirty after we send;
-    // otherwise an edit during dispatch could be lost when we cleared.
+    // otherwise an edit during dispatch could be lost when we cleared. The
+    // dispatch is fire-and-forget, so audit + retry are handled in its
+    // callbacks: on success, log the rebuild; on failure, re-arm the dirty
+    // markers so the next debounce tick retries instead of silently dropping
+    // the rebuild, and audit the failure. (The old code cleared, then audited
+    // success unconditionally — so a failed dispatch left the site un-rebuilt
+    // while the log claimed it had fired.)
     clearPublishDirty(row.id)
 
     void dispatchRepositoryEvent(config, {
@@ -140,18 +147,31 @@ export function processPendingPublishes(): number {
       reason: 'podshelf:auto-debounced',
       podcast_id: row.id,
       fired_at: new Date().toISOString(),
-    }).catch((err) => {
-      console.error(`[scheduler] auto-publish dispatch failed for podcast ${row.id}: ${err?.message || err}`)
     })
-
-    logAudit({
-      podcastId: row.id,
-      userId: null,
-      action: 'podcast.github.auto-trigger',
-      entityType: 'podcast',
-      entityId: row.id,
-      summary: `Auto-fired GitHub rebuild after ${PUBLISH_DEBOUNCE_MINUTES}-minute quiet period`,
-    })
+      .then(() => {
+        logAudit({
+          podcastId: row.id,
+          userId: null,
+          action: 'podcast.github.auto-trigger',
+          entityType: 'podcast',
+          entityId: row.id,
+          summary: `Auto-fired GitHub rebuild after ${PUBLISH_DEBOUNCE_MINUTES}-minute quiet period`,
+        })
+      })
+      .catch((err) => {
+        const message = err instanceof Error ? err.message : String(err)
+        console.error(`[scheduler] auto-publish dispatch failed for podcast ${row.id}: ${message}`)
+        markPublishDirty(row.id)
+        logAudit({
+          podcastId: row.id,
+          userId: null,
+          action: 'podcast.github.auto-trigger.fail',
+          entityType: 'podcast',
+          entityId: row.id,
+          summary: `Auto-dispatch for GitHub rebuild failed: ${message}`,
+          details: { error: message },
+        })
+      })
     fired++
   }
   return fired
