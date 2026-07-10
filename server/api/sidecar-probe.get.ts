@@ -1,5 +1,6 @@
 import { defineEventHandler, getQuery, createError } from 'h3'
-import { requireAuth } from '../utils/auth'
+import { requireWriteAuth } from '../utils/auth'
+import { assertPublicHttpUrl } from '../utils/ssrf'
 import { validateTranscript, validateChaptersJson, formatHms } from '../utils/sidecar'
 
 /**
@@ -18,7 +19,7 @@ const SIZE_LIMIT_BYTES = 10 * 1024 * 1024 // 10 MB
 const FETCH_TIMEOUT_MS = 15_000
 
 export default defineEventHandler(async (event) => {
-  requireAuth(event)
+  requireWriteAuth(event)
 
   const { url, kind } = getQuery(event) as { url?: string; kind?: string }
 
@@ -28,11 +29,7 @@ export default defineEventHandler(async (event) => {
   if (kind !== 'transcript' && kind !== 'chapters') {
     throw createError({ statusCode: 400, statusMessage: 'kind must be "transcript" or "chapters"' })
   }
-  try {
-    new URL(url)
-  } catch {
-    throw createError({ statusCode: 400, statusMessage: 'url must be a valid URL' })
-  }
+  await assertPublicHttpUrl(url)
 
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)

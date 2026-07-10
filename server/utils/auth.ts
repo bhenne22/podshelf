@@ -193,6 +193,20 @@ export function requireSessionAuth(event: H3Event): AuthUser {
 }
 
 /**
+ * For endpoints that trigger a server-side fetch/action and must not be
+ * reachable by a read-only API key (e.g. the URL probes, which would otherwise
+ * let a read-scoped key drive server-side requests). A session or a write/full
+ * key passes; a `read` key is rejected.
+ */
+export function requireWriteAuth(event: H3Event): AuthUser {
+  const ctx = requireAuthContext(event)
+  if (ctx.permissionLevel === 'read') {
+    throw createError({ statusCode: 403, statusMessage: 'This endpoint requires write access' })
+  }
+  return ctx.user
+}
+
+/**
  * Admin-only operations. Scoped API keys cannot use these endpoints even if
  * the underlying user is an admin — that's the whole point of restricting
  * a key to a single podcast.

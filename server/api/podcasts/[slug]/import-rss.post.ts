@@ -1,5 +1,6 @@
 import { defineEventHandler, readBody, getRouterParam, createError } from 'h3'
 import { requirePodcastAccess } from '../../../utils/auth'
+import { assertPublicHttpUrl } from '../../../utils/ssrf'
 import { parsePodcastFeed } from '../../../utils/rss-parser'
 import { probeHttpsUpgrades } from '../../../utils/image-upgrade'
 import { maybeAutoTrigger } from '../../../utils/github'
@@ -36,6 +37,7 @@ export default defineEventHandler(async (event) => {
   if (!/^https?:\/\//i.test(feedUrl)) {
     throw createError({ statusCode: 400, statusMessage: 'feed_url must start with http:// or https://' })
   }
+  await assertPublicHttpUrl(feedUrl)
 
   const db = getDb()
 

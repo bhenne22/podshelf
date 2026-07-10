@@ -1,5 +1,6 @@
 import { defineEventHandler, readBody, getRouterParam, createError } from 'h3'
 import { requirePodcastAccess } from '../../../../utils/auth'
+import { assertPublicHttpUrl } from '../../../../utils/ssrf'
 import {
   getWebhookSummary,
   isWebhookEvent,
@@ -41,6 +42,7 @@ export default defineEventHandler(async (event) => {
       if (!/^https?:\/\//i.test(url)) {
         throw createError({ statusCode: 400, statusMessage: 'url must start with http:// or https://' })
       }
+      await assertPublicHttpUrl(url)
       patch.url = url
     }
     // Empty URL is ignored — clients use DELETE to remove a webhook.

@@ -1,5 +1,6 @@
 import { createError } from 'h3'
 import { encryptString, decryptString } from './crypto'
+import { assertPublicHttpUrl } from './ssrf'
 import getDb from '../db/index'
 
 export type WebhookFormat = 'discord' | 'slack' | 'generic'
@@ -548,6 +549,7 @@ export async function sendRecordingWebhook(
   rec: WebhookRecordingPayload,
 ): Promise<{ ok: boolean; status?: number; message?: string }> {
   try {
+    await assertPublicHttpUrl(config.url)
     const { body, contentType } = buildRecordingBody(config, podcast, rec)
     const res = await fetch(config.url, {
       method: 'POST',
@@ -575,6 +577,7 @@ export async function sendPublishWebhook(
   episode: WebhookEpisodePayload,
 ): Promise<{ ok: boolean; status?: number; message?: string }> {
   try {
+    await assertPublicHttpUrl(config.url)
     const { body, contentType } = buildBody(config, podcast, episode)
     const res = await fetch(config.url, {
       method: 'POST',
