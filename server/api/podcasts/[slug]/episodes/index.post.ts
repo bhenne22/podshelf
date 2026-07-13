@@ -1,6 +1,6 @@
 import { defineEventHandler, readBody, getRouterParam, createError } from 'h3'
 import { requirePodcastAccess } from '../../../../utils/auth'
-import { validateEpisodeFields } from '../../../../utils/validate'
+import { validateEpisodeFields, normalizeIsoDate } from '../../../../utils/validate'
 import { logAudit } from '../../../../utils/audit'
 import { firePublishEvent } from '../../../../utils/publish-event'
 import { fireRecordingEvent } from '../../../../utils/recording-event'
@@ -17,6 +17,12 @@ export default defineEventHandler(async (event) => {
 
   const body = await readBody(event)
   validateEpisodeFields(body)
+
+  // Canonicalize datetime inputs to ISO-8601 UTC before they flow into
+  // resolvePublishTiming / the INSERT, so stored values are always
+  // SQLite-parseable, chronologically ordered, and read as UTC by the feed.
+  if ('published_at' in body) body.published_at = normalizeIsoDate(body.published_at)
+  if ('recording_starts_at' in body) body.recording_starts_at = normalizeIsoDate(body.recording_starts_at)
 
   // Title is only required when the episode will be live or scheduled — drafts
   // can be created title-less so the user can reserve a recording slot before

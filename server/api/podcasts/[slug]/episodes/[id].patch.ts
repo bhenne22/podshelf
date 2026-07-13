@@ -1,6 +1,6 @@
 import { defineEventHandler, readBody, getRouterParam, createError } from 'h3'
 import { requirePodcastAccess } from '../../../../utils/auth'
-import { validateEpisodeFields } from '../../../../utils/validate'
+import { validateEpisodeFields, normalizeIsoDate } from '../../../../utils/validate'
 import { maybeAutoTrigger } from '../../../../utils/github'
 import { bumpFeedLastModified } from '../../../../utils/feed-cache'
 import { logAudit, diffFields, summarizeChanges } from '../../../../utils/audit'
@@ -44,6 +44,12 @@ export default defineEventHandler(async (event) => {
 
   const body = await readBody(event)
   validateEpisodeFields(body)
+
+  // Canonicalize datetime inputs to ISO-8601 UTC (see episodes/index.post.ts) so
+  // a scheduled/draft patch carrying a raw datetime-local value doesn't land an
+  // unnormalized string in the DB via the UPDATABLE loop below.
+  if ('published_at' in body) body.published_at = normalizeIsoDate(body.published_at)
+  if ('recording_starts_at' in body) body.recording_starts_at = normalizeIsoDate(body.recording_starts_at)
 
   // Going live or scheduling requires a non-empty title — drafts can stay
   // title-less, but once it's heading for the feed it has to have a title.

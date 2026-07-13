@@ -12,6 +12,37 @@ const VALID_TRANSCRIPT_TYPES = [
   'application/json',
 ]
 
+/**
+ * Canonicalize a user-supplied datetime to ISO-8601 UTC so it stores, compares,
+ * and renders consistently: SQLite's datetime() can parse it, bytewise
+ * `ORDER BY published_at` stays chronological, and the feed's toRfc2822 reads it
+ * as UTC. Returns null for empty/nullish input.
+ *
+ * A value with no timezone (a datetime-local "2026-07-06T14:00", a
+ * space-separated "2026-07-06 14:00:00", or a date-only "2026-07-06") is treated
+ * as UTC — matching how SQLite datetime() and the scheduled-flip comparison
+ * already interpret it — rather than the server's local zone, which new Date()
+ * would otherwise assume. Assumes the value already passed validateEpisodeFields;
+ * returns the raw string unchanged if it somehow doesn't parse.
+ */
+export function normalizeIsoDate(value: unknown): string | null {
+  if (value == null || value === '') return null
+  const s = String(value).trim()
+  // An ISO-shaped value with no timezone (date-only, "…T14:00", or space-
+  // separated) is pinned to UTC. Anything with a Z/offset, or a non-ISO string,
+  // falls through to new Date()'s own parsing.
+  const isoNaive = /^\d{4}-\d{2}-\d{2}([ T]\d{2}:\d{2}(:\d{2}(\.\d+)?)?)?$/.test(s)
+  let toParse = s
+  if (isoNaive) {
+    toParse = s.replace(' ', 'T')
+    if (!toParse.includes('T')) toParse += 'T00:00:00'
+    toParse += 'Z'
+  }
+  const d = new Date(toParse)
+  if (isNaN(d.getTime())) return String(value)
+  return d.toISOString()
+}
+
 export function validateEpisodeFields(body: Record<string, unknown>) {
   if (body.episode_number != null) {
     const n = Number(body.episode_number)
