@@ -1,5 +1,6 @@
 import { defineEventHandler, getRouterParam, readBody, createError } from 'h3'
 import { requireAdmin } from '../../../../../utils/auth'
+import { assertPublicHttpUrl } from '../../../../../utils/ssrf'
 import {
   getWebhookSummary,
   isWebhookEvent,
@@ -32,6 +33,7 @@ export default defineEventHandler(async (event) => {
       if (!/^https?:\/\//i.test(url)) {
         throw createError({ statusCode: 400, statusMessage: 'url must start with http:// or https://' })
       }
+      await assertPublicHttpUrl(url)
       patch.url = url
     }
   }

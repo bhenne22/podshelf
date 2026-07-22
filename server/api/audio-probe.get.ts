@@ -1,5 +1,6 @@
 import { defineEventHandler, getQuery, createError } from 'h3'
-import { requireAuth } from '../utils/auth'
+import { requireWriteAuth } from '../utils/auth'
+import { assertPublicHttpUrl } from '../utils/ssrf'
 
 /**
  * GET /api/audio-probe?url=<audio_url>
@@ -8,7 +9,7 @@ import { requireAuth } from '../utils/auth'
  * from the Content-Length header.
  */
 export default defineEventHandler(async (event) => {
-  requireAuth(event)
+  requireWriteAuth(event)
 
   const { url } = getQuery(event) as { url?: string }
 
@@ -16,11 +17,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'url query parameter is required' })
   }
 
-  try {
-    new URL(url)
-  } catch {
-    throw createError({ statusCode: 400, statusMessage: 'url must be a valid URL' })
-  }
+  await assertPublicHttpUrl(url)
 
   try {
     const response = await fetch(url, { method: 'HEAD' })

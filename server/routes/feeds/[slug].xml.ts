@@ -73,8 +73,16 @@ interface ChannelPersonRow {
   href: string | null
 }
 
+// Strip characters that are illegal in XML 1.0 even inside CDATA (C0 controls
+// other than tab/LF/CR). A single one pasted into a title or description — or
+// sent via the API, which doesn't validate text fields — makes the ENTIRE feed
+// unparseable by Apple/Spotify, so one bad episode takes the whole feed down.
+function stripInvalidXml(str: string): string {
+  return str.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '')
+}
+
 function escapeXml(str: string): string {
-  return str
+  return stripInvalidXml(str)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
@@ -83,7 +91,21 @@ function escapeXml(str: string): string {
 }
 
 function cdata(str: string): string {
-  return `<![CDATA[${str.replace(/\]\]>/g, ']]]]><![CDATA[>')}]]>`
+  return `<![CDATA[${stripInvalidXml(str).replace(/\]\]>/g, ']]]]><![CDATA[>')}]]>`
+}
+
+// Best-effort MIME type from the audio URL's extension. Podcast clients use
+// the enclosure `type` to decide playback; advertising audio/mpeg for an m4a
+// (which the upload endpoint accepts) makes some clients refuse the file.
+function mimeForAudio(url: string): string {
+  const u = url.split(/[?#]/)[0].toLowerCase()
+  if (u.endsWith('.m4a') || u.endsWith('.mp4') || u.endsWith('.m4b')) return 'audio/mp4'
+  if (u.endsWith('.aac')) return 'audio/aac'
+  if (u.endsWith('.opus')) return 'audio/opus'
+  if (u.endsWith('.ogg') || u.endsWith('.oga')) return 'audio/ogg'
+  if (u.endsWith('.wav')) return 'audio/wav'
+  if (u.endsWith('.flac')) return 'audio/flac'
+  return 'audio/mpeg'
 }
 
 function formatDuration(seconds: number): string {
@@ -296,7 +318,7 @@ export default defineEventHandler((event) => {
       const feedAudioUrl = audioTrackingPrefix
         ? audioTrackingPrefix + audioUrl.replace(/^https?:\/\//, '')
         : audioUrl
-      xml += `      <enclosure url="${escapeXml(feedAudioUrl)}" length="${audioSize}" type="audio/mpeg"/>\n`
+      xml += `      <enclosure url="${escapeXml(feedAudioUrl)}" length="${audioSize}" type="${mimeForAudio(audioUrl)}"/>\n`
     }
 
     xml += `      <guid isPermaLink="false">${escapeXml(ep.guid || episodeUrl)}</guid>\n`

@@ -1,5 +1,6 @@
 import { defineEventHandler, getRouterParam, readBody, createError } from 'h3'
 import { requireAdmin } from '../../../../../utils/auth'
+import { assertPublicHttpUrl } from '../../../../../utils/ssrf'
 import {
   createNetworkWebhook,
   getWebhookSummary,
@@ -35,6 +36,7 @@ export default defineEventHandler(async (event) => {
   if (!url || !/^https?:\/\//i.test(url)) {
     throw createError({ statusCode: 400, statusMessage: 'url must start with http:// or https://' })
   }
+  await assertPublicHttpUrl(url)
   if (!isWebhookFormat(body?.format)) {
     throw createError({ statusCode: 400, statusMessage: 'format must be discord, slack, or generic' })
   }

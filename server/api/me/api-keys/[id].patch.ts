@@ -1,5 +1,5 @@
 import { defineEventHandler, readBody, getRouterParam, createError } from 'h3'
-import { requireAuth } from '../../../utils/auth'
+import { requireSessionAuth } from '../../../utils/auth'
 import getDb from '../../../db/index'
 
 /**
@@ -15,7 +15,7 @@ import getDb from '../../../db/index'
  *   - non-empty array   → replace scope with these slugs
  */
 export default defineEventHandler(async (event) => {
-  const user = requireAuth(event)
+  const user = requireSessionAuth(event)
   const id = getRouterParam(event, 'id')
   if (!id) throw createError({ statusCode: 400, statusMessage: 'id is required' })
 
