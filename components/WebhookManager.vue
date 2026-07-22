@@ -122,17 +122,21 @@
 import { ref, reactive, onMounted } from 'vue'
 
 type WebhookFormat = 'discord' | 'slack' | 'generic'
+// Keep in sync with WEBHOOK_EVENTS in server/utils/webhook.ts — an event
+// missing here is accepted by the API but can never be ticked in the UI.
 type WebhookEvent =
   | 'episode.publish'
   | 'episode.recording.scheduled'
   | 'episode.recording.moved'
   | 'episode.recording.cancelled'
+  | 'correction.submitted'
 
 const ALL_EVENTS: { value: WebhookEvent; label: string }[] = [
   { value: 'episode.publish', label: 'A new episode goes live' },
   { value: 'episode.recording.scheduled', label: 'A recording is added to the calendar' },
   { value: 'episode.recording.moved', label: 'A scheduled recording moves' },
   { value: 'episode.recording.cancelled', label: 'A scheduled recording is removed' },
+  { value: 'correction.submitted', label: 'A listener submits a correction' },
 ]
 
 interface ApiWebhook {
