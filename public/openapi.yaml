@@ -52,6 +52,8 @@ tags:
     description: Per-podcast roster of hosts/guests + per-episode attachments
   - name: Distribution
     description: Per-podcast "Listen on" destinations (Apple, Spotify, etc.)
+  - name: Corrections
+    description: Listener-reported factual errors — public submit endpoint plus member-only triage
   - name: Networks
     description: Groupings of podcasts; implicit membership via podcast_users for read access. Mutations are admin-only.
   - name: Uploads & files
@@ -635,6 +637,150 @@ paths:
                 properties:
                   ok: { type: boolean }
                   count: { type: integer }
+
+  # ------------------------------------------------------------- Corrections
+  /api/public/corrections:
+    post:
+      tags: [Corrections]
+      security: []
+      summary: Submit a factual correction (public, no auth)
+      description: |
+        Where the downstream static sites' "report an error" forms land. Those
+        sites are prerendered and have no server of their own, so Podshelf
+        receives the submission on their behalf.
+
+        Abuse controls, in order: a honeypot field (`hp` non-empty returns
+        `{ok: true}` and stores nothing), hard length caps, an http(s)-only
+        check on `source_url`, and a limit of 5 submissions per IP hash per
+        hour.
+
+        CORS origins are derived from the `website` column of every active
+        podcast — there is no separate allowlist. `localhost` is additionally
+        allowed off-production.
+
+        An `episode_slug` that doesn't resolve is not an error: `episode_id`
+        stays null and the raw slug is kept.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [podcast_slug, claim, correction]
+              properties:
+                podcast_slug: { type: string, example: ys100m }
+                episode_slug: { type: string, nullable: true, example: ys100m-wheres-the-finish }
+                timecode: { type: string, nullable: true, maxLength: 40, example: '1:04:12' }
+                claim:
+                  type: string
+                  maxLength: 4000
+                  description: What we said on the show.
+                correction:
+                  type: string
+                  maxLength: 4000
+                  description: What is actually true.
+                source_url: { type: string, nullable: true, format: uri, description: Must be http(s). }
+                name: { type: string, nullable: true, maxLength: 120 }
+                contact: { type: string, nullable: true, maxLength: 200 }
+                hp:
+                  type: string
+                  description: Honeypot — must be empty. Bots that fill it get a silent 200.
+      responses:
+        '200':
+          description: Accepted (also returned, without storing, when the honeypot is tripped).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+        '400':
+          description: Missing required field, over a length cap, or a non-http(s) source_url.
+        '404':
+          description: Unknown or inactive podcast.
+        '429':
+          description: Rate limit exceeded (5 per IP hash per hour).
+    options:
+      tags: [Corrections]
+      security: []
+      summary: CORS preflight
+      responses:
+        '204':
+          description: Preflight response. CORS headers are present only for allowed origins.
+
+  /api/podcasts/{slug}/corrections:
+    parameters:
+      - { $ref: '#/components/parameters/Slug' }
+    get:
+      tags: [Corrections]
+      summary: List submitted corrections (membership required)
+      description: |
+        Newest first. `ip_hash` and `user_agent` are never projected — they
+        exist for rate limiting, not for browsing.
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [new, confirmed, rejected, aired, all]
+          description: Defaults to no filter when omitted.
+      responses:
+        '200':
+          description: Corrections, newest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id: { type: integer }
+                    episode_id: { type: integer, nullable: true }
+                    episode_slug: { type: string, nullable: true }
+                    episode_title: { type: string, nullable: true }
+                    timecode: { type: string, nullable: true }
+                    claim: { type: string }
+                    correction: { type: string }
+                    source_url: { type: string, nullable: true }
+                    submitter_name: { type: string, nullable: true }
+                    submitter_contact: { type: string, nullable: true }
+                    status: { type: string, enum: [new, confirmed, rejected, aired] }
+                    resolution_note: { type: string, nullable: true }
+                    aired_episode_id: { type: integer, nullable: true }
+                    aired_episode_title: { type: string, nullable: true }
+                    created_at: { type: string }
+                    updated_at: { type: string }
+        '400':
+          description: Invalid status filter.
+
+  /api/podcasts/{slug}/corrections/{id}:
+    parameters:
+      - { $ref: '#/components/parameters/Slug' }
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    patch:
+      tags: [Corrections]
+      summary: Triage a correction (membership required)
+      description: |
+        The submitted content itself (claim, correction, submitter details) is
+        immutable — it's a record of what a listener told us, not a document we
+        edit. `aired_episode_id` must belong to this podcast.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status: { type: string, enum: [new, confirmed, rejected, aired] }
+                resolution_note: { type: string, nullable: true, maxLength: 4000 }
+                aired_episode_id: { type: integer, nullable: true }
+      responses:
+        '200':
+          description: Updated correction row.
+        '400':
+          description: Invalid status, over-long note, or an aired_episode_id from another podcast.
+        '404':
+          description: No such correction for this podcast.
 
   # ---------------------------------------------------------------- Networks
   /api/networks:
@@ -1372,6 +1518,7 @@ paths:
                       - episode.recording.scheduled
                       - episode.recording.moved
                       - episode.recording.cancelled
+                      - correction.submitted
       responses:
         '201':
           description: Created.
@@ -1421,6 +1568,7 @@ paths:
                       - episode.recording.scheduled
                       - episode.recording.moved
                       - episode.recording.cancelled
+                      - correction.submitted
       responses:
         '200': { description: Updated. }
         '400':
@@ -1455,6 +1603,7 @@ paths:
                     - episode.recording.scheduled
                     - episode.recording.moved
                     - episode.recording.cancelled
+                    - correction.submitted
       responses:
         '200':
           description: Delivered.

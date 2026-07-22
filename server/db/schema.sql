@@ -388,3 +388,39 @@ CREATE INDEX IF NOT EXISTS idx_schedule_tokens_token ON schedule_tokens(token);
 CREATE INDEX IF NOT EXISTS idx_schedule_tokens_user ON schedule_tokens(user_id);
 CREATE INDEX IF NOT EXISTS idx_schedule_tokens_scope
   ON schedule_tokens(scope_type, scope_id);
+
+-- Listener-submitted factual corrections. Written by the unauthenticated
+-- POST /api/public/corrections endpoint that the downstream static sites
+-- post their correction forms to, read + triaged by podcast members.
+--
+-- `episode_slug` is stored alongside `episode_id` on purpose: the FK goes
+-- NULL if the episode is ever deleted, but the submission should still say
+-- which episode the listener was talking about.
+--
+-- `ip_hash` is a salted-by-nothing sha256 of the submitter IP, matching the
+-- download-tracking route's approach — enough to rate-limit a repeat
+-- submitter, not enough to be a stored IP log.
+CREATE TABLE IF NOT EXISTS corrections (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  podcast_id        INTEGER NOT NULL REFERENCES podcasts(id) ON DELETE CASCADE,
+  episode_id        INTEGER REFERENCES episodes(id) ON DELETE SET NULL,
+  episode_slug      TEXT,
+  timecode          TEXT,
+  claim             TEXT NOT NULL,
+  correction        TEXT NOT NULL,
+  source_url        TEXT,
+  submitter_name    TEXT,
+  submitter_contact TEXT,
+  status            TEXT NOT NULL DEFAULT 'new',
+  resolution_note   TEXT,
+  aired_episode_id  INTEGER REFERENCES episodes(id) ON DELETE SET NULL,
+  ip_hash           TEXT,
+  user_agent        TEXT,
+  created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at        TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_corrections_podcast
+  ON corrections(podcast_id, status, id DESC);
+CREATE INDEX IF NOT EXISTS idx_corrections_iphash
+  ON corrections(ip_hash, created_at);

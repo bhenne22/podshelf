@@ -196,8 +196,8 @@ a token in the path).
 Body: `{ name?, url, format, enabled?, events }`. `format` is
 `discord` / `slack` / `generic`. `events` is an array selected from:
 `episode.publish`, `episode.recording.scheduled`, `episode.recording.moved`,
-`episode.recording.cancelled`. Returns the new redacted webhook row with
-status 201.
+`episode.recording.cancelled`, `correction.submitted`. Returns the new
+redacted webhook row with status 201.
 
 **Format / URL compatibility.** Discord URLs (`discord.com`,
 `discordapp.com`, `ptb.discord.com`, `canary.discord.com`) must use
@@ -295,6 +295,72 @@ is preserved via `position`.
 
 Reorder requires the request to contain exactly the same set of ids the
 podcast currently has — partial reorders are rejected.
+
+---
+
+### Corrections
+
+Factual errors reported by listeners. The downstream static sites are
+prerendered and have no server of their own, so their "report a correction"
+forms POST to Podshelf's **public, unauthenticated** endpoint; podcast members
+then triage the results.
+
+Reads and triage require membership — a submission can carry the listener's
+contact details, so there is no public read surface. `ip_hash` and `user_agent`
+are stored for rate limiting and are never projected by the API.
+
+#### `POST /api/public/corrections` *(no auth)*
+
+```json
+{
+  "podcast_slug": "ys100m",
+  "episode_slug": "ys100m-wheres-the-finish",
+  "timecode": "1:04:12",
+  "claim": "What we said on the show",
+  "correction": "What is actually true",
+  "source_url": "https://example.com/proof",
+  "name": "Optional submitter name",
+  "contact": "Optional email or handle",
+  "hp": ""
+}
+```
+
+Only `podcast_slug`, `claim` and `correction` are required. Returns
+`{ "ok": true }`.
+
+Abuse controls, in order of application:
+
+| Gate | Behavior |
+|---|---|
+| Honeypot (`hp`) | Non-empty → `200 { ok: true }` and **nothing is stored**. A 400 would just teach the bot which field to skip. |
+| Length caps | `claim`/`correction` ≤ 4000 chars, other strings ≤ 300 → `400` |
+| `source_url` scheme | Must be `http(s)` — it renders as a clickable link in the webhook and admin UI → `400` |
+| Unknown/inactive podcast | `404` (same response for both, so the endpoint can't enumerate hidden shows) |
+| Rate limit | More than **5 submissions per IP hash per hour** → `429` |
+
+CORS: the allowed origins are derived from the `podcasts.website` column of
+every **active** podcast — no separate allowlist to maintain, so a new sister
+site is accepted as soon as its podcast record has a website. `localhost` is
+additionally allowed off-production for local development. An `OPTIONS`
+preflight is served at the same path.
+
+An unresolvable `episode_slug` is not an error: `episode_id` stays null but the
+raw slug is retained so the hosts can still see which episode was meant.
+
+Every submission writes a `correction.submit` audit entry and fires the
+`correction.submitted` webhook event (see [Webhooks](#post-apipodcastsslugwebhooks)) —
+subscribe a Discord webhook to it to get pinged when one lands.
+
+#### Triage *(membership required)*
+
+| Endpoint                                         | Purpose |
+|--------------------------------------------------|---------|
+| `GET   /api/podcasts/[slug]/corrections?status=`  | List newest-first. `status` ∈ `new`, `confirmed`, `rejected`, `aired`, `all` |
+| `PATCH /api/podcasts/[slug]/corrections/[id]`     | Body: `{ status?, resolution_note?, aired_episode_id? }` |
+
+The submitted content itself (`claim`, `correction`, `submitter_*`) is
+immutable — it's a record of what a listener told us, not a document we edit.
+`aired_episode_id` must belong to the same podcast.
 
 ---
 

@@ -16,6 +16,7 @@ export const WEBHOOK_EVENTS = [
   'episode.recording.scheduled',
   'episode.recording.moved',
   'episode.recording.cancelled',
+  'correction.submitted',
 ] as const
 export type WebhookEvent = typeof WEBHOOK_EVENTS[number]
 
@@ -382,6 +383,23 @@ export interface WebhookPodcastPayload {
   website: string | null
 }
 
+export interface WebhookCorrectionPayload {
+  correction_id: number
+  // Null when the submitter didn't pick an episode. The slug is kept even
+  // when the episode row can't be resolved, so the message still says what
+  // the listener was talking about.
+  episode_title: string | null
+  episode_slug: string | null
+  episode_url: string | null
+  timecode: string | null
+  claim: string
+  correction: string
+  source_url: string | null
+  submitter_name: string | null
+  submitter_contact: string | null
+  triage_url: string
+}
+
 function buildBody(
   config: WebhookConfig,
   podcast: WebhookPodcastPayload,
@@ -579,6 +597,117 @@ export async function sendPublishWebhook(
   try {
     await assertPublicHttpUrl(config.url)
     const { body, contentType } = buildBody(config, podcast, episode)
+    const res = await fetch(config.url, {
+      method: 'POST',
+      headers: { 'Content-Type': contentType },
+      body,
+      signal: AbortSignal.timeout(WEBHOOK_TIMEOUT_MS),
+    })
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      return { ok: false, status: res.status, message: text.slice(0, 200) || res.statusText }
+    }
+    return { ok: true, status: res.status }
+  } catch (err: unknown) {
+    return { ok: false, message: err instanceof Error ? err.message : 'webhook failed' }
+  }
+}
+
+function correctionEpisodeLabel(c: WebhookCorrectionPayload): string {
+  if (c.episode_title) return c.episode_title
+  if (c.episode_slug) return c.episode_slug
+  return 'the show (no episode specified)'
+}
+
+/**
+ * Correction submissions come from the open internet, so every field here is
+ * attacker-controlled. Truncate hard and — for the chat formats — neutralize
+ * the characters that would otherwise let a submitter forge markdown, fake a
+ * link, or inject an @everyone into the host's Discord channel.
+ */
+function chatSafe(s: string, max: number): string {
+  const trimmed = s.replace(/\s+/g, ' ').trim()
+  const capped = trimmed.length > max ? trimmed.slice(0, max) + '…' : trimmed
+  return capped
+    .replace(/[*_~`|>]/g, (m) => '\\' + m)
+    .replace(/@(everyone|here)/gi, '@​$1')
+}
+
+/** Exported for shape-pinning tests; callers should use sendCorrectionWebhook. */
+export function buildCorrectionBody(
+  config: WebhookConfig,
+  podcast: WebhookPodcastPayload,
+  c: WebhookCorrectionPayload,
+): { body: string; contentType: string } {
+  const label = correctionEpisodeLabel(c)
+  const where = c.timecode ? `${label} @ ${c.timecode}` : label
+  const who = c.submitter_name ? chatSafe(c.submitter_name, 80) : 'Anonymous'
+
+  if (config.format === 'discord') {
+    const fields: Record<string, unknown>[] = [
+      { name: 'We said', value: chatSafe(c.claim, 900) || '—' },
+      { name: "What's actually true", value: chatSafe(c.correction, 900) || '—' },
+    ]
+    if (c.source_url) fields.push({ name: 'Source', value: c.source_url })
+    if (c.submitter_contact) {
+      fields.push({ name: 'Contact', value: chatSafe(c.submitter_contact, 120) })
+    }
+    const embed: Record<string, unknown> = {
+      title: `Correction on ${where}`.slice(0, 250),
+      url: c.triage_url,
+      description: `Submitted by ${who}`,
+      fields,
+      author: { name: podcast.title, url: podcast.website || podcast.feed_url },
+    }
+    return {
+      body: JSON.stringify({
+        content: `📝 Correction submitted for **${chatSafe(podcast.title, 100)}**`,
+        embeds: [embed],
+      }),
+      contentType: 'application/json',
+    }
+  }
+
+  if (config.format === 'slack') {
+    const lines = [
+      `*Correction submitted for ${podcast.title}*`,
+      `_${where}_ — from ${who}`,
+      `*We said:* ${chatSafe(c.claim, 900)}`,
+      `*Actually:* ${chatSafe(c.correction, 900)}`,
+    ]
+    if (c.source_url) lines.push(`*Source:* ${c.source_url}`)
+    lines.push(`<${c.triage_url}|Triage in Podshelf>`)
+    const text = lines.join('\n')
+    return {
+      body: JSON.stringify({
+        text: `Correction submitted for ${podcast.title}`,
+        blocks: [{ type: 'section', text: { type: 'mrkdwn', text } }],
+      }),
+      contentType: 'application/json',
+    }
+  }
+
+  // generic
+  return {
+    body: JSON.stringify({
+      event: 'correction.submitted',
+      podcast,
+      correction: c,
+      fired_at: new Date().toISOString(),
+    }),
+    contentType: 'application/json',
+  }
+}
+
+/** Same shape + non-throwing contract as sendPublishWebhook. */
+export async function sendCorrectionWebhook(
+  config: WebhookConfig,
+  podcast: WebhookPodcastPayload,
+  correction: WebhookCorrectionPayload,
+): Promise<{ ok: boolean; status?: number; message?: string }> {
+  try {
+    await assertPublicHttpUrl(config.url)
+    const { body, contentType } = buildCorrectionBody(config, podcast, correction)
     const res = await fetch(config.url, {
       method: 'POST',
       headers: { 'Content-Type': contentType },
