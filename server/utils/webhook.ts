@@ -2,31 +2,26 @@ import { createError } from 'h3'
 import { encryptString, decryptString } from './crypto'
 import { assertPublicHttpUrl } from './ssrf'
 import getDb from '../db/index'
+import {
+  WEBHOOK_EVENTS,
+  WEBHOOK_FORMATS,
+  isWebhookEvent,
+  isWebhookFormat,
+  type WebhookEvent,
+  type WebhookFormat,
+} from '../../utils/webhook-events'
 
-export type WebhookFormat = 'discord' | 'slack' | 'generic'
+// Event names + formats now live in the root `utils/` so the Vue app and the
+// server share one list (see utils/webhook-events.ts for why). Re-exported here
+// so every existing `import { … } from '…/utils/webhook'` keeps resolving.
+export { WEBHOOK_EVENTS, WEBHOOK_FORMATS, isWebhookEvent, isWebhookFormat }
+export type { WebhookEvent, WebhookFormat }
 
 // Cap on outbound webhook delivery. firePublishEvent is awaited on the publish
 // request path, so without this a webhook host that accepts the connection and
 // stalls would hold the user's publish open until undici's ~300s header timeout.
 // On abort, fetch throws and the send functions' catch returns { ok: false }.
 const WEBHOOK_TIMEOUT_MS = 10_000
-
-export const WEBHOOK_EVENTS = [
-  'episode.publish',
-  'episode.recording.scheduled',
-  'episode.recording.moved',
-  'episode.recording.cancelled',
-  'correction.submitted',
-] as const
-export type WebhookEvent = typeof WEBHOOK_EVENTS[number]
-
-export function isWebhookEvent(x: unknown): x is WebhookEvent {
-  return typeof x === 'string' && (WEBHOOK_EVENTS as readonly string[]).includes(x)
-}
-
-export function isWebhookFormat(x: unknown): x is WebhookFormat {
-  return x === 'discord' || x === 'slack' || x === 'generic'
-}
 
 /**
  * Stripped-down send shape — what the body builders need. A full DB row

@@ -120,24 +120,27 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
+import {
+  WEBHOOK_EVENTS,
+  type WebhookEvent,
+  type WebhookFormat,
+} from '~/utils/webhook-events'
 
-type WebhookFormat = 'discord' | 'slack' | 'generic'
-// Keep in sync with WEBHOOK_EVENTS in server/utils/webhook.ts — an event
-// missing here is accepted by the API but can never be ticked in the UI.
-type WebhookEvent =
-  | 'episode.publish'
-  | 'episode.recording.scheduled'
-  | 'episode.recording.moved'
-  | 'episode.recording.cancelled'
-  | 'correction.submitted'
+// The event *set* comes from the shared source of truth; only the human labels
+// live here. Typing this as Record<WebhookEvent, string> means adding an event
+// to WEBHOOK_EVENTS without a label here is a compile error — which is the
+// exact failure (silent missing checkbox) this consolidation exists to prevent.
+const EVENT_LABELS: Record<WebhookEvent, string> = {
+  'episode.publish': 'A new episode goes live',
+  'episode.recording.scheduled': 'A recording is added to the calendar',
+  'episode.recording.moved': 'A scheduled recording moves',
+  'episode.recording.cancelled': 'A scheduled recording is removed',
+  'correction.submitted': 'A listener submits a correction',
+}
 
-const ALL_EVENTS: { value: WebhookEvent; label: string }[] = [
-  { value: 'episode.publish', label: 'A new episode goes live' },
-  { value: 'episode.recording.scheduled', label: 'A recording is added to the calendar' },
-  { value: 'episode.recording.moved', label: 'A scheduled recording moves' },
-  { value: 'episode.recording.cancelled', label: 'A scheduled recording is removed' },
-  { value: 'correction.submitted', label: 'A listener submits a correction' },
-]
+const ALL_EVENTS: { value: WebhookEvent; label: string }[] = WEBHOOK_EVENTS.map(
+  (value) => ({ value, label: EVENT_LABELS[value] }),
+)
 
 interface ApiWebhook {
   id: number
