@@ -3,6 +3,7 @@ import { requirePodcastAccess } from '../../../utils/auth'
 import { logAudit } from '../../../utils/audit'
 import { bumpFeedLastModified } from '../../../utils/feed-cache'
 import { maybeAutoTrigger } from '../../../utils/github'
+import { normalizeRecordingLocation } from '../../../utils/validate'
 import getDb from '../../../db/index'
 
 interface ArchiveEpisode {
@@ -33,9 +34,11 @@ interface ArchiveEpisode {
   episode_display: string | null
   license_identifier: string | null
   license_url: string | null
-  // Both optional — pre-recording-schedule archives won't have these fields.
+  // All optional — pre-recording-schedule archives won't have these fields.
   recording_starts_at?: string | null
   recording_duration_minutes?: number | null
+  recording_location_type?: string | null
+  recording_link?: string | null
 }
 
 interface ArchivePerson {
@@ -179,7 +182,8 @@ export default defineEventHandler(async (event) => {
       itunes_title, itunes_author, itunes_explicit,
       season_name, episode_display,
       license_identifier, license_url,
-      recording_starts_at, recording_duration_minutes
+      recording_starts_at, recording_duration_minutes,
+      recording_location_type, recording_link
     ) VALUES (
       @podcast_id, @title, @slug, @episode_number, @season_number,
       @description, @audio_url, @audio_filename, @audio_size_bytes,
@@ -190,7 +194,8 @@ export default defineEventHandler(async (event) => {
       @itunes_title, @itunes_author, @itunes_explicit,
       @season_name, @episode_display,
       @license_identifier, @license_url,
-      @recording_starts_at, @recording_duration_minutes
+      @recording_starts_at, @recording_duration_minutes,
+      @recording_location_type, @recording_link
     )
   `)
 
@@ -234,6 +239,11 @@ export default defineEventHandler(async (event) => {
       const finalSlug = uniqueSlug(ep.slug)
       const validStatus = ['draft', 'published', 'scheduled'].includes(ep.status) ? ep.status : 'draft'
       const validEpType = ['full', 'trailer', 'bonus'].includes(ep.episode_type ?? '') ? ep.episode_type : 'full'
+      const validLocationType =
+        ['in_person', 'remote', 'mixed'].includes(ep.recording_location_type ?? '')
+          ? ep.recording_location_type
+          : null
+      const recordingLocation = normalizeRecordingLocation(validLocationType, ep.recording_link)
       const result = insertEpisode.run({
         podcast_id: podcastId,
         title: ep.title,
@@ -264,6 +274,8 @@ export default defineEventHandler(async (event) => {
         license_url: ep.license_url,
         recording_starts_at: ep.recording_starts_at ?? null,
         recording_duration_minutes: ep.recording_duration_minutes ?? null,
+        recording_location_type: recordingLocation.locationType,
+        recording_link: recordingLocation.link,
       })
       episodeIdMap.set(ep.id, Number(result.lastInsertRowid))
       importedEpisodes++

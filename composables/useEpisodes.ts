@@ -1,3 +1,6 @@
+/** How the episode was (or will be) recorded. null = not specified. */
+export type RecordingLocationType = 'in_person' | 'remote' | 'mixed'
+
 export interface Episode {
   id: number
   podcast_id: number
@@ -28,6 +31,8 @@ export interface Episode {
   license_url: string | null
   recording_starts_at: string | null
   recording_duration_minutes: number | null
+  recording_location_type: RecordingLocationType | null
+  recording_link: string | null
   created_at: string
   updated_at: string
 }

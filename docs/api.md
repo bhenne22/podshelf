@@ -616,6 +616,8 @@ Additional Podcasting 2.0 fields accepted on create / update:
 | `episode_display`    | Display string for `<podcast:episode display="…">` (e.g. `"S2E22"`).                       |
 | `license_identifier` | SPDX or custom license name (e.g. `CC-BY-4.0`). Per-episode license override.              |
 | `license_url`        | URL to the license terms.                                                                  |
+| `recording_location_type` | How the episode is recorded: `in_person`, `remote`, or `mixed`. Omit or send `null` for "not specified". Admin metadata — not in the RSS feed. |
+| `recording_link`     | http(s) URL of the remote recording room (Zoom, Riverside, …). Only stored when `recording_location_type` is `remote` or `mixed` — the server writes `null` otherwise, including when a patch flips the type to `in_person` without mentioning the link. |
 
 ### `POST /api/podcasts/[slug]/episodes/[id]/chapters`
 

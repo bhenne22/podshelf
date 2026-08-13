@@ -29,6 +29,7 @@ const ALLOWED_FIELDS = new Set([
   'season_name', 'episode_display',
   'license_identifier', 'license_url',
   'recording_starts_at', 'recording_duration_minutes',
+  'recording_location_type', 'recording_link',
   'created_at', 'updated_at',
 ])
 
@@ -42,6 +43,7 @@ const DEFAULT_SELECT_COLS = `
   season_name, episode_display,
   license_identifier, license_url,
   recording_starts_at, recording_duration_minutes,
+  recording_location_type, recording_link,
   created_at, updated_at
 `
 

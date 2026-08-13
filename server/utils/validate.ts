@@ -3,6 +3,7 @@ import { createError } from 'h3'
 const VALID_STATUSES = ['draft', 'published', 'scheduled']
 const VALID_EPISODE_TYPES = ['full', 'trailer', 'bonus']
 const VALID_EPISODE_EXPLICIT = ['true', 'false']
+const VALID_RECORDING_LOCATION_TYPES = ['in_person', 'remote', 'mixed']
 const VALID_TRANSCRIPT_TYPES = [
   'text/html',
   'text/plain',
@@ -98,5 +99,51 @@ export function validateEpisodeFields(body: Record<string, unknown>) {
     if (!Number.isInteger(n) || n <= 0) {
       throw createError({ statusCode: 400, statusMessage: 'recording_duration_minutes must be a positive integer' })
     }
+  }
+
+  if (body.recording_location_type != null && body.recording_location_type !== ''
+      && !VALID_RECORDING_LOCATION_TYPES.includes(body.recording_location_type as string)) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: `recording_location_type must be one of: ${VALID_RECORDING_LOCATION_TYPES.join(', ')}`,
+    })
+  }
+
+  // The recording link becomes a clickable href in the episode form, so hold it
+  // to the same http(s)-only rule as correction source_url — a `javascript:`
+  // scheme here would be stored XSS aimed at the hosts.
+  if (body.recording_link != null && body.recording_link !== '') {
+    const s = String(body.recording_link).trim()
+    if (s.length > 2048) {
+      throw createError({ statusCode: 400, statusMessage: 'recording_link must be 2048 characters or fewer' })
+    }
+    let parsed: URL
+    try {
+      parsed = new URL(s)
+    } catch {
+      throw createError({ statusCode: 400, statusMessage: 'recording_link must be a valid URL' })
+    }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      throw createError({ statusCode: 400, statusMessage: 'recording_link must be an http(s) URL' })
+    }
+  }
+}
+
+/**
+ * Shared write-path rule for the recording-location pair: empty string means
+ * "no value", and a link only makes sense for remote/mixed — an in_person (or
+ * unspecified) episode always stores a NULL link, so the DB can't hold a link
+ * the form no longer shows.
+ */
+export function normalizeRecordingLocation(
+  locationType: unknown,
+  link: unknown,
+): { locationType: string | null; link: string | null } {
+  const type = locationType == null || locationType === '' ? null : String(locationType)
+  const raw = link == null || link === '' ? null : String(link).trim()
+  const normalizedLink = raw === '' ? null : raw
+  return {
+    locationType: type,
+    link: type === 'remote' || type === 'mixed' ? normalizedLink : null,
   }
 }

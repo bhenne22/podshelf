@@ -140,6 +140,11 @@ CREATE TABLE IF NOT EXISTS episodes (
   license_url             TEXT,
   recording_starts_at         TEXT,
   recording_duration_minutes  INTEGER,
+  -- 'in_person' | 'remote' | 'mixed'; NULL means "not specified" (every
+  -- episode that predates this column). recording_link only carries a value
+  -- for remote/mixed — the write path nulls it for in_person.
+  recording_location_type     TEXT,
+  recording_link              TEXT,
   created_at              TEXT DEFAULT (datetime('now')),
   updated_at              TEXT DEFAULT (datetime('now')),
   UNIQUE (podcast_id, slug)

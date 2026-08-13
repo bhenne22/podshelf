@@ -1898,6 +1898,19 @@ components:
         episode_display: { type: string, nullable: true }
         license_identifier: { type: string, nullable: true }
         license_url: { type: string, format: uri, nullable: true }
+        recording_location_type:
+          type: string
+          enum: [in_person, remote, mixed]
+          nullable: true
+          description: 'How the episode is recorded. null = not specified. Admin metadata; not in the RSS feed.'
+        recording_link:
+          type: string
+          format: uri
+          nullable: true
+          description: >-
+            http(s) URL of the remote recording room. Only stored when
+            recording_location_type is remote or mixed; the server writes null
+            otherwise.
 
     Person:
       type: object

@@ -146,6 +146,15 @@
                 {{ formatDate(ep.recording_starts_at) }}
               </span>
               <span v-else>—</span>
+              <a
+                v-if="ep.recording_link"
+                :href="ep.recording_link"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="join-link"
+                :title="`Join recording — ${recordingLocationLabel(ep.recording_location_type)}`"
+                @click.stop
+              >Join</a>
             </td>
             <td class="col-actions">
               <div class="row-menu">
@@ -437,6 +446,16 @@ function formatDate(iso: string): string {
   })
 }
 
+const RECORDING_LOCATION_LABELS: Record<string, string> = {
+  in_person: 'In person',
+  remote: 'Remote',
+  mixed: 'Mixed (in person + remote)',
+}
+
+function recordingLocationLabel(type: string | null): string {
+  return (type && RECORDING_LOCATION_LABELS[type]) || 'Remote'
+}
+
 function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString(undefined, {
     year: 'numeric', month: 'short', day: 'numeric',
@@ -643,6 +662,22 @@ h1 {
 .col-num { width: 56px; }
 .col-status { width: 110px; }
 .col-date { width: 140px; font-size: 0.85rem; color: #718096; }
+/* Sits beside the recording date rather than claiming its own column —
+   the table is already wide and this only shows on remote/mixed rows. */
+.join-link {
+  display: inline-block;
+  margin-left: 0.4rem;
+  padding: 0.05rem 0.4rem;
+  border: 1px solid #c3dafe;
+  border-radius: 999px;
+  background: #ebf4ff;
+  color: #4c51bf;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-decoration: none;
+  vertical-align: middle;
+}
+.join-link:hover { background: #c3dafe; }
 .col-actions { width: 64px; text-align: right; }
 
 .ep-num {

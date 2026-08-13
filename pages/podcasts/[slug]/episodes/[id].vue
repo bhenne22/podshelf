@@ -105,6 +105,25 @@
               </div>
             </div>
 
+            <div class="form-row">
+              <div class="form-group recording-location-group">
+                <label for="recording_location_type">Recording location</label>
+                <select id="recording_location_type" v-model="form.recording_location_type">
+                  <option value="">Not specified</option>
+                  <option value="in_person">In person</option>
+                  <option value="remote">Remote</option>
+                  <option value="mixed">Mixed</option>
+                </select>
+              </div>
+              <div v-if="recordingLinkVisible" class="form-group flex-2">
+                <label for="recording_link">Recording link</label>
+                <input id="recording_link"
+                  v-model="form.recording_link"
+                  type="url"
+                  placeholder="https://… (Zoom, Riverside, etc.)" />
+              </div>
+            </div>
+
             <p class="hint schedule-tz-hint">
               Times in <strong>{{ podcastTz }}</strong> ({{ tzAbbr }}). Recording date is optional — adds a calendar event independent of the publish date.
             </p>
@@ -584,7 +603,7 @@
 </template>
 
 <script setup lang="ts">
-import type { Episode } from '~/composables/useEpisodes'
+import type { Episode, RecordingLocationType } from '~/composables/useEpisodes'
 import { utcIsoToLocalInput, localInputToUtcIso, tzAbbreviation } from '~/utils/datetime-local'
 
 definePageMeta({
@@ -667,6 +686,8 @@ interface EpisodeForm {
   license_url: string
   recording_starts_at: string
   recording_duration_minutes: number | null
+  recording_location_type: '' | RecordingLocationType
+  recording_link: string
 }
 
 const originalPublishedAt = ref<string | null>(null)
@@ -699,7 +720,14 @@ const form = reactive<EpisodeForm>({
   license_url: '',
   recording_starts_at: '',
   recording_duration_minutes: null,
+  recording_location_type: '',
+  recording_link: '',
 })
+
+/** The link only applies when someone is dialling in. */
+const recordingLinkVisible = computed(
+  () => form.recording_location_type === 'remote' || form.recording_location_type === 'mixed',
+)
 
 interface RosterPerson {
   id: number
@@ -962,6 +990,8 @@ onMounted(async () => {
       license_url: ep.license_url || '',
       recording_starts_at: utcIsoToLocalInput(ep.recording_starts_at, podcastTz.value),
       recording_duration_minutes: ep.recording_duration_minutes,
+      recording_location_type: ep.recording_location_type || '',
+      recording_link: ep.recording_link || '',
     })
     // <input type="datetime-local"> can only round-trip minute precision,
     // so we display the truncated value but remember the full ISO. On save
@@ -1122,6 +1152,8 @@ async function saveEpisode(action: SaveAction = 'save_changes') {
       published_at: publishedAtToSend,
       recording_starts_at: recordingStartsAtToSend,
       recording_duration_minutes: form.recording_duration_minutes || null,
+      recording_location_type: form.recording_location_type || null,
+      recording_link: form.recording_link.trim() || null,
     })
     // Sync server-resolved fields back to the form. The server may coerce
     // status (e.g. published+future → scheduled) — reflect that immediately
@@ -1142,6 +1174,10 @@ async function saveEpisode(action: SaveAction = 'save_changes') {
         originalRecordingStartsAt.value = null
       }
       if (typeof updated.status === 'string') form.status = updated.status
+      // The server drops the link when the location isn't remote/mixed —
+      // mirror that back so the form doesn't keep showing a value that's
+      // no longer stored.
+      form.recording_link = typeof updated.recording_link === 'string' ? updated.recording_link : ''
     }
     await nextTick()
     formDirty.value = false
@@ -1508,6 +1544,10 @@ h1 { margin: 0; font-size: 1.5rem; color: #1a202c; }
 .form-row { display: flex; gap: 1rem; }
 .form-row .form-group { flex: 1; }
 .form-row .form-group.flex-2 { flex: 2; }
+/* The link input next to it is v-if'd away for in-person/unspecified.
+   Pin the select to the width it has WITH the link showing, so toggling the
+   location doesn't make the control jump to full width and back. */
+.form-row .form-group.recording-location-group { flex: 0 0 calc((100% - 1rem) / 3); }
 
 label {
   display: block;
@@ -1961,6 +2001,8 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
 @media (max-width: 720px) {
   .container { padding: 1rem 0.75rem; }
   .form-section { padding: 1rem; }
+  /* Rows stack here, so the pinned third-width column is meaningless. */
+  .form-row .form-group.recording-location-group { flex: 1; }
   /* 16px input font prevents iOS Safari from zooming on focus. */
   input[type="text"],
   input[type="url"],

@@ -1,6 +1,6 @@
 import { defineEventHandler, readBody, getRouterParam, createError } from 'h3'
 import { requirePodcastAccess } from '../../../../utils/auth'
-import { validateEpisodeFields, normalizeIsoDate } from '../../../../utils/validate'
+import { validateEpisodeFields, normalizeIsoDate, normalizeRecordingLocation } from '../../../../utils/validate'
 import { maybeAutoTrigger } from '../../../../utils/github'
 import { bumpFeedLastModified } from '../../../../utils/feed-cache'
 import { logAudit, diffFields, summarizeChanges } from '../../../../utils/audit'
@@ -20,6 +20,7 @@ const UPDATABLE = [
   'season_name', 'episode_display',
   'license_identifier', 'license_url',
   'recording_starts_at', 'recording_duration_minutes',
+  'recording_location_type', 'recording_link',
 ]
 
 /**
@@ -101,6 +102,21 @@ export default defineEventHandler(async (event) => {
     } else {
       body.recording_duration_minutes = Number(body.recording_duration_minutes)
     }
+  }
+
+  // Recording location is a pair, so resolve it against the stored row rather
+  // than the patch alone: a patch that only flips the type to in_person still
+  // has to clear a link the form has stopped showing, and a patch that only
+  // sets the link has to be judged against the type already on the episode.
+  if ('recording_location_type' in body || 'recording_link' in body) {
+    const normalized = normalizeRecordingLocation(
+      'recording_location_type' in body ? body.recording_location_type : beforeRow.recording_location_type,
+      'recording_link' in body ? body.recording_link : beforeRow.recording_link,
+    )
+    if ('recording_location_type' in body) {
+      body.recording_location_type = normalized.locationType
+    }
+    body.recording_link = normalized.link
   }
 
   const updates: string[] = []

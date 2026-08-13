@@ -1,6 +1,6 @@
 import { defineEventHandler, readBody, getRouterParam, createError } from 'h3'
 import { requirePodcastAccess } from '../../../../utils/auth'
-import { validateEpisodeFields, normalizeIsoDate } from '../../../../utils/validate'
+import { validateEpisodeFields, normalizeIsoDate, normalizeRecordingLocation } from '../../../../utils/validate'
 import { logAudit } from '../../../../utils/audit'
 import { firePublishEvent } from '../../../../utils/publish-event'
 import { fireRecordingEvent } from '../../../../utils/recording-event'
@@ -66,6 +66,10 @@ export default defineEventHandler(async (event) => {
     body.recording_duration_minutes === '' || body.recording_duration_minutes == null
       ? null
       : Number(body.recording_duration_minutes)
+  const recordingLocation = normalizeRecordingLocation(
+    body.recording_location_type,
+    body.recording_link,
+  )
 
   const result = db.prepare(`
     INSERT INTO episodes (
@@ -76,7 +80,8 @@ export default defineEventHandler(async (event) => {
       chapters_url, episode_type, itunes_title, itunes_author,
       itunes_explicit, season_name, episode_display,
       license_identifier, license_url,
-      recording_starts_at, recording_duration_minutes
+      recording_starts_at, recording_duration_minutes,
+      recording_location_type, recording_link
     ) VALUES (
       @podcast_id, @title, @slug, @episode_number, @season_number,
       @description, @audio_url, @audio_filename, @audio_size_bytes,
@@ -85,7 +90,8 @@ export default defineEventHandler(async (event) => {
       @chapters_url, @episode_type, @itunes_title, @itunes_author,
       @itunes_explicit, @season_name, @episode_display,
       @license_identifier, @license_url,
-      @recording_starts_at, @recording_duration_minutes
+      @recording_starts_at, @recording_duration_minutes,
+      @recording_location_type, @recording_link
     )
   `).run({
     podcast_id: podcastId,
@@ -116,6 +122,8 @@ export default defineEventHandler(async (event) => {
     license_url: body.license_url ?? null,
     recording_starts_at: recordingStartsAt,
     recording_duration_minutes: recordingDurationMinutes,
+    recording_location_type: recordingLocation.locationType,
+    recording_link: recordingLocation.link,
   })
 
   const episodeId = Number(result.lastInsertRowid)

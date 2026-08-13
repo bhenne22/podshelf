@@ -139,6 +139,11 @@ CREATE TABLE IF NOT EXISTS episodes (
   license_url             TEXT,
   recording_starts_at         TEXT,
   recording_duration_minutes  INTEGER,
+  -- 'in_person' | 'remote' | 'mixed'; NULL means "not specified" (every
+  -- episode that predates this column). recording_link only carries a value
+  -- for remote/mixed — the write path nulls it for in_person.
+  recording_location_type     TEXT,
+  recording_link              TEXT,
   created_at              TEXT DEFAULT (datetime('now')),
   updated_at              TEXT DEFAULT (datetime('now')),
   UNIQUE (podcast_id, slug)
@@ -554,6 +559,12 @@ function applyMigrations(db: Database.Database) {
   }
   if (!episodeCols.includes('recording_duration_minutes')) {
     db.exec('ALTER TABLE episodes ADD COLUMN recording_duration_minutes INTEGER')
+  }
+  if (!episodeCols.includes('recording_location_type')) {
+    db.exec('ALTER TABLE episodes ADD COLUMN recording_location_type TEXT')
+  }
+  if (!episodeCols.includes('recording_link')) {
+    db.exec('ALTER TABLE episodes ADD COLUMN recording_link TEXT')
   }
   // Created here (not in SCHEMA_SQL) because on an old database the column
   // doesn't exist when SCHEMA_SQL runs, and the CREATE INDEX would error.

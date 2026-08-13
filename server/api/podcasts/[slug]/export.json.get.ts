@@ -54,6 +54,7 @@ export default defineEventHandler((event) => {
       season_name, episode_display,
       license_identifier, license_url,
       recording_starts_at, recording_duration_minutes,
+      recording_location_type, recording_link,
       created_at, updated_at
     FROM episodes
     WHERE podcast_id = ?
