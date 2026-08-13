@@ -26,6 +26,8 @@ export interface IcsEpisode {
   published_at: string | null
   recording_starts_at: string | null
   recording_duration_minutes: number | null
+  recording_location_type: string | null
+  recording_link: string | null
   updated_at: string
   // For the per-podcast feed both of these resolve to the same show; for the
   // network feed they vary row-by-row.
@@ -41,6 +43,12 @@ export interface IcsFeedOptions {
   // UTC. Default recording duration applies when an episode itself has
   // none set.
   defaultDurationMinutes?: number | null
+  // Whether REC events may disclose episodes.recording_link. True for the
+  // authenticated per-user subscription feed; driven by the emitting
+  // webhook's include_recording_link for the public single-event links.
+  // The human-readable location label ("Remote", "In person") is never
+  // withheld — it isn't a secret, only the room URL is.
+  includeRecordingLink?: boolean
 }
 
 // Per the calendar's plan:
@@ -150,17 +158,64 @@ function buildSummary(prefix: 'REC' | 'DROP', ep: IcsEpisode, scope: IcsScopeKin
   return `${prefix}: ${showPrefix}${ep.title || 'Untitled episode'}`
 }
 
-function buildDescription(ep: IcsEpisode): string {
+const RECORDING_LOCATION_LABELS: Record<string, string> = {
+  in_person: 'In person',
+  remote: 'Remote',
+  mixed: 'Mixed (in person + remote)',
+}
+
+/**
+ * LOCATION for the REC event. Calendar clients (Apple, Google, Outlook) all
+ * linkify a bare URL here and surface it as the tappable "where" on the event,
+ * which is exactly what you want 30 seconds before a remote recording. Falls
+ * back to the plain label when there's no link to join.
+ */
+function buildRecordingLocation(ep: IcsEpisode, includeLink: boolean): string {
+  const label = ep.recording_location_type
+    ? RECORDING_LOCATION_LABELS[ep.recording_location_type] ?? ''
+    : ''
+  // recording_link is only ever populated for remote/mixed (enforced on the
+  // write path), so no need to re-check the type here.
+  if (includeLink && ep.recording_link) return ep.recording_link
+  return label
+}
+
+/**
+ * DROP events describe a publish date — there's nothing to join, so the
+ * recording location is REC-only (`includeRecordingLocation`).
+ */
+function buildDescription(
+  ep: IcsEpisode,
+  includeRecordingLocation = false,
+  includeLink = true,
+): string {
+  const parts: string[] = []
   const desc = descriptionText(ep.description)
+  if (desc) parts.push(desc)
+
+  if (includeRecordingLocation) {
+    const label = ep.recording_location_type
+      ? RECORDING_LOCATION_LABELS[ep.recording_location_type] ?? ''
+      : ''
+    const link = includeLink ? ep.recording_link : null
+    // The link goes in DESCRIPTION as well as LOCATION: some clients (older
+    // Outlook, a few Android widgets) don't linkify LOCATION, and the label
+    // is the only place "Mixed" vs "Remote" is stated at all.
+    if (label && link) parts.push(`Recording: ${label} — ${link}`)
+    else if (label) parts.push(`Recording: ${label}`)
+    else if (link) parts.push(`Recording link: ${link}`)
+  }
+
   const url = episodeUrl(ep)
-  if (desc && url) return `${desc}\n\n${url}`
-  return desc || url || ''
+  if (url) parts.push(url)
+  return parts.join('\n\n')
 }
 
 interface VEvent {
   uid: string
   summary: string
   description: string
+  location?: string
   url: string
   status: 'CONFIRMED' | 'TENTATIVE'
   lastModified: Date
@@ -185,6 +240,7 @@ function renderVEvent(ev: VEvent): string {
   }
   lines.push(`SUMMARY:${escapeText(ev.summary)}`)
   if (ev.description) lines.push(`DESCRIPTION:${escapeText(ev.description)}`)
+  if (ev.location) lines.push(`LOCATION:${escapeText(ev.location)}`)
   if (ev.url) lines.push(`URL:${ev.url}`) // URL is a CAL-ADDRESS-like value, not TEXT — no escape
   lines.push('END:VEVENT')
   return lines.map(foldLine).join(CRLF)
@@ -197,6 +253,7 @@ function renderVEvent(ev: VEvent): string {
 export function renderIcsFeed(episodes: IcsEpisode[], options: IcsFeedOptions): string {
   const now = new Date()
   const events: VEvent[] = []
+  const includeLink = options.includeRecordingLink !== false
 
   for (const ep of episodes) {
     const lastModified = parseDate(ep.updated_at) || now
@@ -215,7 +272,8 @@ export function renderIcsFeed(episodes: IcsEpisode[], options: IcsFeedOptions): 
         events.push({
           uid: `episode-${ep.id}-rec@${UID_DOMAIN}`,
           summary: buildSummary('REC', ep, options.scopeKind),
-          description: buildDescription(ep),
+          description: buildDescription(ep, true, includeLink),
+          location: buildRecordingLocation(ep, includeLink),
           url: episodeUrl(ep),
           status: 'CONFIRMED',
           lastModified,

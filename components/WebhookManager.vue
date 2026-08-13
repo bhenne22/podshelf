@@ -49,6 +49,16 @@
         </label>
       </fieldset>
 
+      <label v-if="hasRecordingEvent(wh.events)" class="disclosure-check">
+        <input type="checkbox" v-model="wh.include_recording_link" />
+        <span class="disc-name">Include the recording link</span>
+        <span class="disc-desc">
+          Posts the room URL (Zoom, Riverside, …) in the message and lets
+          &ldquo;Add to calendar&rdquo; carry it into the calendar entry.
+          Leave off for channels anyone can read.
+        </span>
+      </label>
+
       <div class="webhook-actions">
         <button type="button" class="btn-secondary" :disabled="wh.busy" @click="testHook(wh)">
           {{ wh.testing ? 'Sending…' : 'Send test' }}
@@ -101,6 +111,15 @@
           <span class="ev-desc">{{ ev.label }}</span>
         </label>
       </fieldset>
+      <label v-if="hasRecordingEvent(newHook.events)" class="disclosure-check">
+        <input type="checkbox" v-model="newHook.include_recording_link" />
+        <span class="disc-name">Include the recording link</span>
+        <span class="disc-desc">
+          Posts the room URL (Zoom, Riverside, …) in the message and lets
+          &ldquo;Add to calendar&rdquo; carry it into the calendar entry.
+          Leave off for channels anyone can read.
+        </span>
+      </label>
       <div class="webhook-actions">
         <button type="button" class="btn-secondary" :disabled="adding" @click="createHook">
           {{ adding ? 'Creating…' : 'Create webhook' }}
@@ -150,6 +169,7 @@ interface ApiWebhook {
   format: WebhookFormat
   enabled: boolean
   events: WebhookEvent[]
+  include_recording_link: boolean
   url_host: string | null
 }
 
@@ -177,7 +197,17 @@ const newHook = reactive({
   format: 'generic' as WebhookFormat,
   enabled: true,
   events: [] as WebhookEvent[],
+  include_recording_link: false,
 })
+
+/**
+ * The disclosure toggle only means anything to recording events, so it stays
+ * hidden until one is subscribed rather than sitting there confusing a
+ * publish-only webhook.
+ */
+function hasRecordingEvent(events: WebhookEvent[]): boolean {
+  return events.some((e) => e.startsWith('episode.recording.'))
+}
 
 function decorate(raw: ApiWebhook): EditableWebhook {
   return {
@@ -234,6 +264,7 @@ async function saveHook(wh: EditableWebhook) {
       format: wh.format,
       enabled: wh.enabled,
       events: wh.events,
+      include_recording_link: wh.include_recording_link,
     }
     if (wh.urlInput.trim() !== '') body.url = wh.urlInput.trim()
     const updated = await $fetch<ApiWebhook>(`${props.baseUrl}/${wh.id}`, {
@@ -300,6 +331,7 @@ function startAdd() {
   newHook.format = 'generic'
   newHook.enabled = true
   newHook.events = []
+  newHook.include_recording_link = false
   addMsg.value = ''
 }
 
@@ -320,6 +352,7 @@ async function createHook() {
         format: newHook.format,
         enabled: newHook.enabled,
         events: newHook.events,
+        include_recording_link: newHook.include_recording_link,
       },
     })
     webhooks.value.push(decorate(created))
@@ -398,6 +431,27 @@ async function createHook() {
   font-size: 0.78rem;
   color: #718096;
   margin: 0.15rem 0 0 0;
+}
+
+.disclosure-check {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.15rem 0.5rem;
+  align-items: start;
+  margin: 0.75rem 0 0;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #fbfcfe;
+  cursor: pointer;
+}
+.disclosure-check input { margin-top: 0.2rem; }
+.disc-name { font-size: 0.85rem; font-weight: 600; color: #2d3748; }
+.disc-desc {
+  grid-column: 2;
+  font-size: 0.78rem;
+  color: #718096;
+  line-height: 1.4;
 }
 
 .events-fieldset {

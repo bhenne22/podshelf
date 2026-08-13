@@ -1519,6 +1519,16 @@ paths:
                       - episode.recording.moved
                       - episode.recording.cancelled
                       - correction.submitted
+                include_recording_link:
+                  type: boolean
+                  default: false
+                  description: >-
+                    Allow recording webhooks fired to this destination to
+                    disclose the episode's recording_link (the Zoom/Riverside
+                    room URL), and let the message's "add to calendar" link
+                    carry it into the .ics. Defaults to false — omit it and the
+                    room URL is withheld. Turn it on only for channels you
+                    trust; the gate applies to all formats, including generic.
       responses:
         '201':
           description: Created.
@@ -1569,6 +1579,12 @@ paths:
                       - episode.recording.moved
                       - episode.recording.cancelled
                       - correction.submitted
+                include_recording_link:
+                  type: boolean
+                  description: >-
+                    Allow recording webhooks fired to this destination to
+                    disclose the episode's recording_link (the room URL) and
+                    let the "add to calendar" link carry it into the .ics.
       responses:
         '200': { description: Updated. }
         '400':

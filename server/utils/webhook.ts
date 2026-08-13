@@ -31,6 +31,11 @@ export interface WebhookConfig {
   url: string
   format: WebhookFormat
   enabled: boolean
+  // Whether this destination may be shown episodes.recording_link. Also
+  // decides what the "add to calendar" link this webhook emits will disclose.
+  // Optional here because the publish/correction builders don't care; absent
+  // reads as false, so the fail-safe direction is "withhold the room URL".
+  include_recording_link?: boolean
 }
 
 export interface WebhookRow extends WebhookConfig {
@@ -39,6 +44,8 @@ export interface WebhookRow extends WebhookConfig {
   network_id: number | null
   name: string
   events: WebhookEvent[]
+  // Always present on a row loaded from the DB (NOT NULL DEFAULT 0).
+  include_recording_link: boolean
 }
 
 export interface WebhookSummary {
@@ -49,6 +56,7 @@ export interface WebhookSummary {
   format: WebhookFormat
   enabled: boolean
   events: WebhookEvent[]
+  include_recording_link: boolean
   url_host: string | null
   created_at: string
   updated_at: string
@@ -63,6 +71,7 @@ interface RawWebhookRow {
   format: string
   enabled: number
   events: string
+  include_recording_link: number
   created_at: string
   updated_at: string
 }
@@ -103,6 +112,7 @@ function rowToSummary(r: RawWebhookRow): WebhookSummary {
     format: isWebhookFormat(r.format) ? r.format : 'generic',
     enabled: !!r.enabled,
     events: parseEvents(r.events),
+    include_recording_link: !!r.include_recording_link,
     url_host: url ? hostOf(url) : null,
     created_at: r.created_at,
     updated_at: r.updated_at,
@@ -121,6 +131,7 @@ function rowToFull(r: RawWebhookRow): WebhookRow | null {
     format: isWebhookFormat(r.format) ? r.format : 'generic',
     enabled: !!r.enabled,
     events: parseEvents(r.events),
+    include_recording_link: !!r.include_recording_link,
   }
 }
 
@@ -128,7 +139,7 @@ export function listPodcastWebhooks(podcastId: number): WebhookSummary[] {
   const db = getDb()
   const rows = db.prepare(`
     SELECT id, podcast_id, network_id, name, url_encrypted, format, enabled,
-           events, created_at, updated_at
+           events, include_recording_link, created_at, updated_at
     FROM webhooks
     WHERE podcast_id = ?
     ORDER BY id
@@ -140,7 +151,7 @@ export function listNetworkWebhooks(networkId: number): WebhookSummary[] {
   const db = getDb()
   const rows = db.prepare(`
     SELECT id, podcast_id, network_id, name, url_encrypted, format, enabled,
-           events, created_at, updated_at
+           events, include_recording_link, created_at, updated_at
     FROM webhooks
     WHERE network_id = ?
     ORDER BY id
@@ -152,7 +163,7 @@ export function getWebhookSummary(id: number): WebhookSummary | null {
   const db = getDb()
   const row = db.prepare(`
     SELECT id, podcast_id, network_id, name, url_encrypted, format, enabled,
-           events, created_at, updated_at
+           events, include_recording_link, created_at, updated_at
     FROM webhooks WHERE id = ?
   `).get(id) as RawWebhookRow | undefined
   return row ? rowToSummary(row) : null
@@ -162,7 +173,7 @@ export function getWebhookFull(id: number): WebhookRow | null {
   const db = getDb()
   const row = db.prepare(`
     SELECT id, podcast_id, network_id, name, url_encrypted, format, enabled,
-           events, created_at, updated_at
+           events, include_recording_link, created_at, updated_at
     FROM webhooks WHERE id = ?
   `).get(id) as RawWebhookRow | undefined
   return row ? rowToFull(row) : null
@@ -174,6 +185,7 @@ export interface CreateWebhookInput {
   format: WebhookFormat
   enabled?: boolean
   events: WebhookEvent[]
+  include_recording_link?: boolean
 }
 
 /**
@@ -232,8 +244,9 @@ function insertWebhook(
   assertFormatMatchesUrl(trimmedUrl, input.format)
   const db = getDb()
   const result = db.prepare(`
-    INSERT INTO webhooks (${scopeColumn}, name, url_encrypted, format, enabled, events)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO webhooks (${scopeColumn}, name, url_encrypted, format, enabled, events,
+                          include_recording_link)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `).run(
     scopeId,
     (input.name ?? '').trim(),
@@ -241,6 +254,7 @@ function insertWebhook(
     input.format,
     input.enabled === false ? 0 : 1,
     JSON.stringify(sanitizeEvents(input.events)),
+    input.include_recording_link ? 1 : 0,
   )
   return Number(result.lastInsertRowid)
 }
@@ -259,6 +273,7 @@ export interface UpdateWebhookInput {
   format?: WebhookFormat
   enabled?: boolean
   events?: WebhookEvent[]
+  include_recording_link?: boolean
 }
 
 export function updateWebhook(id: number, input: UpdateWebhookInput): void {
@@ -302,6 +317,10 @@ export function updateWebhook(id: number, input: UpdateWebhookInput): void {
     updates.push('events = ?')
     params.push(JSON.stringify(sanitizeEvents(input.events)))
   }
+  if (input.include_recording_link !== undefined) {
+    updates.push('include_recording_link = ?')
+    params.push(input.include_recording_link ? 1 : 0)
+  }
   if (updates.length === 0) return
   updates.push("updated_at = datetime('now')")
   params.push(id)
@@ -322,7 +341,8 @@ export function loadWebhooksForEvent(podcastId: number, event: WebhookEvent): We
   const db = getDb()
   const rows = db.prepare(`
     SELECT w.id, w.podcast_id, w.network_id, w.name, w.url_encrypted,
-           w.format, w.enabled, w.events, w.created_at, w.updated_at
+           w.format, w.enabled, w.events, w.include_recording_link,
+           w.created_at, w.updated_at
     FROM webhooks w
     WHERE w.enabled = 1
       AND (
@@ -369,6 +389,13 @@ export interface WebhookRecordingPayload {
   previous_duration_minutes: number | null
   // IANA name used for the human-readable date/time in messages.
   podcast_timezone: string
+  // 'in_person' | 'remote' | 'mixed' | null. recording_link is only ever
+  // populated for remote/mixed (enforced on the episode write path).
+  recording_location_type: string | null
+  recording_link: string | null
+  // Signed one-off "add to calendar" .ics link for this recording slot, or
+  // null when SITE_URL / NUXT_SECRET_KEY aren't configured to mint one.
+  calendar_url: string | null
 }
 
 export interface WebhookPodcastPayload {
@@ -507,19 +534,47 @@ function buildRecordingHeadline(p: WebhookRecordingPayload): string {
   return `Recording cancelled for ${label}${prevWhen ? ` — was ${prevWhen}` : ''}`
 }
 
-function buildRecordingBody(
+const RECORDING_LOCATION_LABELS: Record<string, string> = {
+  in_person: 'In person',
+  remote: 'Remote',
+  mixed: 'Mixed (in person + remote)',
+}
+
+function recordingLocationLabel(rec: WebhookRecordingPayload): string {
+  return rec.recording_location_type
+    ? RECORDING_LOCATION_LABELS[rec.recording_location_type] ?? ''
+    : ''
+}
+
+/** Exported for shape-pinning tests; callers should use sendRecordingWebhook. */
+export function buildRecordingBody(
   config: WebhookConfig,
   podcast: WebhookPodcastPayload,
   rec: WebhookRecordingPayload,
 ): { body: string; contentType: string } {
   const headline = buildRecordingHeadline(rec)
+  const locationLabel = recordingLocationLabel(rec)
+  // Two independent gates on the room URL:
+  //   - a cancelled recording has nothing to join
+  //   - the destination must be allowed to see it (private channel opt-in)
+  const joinLink =
+    rec.kind === 'cancelled' || !config.include_recording_link ? null : rec.recording_link
+  // Likewise nothing to add to a calendar once it's cancelled — the
+  // subscription feed drops the event on its own.
+  const calendarUrl = rec.kind === 'cancelled' ? null : rec.calendar_url
+
   if (config.format === 'discord') {
+    const fields: Record<string, unknown>[] = []
+    if (locationLabel) fields.push({ name: 'Where', value: locationLabel, inline: true })
+    if (joinLink) fields.push({ name: 'Join', value: joinLink })
+    if (calendarUrl) fields.push({ name: 'Calendar', value: `[Add to calendar](${calendarUrl})` })
     const embed: Record<string, unknown> = {
       title: rec.episode_title,
       url: rec.episode_url,
       description: headline,
       author: { name: podcast.title, url: podcast.website || podcast.feed_url },
     }
+    if (fields.length > 0) embed.fields = fields
     return {
       body: JSON.stringify({
         content: `📅 ${headline}`,
@@ -529,25 +584,33 @@ function buildRecordingBody(
     }
   }
   if (config.format === 'slack') {
+    const lines = [`*${headline}*`]
+    if (locationLabel) lines.push(`Where: ${locationLabel}`)
+    const links = [`<${rec.episode_url}|Open episode>`]
+    if (joinLink) links.push(`<${joinLink}|Join recording>`)
+    if (calendarUrl) links.push(`<${calendarUrl}|Add to calendar>`)
+    lines.push(links.join(' · '))
     return {
       body: JSON.stringify({
         text: headline,
         blocks: [
           {
             type: 'section',
-            text: { type: 'mrkdwn', text: `*${headline}*\n<${rec.episode_url}|Open episode>` },
+            text: { type: 'mrkdwn', text: lines.join('\n') },
           },
         ],
       }),
       contentType: 'application/json',
     }
   }
-  // generic
+  // generic — the whole payload object goes out verbatim, so the room URL has
+  // to be redacted here too or the toggle would only apply to the chat
+  // formats. Same gate, applied to the serialized shape.
   return {
     body: JSON.stringify({
       event: `episode.recording.${rec.kind}`,
       podcast,
-      recording: rec,
+      recording: { ...rec, recording_link: joinLink, calendar_url: calendarUrl },
       headline,
       fired_at: new Date().toISOString(),
     }),

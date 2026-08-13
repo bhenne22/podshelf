@@ -89,6 +89,15 @@ export default defineEventHandler(async (event) => {
       previous_starts_at: kind === 'scheduled' ? null : now,
       previous_duration_minutes: kind === 'scheduled' ? null : 60,
       podcast_timezone: standIn?.timezone ?? 'UTC',
+      // Exercise the "Where"/"Join" rendering so the test message looks like
+      // a real remote-recording notification. The Join field only appears if
+      // this webhook has include_recording_link on — which is the point of
+      // the test send.
+      recording_location_type: 'remote',
+      recording_link: 'https://example.com/test-recording-room',
+      // No real episode behind a test send, so a signed calendar link would
+      // 404 on click. Better to omit it than hand out a dead link.
+      calendar_url: null,
     })
   }
 

@@ -71,6 +71,10 @@ export default defineEventHandler(async (event) => {
     patch.events = events
   }
 
+  if ('include_recording_link' in body) {
+    patch.include_recording_link = !!body.include_recording_link
+  }
+
   updateWebhook(id, patch)
 
   logAudit(event, {

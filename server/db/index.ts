@@ -326,6 +326,11 @@ CREATE TABLE IF NOT EXISTS webhooks (
   format          TEXT NOT NULL DEFAULT 'generic',
   enabled         INTEGER NOT NULL DEFAULT 1,
   events          TEXT NOT NULL DEFAULT '[]',
+  -- Disclosure toggle for episodes.recording_link. Defaults to 0 so a room
+  -- URL never reaches a channel by accident; flip it on for private
+  -- co-host channels. Also governs whether the one-off "add to calendar"
+  -- link this webhook emits resolves to an .ics carrying that URL.
+  include_recording_link INTEGER NOT NULL DEFAULT 0,
   created_at      TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
   CHECK ((podcast_id IS NULL) <> (network_id IS NULL))
@@ -574,6 +579,14 @@ function applyMigrations(db: Database.Database) {
   const networkPropDefCols = cols('network_property_definitions')
   if (networkPropDefCols.length > 0 && !networkPropDefCols.includes('description')) {
     db.exec('ALTER TABLE network_property_definitions ADD COLUMN description TEXT')
+  }
+
+  // Existing webhooks default to NOT disclosing the recording room URL. This
+  // is a new capability, so nothing regresses — and a room link leaking into
+  // a public channel is unrecoverable, while a missing one is a click to fix.
+  const webhookCols = cols('webhooks')
+  if (webhookCols.length > 0 && !webhookCols.includes('include_recording_link')) {
+    db.exec('ALTER TABLE webhooks ADD COLUMN include_recording_link INTEGER NOT NULL DEFAULT 0')
   }
 
   // Migrate the single per-podcast webhook config (3 columns on `podcasts`)

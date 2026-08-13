@@ -13,7 +13,7 @@ import { logAudit } from '../../../../utils/audit'
 /**
  * POST /api/podcasts/[slug]/webhooks
  *
- * Body: { name?, url, format, enabled?, events: string[] }
+ * Body: { name?, url, format, enabled?, events: string[], include_recording_link? }
  *
  * Creates a new webhook attached to this podcast. `events` lists the event
  * names the webhook should fire for; an empty list creates an effectively
@@ -47,6 +47,9 @@ export default defineEventHandler(async (event) => {
     format: body.format,
     enabled: body?.enabled !== false,
     events,
+    // Opt-in, not opt-out: a recording room URL is only disclosed to a
+    // destination that explicitly asked for it.
+    include_recording_link: body?.include_recording_link === true,
   })
 
   logAudit(event, {
@@ -56,7 +59,11 @@ export default defineEventHandler(async (event) => {
     entityType: 'webhook',
     entityId: id,
     summary: `Created webhook (${body.format}, ${events.length} event${events.length === 1 ? '' : 's'})`,
-    details: { events, enabled: body?.enabled !== false },
+    details: {
+      events,
+      enabled: body?.enabled !== false,
+      include_recording_link: body?.include_recording_link === true,
+    },
   })
 
   event.node.res.statusCode = 201

@@ -55,6 +55,9 @@ export default defineEventHandler(async (event) => {
     format: body.format,
     enabled: body?.enabled !== false,
     events,
+    // Opt-in, not opt-out: a recording room URL is only disclosed to a
+    // destination that explicitly asked for it.
+    include_recording_link: body?.include_recording_link === true,
   })
 
   logAudit(event, {
@@ -64,7 +67,12 @@ export default defineEventHandler(async (event) => {
     entityType: 'network',
     entityId: networkId,
     summary: `Created webhook on network "${network.title}" (${body.format}, ${events.length} event${events.length === 1 ? '' : 's'})`,
-    details: { webhook_id: id, events, enabled: body?.enabled !== false },
+    details: {
+      webhook_id: id,
+      events,
+      enabled: body?.enabled !== false,
+      include_recording_link: body?.include_recording_link === true,
+    },
   })
 
   event.node.res.statusCode = 201

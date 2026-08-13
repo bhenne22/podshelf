@@ -365,6 +365,11 @@ CREATE TABLE IF NOT EXISTS webhooks (
   format          TEXT NOT NULL DEFAULT 'generic',
   enabled         INTEGER NOT NULL DEFAULT 1,
   events          TEXT NOT NULL DEFAULT '[]',
+  -- Disclosure toggle for episodes.recording_link. Defaults to 0 so a room
+  -- URL never reaches a channel by accident; flip it on for private
+  -- co-host channels. Also governs whether the one-off "add to calendar"
+  -- link this webhook emits resolves to an .ics carrying that URL.
+  include_recording_link INTEGER NOT NULL DEFAULT 0,
   created_at      TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
   CHECK ((podcast_id IS NULL) <> (network_id IS NULL))

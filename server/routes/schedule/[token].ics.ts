@@ -21,6 +21,8 @@ interface EpisodeRow {
   // Pre-resolved in SQL via COALESCE(episode.duration, podcast.default) so a
   // single null here means "use the global 90-min fallback in ics.ts".
   effective_duration_minutes: number | null
+  recording_location_type: string | null
+  recording_link: string | null
   updated_at: string
   podcast_title: string
   podcast_website: string | null
@@ -92,6 +94,7 @@ export default defineEventHandler((event) => {
         e.published_at, e.recording_starts_at,
         COALESCE(e.recording_duration_minutes, p.recording_default_duration_minutes)
           AS effective_duration_minutes,
+        e.recording_location_type, e.recording_link,
         e.updated_at,
         p.title   AS podcast_title,
         p.website AS podcast_website
@@ -117,6 +120,8 @@ export default defineEventHandler((event) => {
     published_at: row.published_at,
     recording_starts_at: row.recording_starts_at,
     recording_duration_minutes: row.effective_duration_minutes,
+    recording_location_type: row.recording_location_type,
+    recording_link: row.recording_link,
     updated_at: row.updated_at,
     podcast_title: row.podcast_title,
     podcast_website: row.podcast_website,

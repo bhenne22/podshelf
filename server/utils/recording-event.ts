@@ -1,5 +1,6 @@
 import getDb from '../db/index'
 import { loadWebhooksForEvent, sendRecordingWebhook, type RecordingChangeKind, type WebhookEvent, type WebhookRow } from './webhook'
+import { signEventCalendarToken } from './event-calendar-token'
 import { logAudit } from './audit'
 
 interface PodcastRow {
@@ -16,6 +17,8 @@ interface EpisodeRow {
   slug: string
   episode_number: number | null
   season_number: number | null
+  recording_location_type: string | null
+  recording_link: string | null
 }
 
 export interface RecordingEventInput {
@@ -59,7 +62,9 @@ export async function fireRecordingEvent(
   if (!podcast) return {}
 
   const episode = db.prepare(`
-    SELECT id, title, slug, episode_number, season_number FROM episodes WHERE id = ?
+    SELECT id, title, slug, episode_number, season_number,
+           recording_location_type, recording_link
+    FROM episodes WHERE id = ?
   `).get(input.episodeId) as EpisodeRow | undefined
   // For a delete-driven event the episode row is already gone — pull what
   // we need from the input.previous* values and skip the DB read. Callers
@@ -91,11 +96,41 @@ export async function fireRecordingEvent(
     previous_starts_at: input.previousStartsAt,
     previous_duration_minutes: input.previousDurationMinutes,
     podcast_timezone: podcast.timezone || 'UTC',
+    recording_location_type: episode?.recording_location_type ?? null,
+    recording_link: episode?.recording_link ?? null,
+    // Filled in per-webhook below — the token bakes in what that specific
+    // destination is allowed to disclose, so there's no one shared value.
+    calendar_url: null as string | null,
+  }
+
+  // The "add to calendar" link only exists for a live recording slot, and
+  // only two variants are ever needed (link disclosed / withheld) no matter
+  // how many webhooks are subscribed — so mint each at most once.
+  const calendarUrlCache = new Map<boolean, string | null>()
+  function calendarUrlFor(includeLink: boolean): string | null {
+    if (calendarUrlCache.has(includeLink)) return calendarUrlCache.get(includeLink)!
+    let url: string | null = null
+    // A cancelled recording has no slot left to add; without SITE_URL the
+    // link would be relative and useless in a chat client.
+    if (input.kind !== 'cancelled' && input.newStartsAt && siteUrl) {
+      try {
+        url = `${siteUrl}/schedule/event/${signEventCalendarToken(input.episodeId, includeLink)}.ics`
+      } catch {
+        // No NUXT_SECRET_KEY — degrade to no calendar link rather than
+        // emitting an unsigned one or failing the whole notification.
+        url = null
+      }
+    }
+    calendarUrlCache.set(includeLink, url)
+    return url
   }
 
   const results = await Promise.all(
     webhooks.map(async (w: WebhookRow): Promise<WebhookResult> => {
-      const r = await sendRecordingWebhook(w, podcastPayload, recordingPayload)
+      const r = await sendRecordingWebhook(w, podcastPayload, {
+        ...recordingPayload,
+        calendar_url: calendarUrlFor(w.include_recording_link),
+      })
       return {
         ok: r.ok,
         status: r.status,

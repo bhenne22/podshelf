@@ -187,13 +187,13 @@ Each entry has `action`, `summary`, `user_email`, `created_at`, and a parsed
 ### `GET /api/podcasts/[slug]/webhooks`
 
 Returns the list of webhooks attached to this podcast, redacted. Each row:
-`{ id, scope, scope_id, name, format, enabled, events, url_host, created_at, updated_at }`.
+`{ id, scope, scope_id, name, format, enabled, events, include_recording_link, url_host, created_at, updated_at }`.
 URLs themselves are never returned (they're encrypted at rest and may include
 a token in the path).
 
 ### `POST /api/podcasts/[slug]/webhooks`
 
-Body: `{ name?, url, format, enabled?, events }`. `format` is
+Body: `{ name?, url, format, enabled?, events, include_recording_link? }`. `format` is
 `discord` / `slack` / `generic`. `events` is an array selected from:
 `episode.publish`, `episode.recording.scheduled`, `episode.recording.moved`,
 `episode.recording.cancelled`, `correction.submitted`. Returns the new
@@ -206,9 +206,23 @@ Other combinations are rejected with 400 at create + update time, because
 Discord's API returns 50006 "Cannot send an empty message" and Slack's
 returns "no_text" when handed the generic JSON payload.
 
+**Recording-link disclosure.** Recording webhooks can include the episode's
+`recording_link` (the Zoom/Riverside room URL) in the delivered message, but
+only when the webhook row has `include_recording_link: true`. It defaults to
+**false** on create — omitting the field means "withhold" — so a room URL is
+never posted to a destination that didn't explicitly ask for it. The gate
+applies to all three formats, including `generic`, where `recording_link` is
+sent as `null` rather than dropped so the payload shape stays stable.
+
+The same flag decides what the message's "add to calendar" link discloses:
+the link is a signed one-off `.ics` (see below) whose token has the flag baked
+into its signature, so a link posted in a public channel cannot be edited into
+one that reveals the room.
+
 ### `PATCH /api/podcasts/[slug]/webhooks/[id]`
 
-Partial update. Any of `name`, `url`, `format`, `enabled`, `events` can be
+Partial update. Any of `name`, `url`, `format`, `enabled`, `events`,
+`include_recording_link` can be
 sent. Sending a new `url` rotates the encrypted secret; omitting `url`
 preserves the previous one. Sending an empty `url` is a no-op (use DELETE
 to remove a webhook entirely). Patches that change `url` or `format` are
@@ -223,6 +237,26 @@ Removes a webhook permanently.
 Fires a synthetic event through the webhook. Body: `{ event? }` — defaults
 to the first event the webhook subscribes to (or `episode.publish`). 502s
 with the upstream error if delivery fails.
+
+### `GET /schedule/event/[token].ics`
+
+One-off "add to calendar" download for a single episode's recording slot —
+the link that recording webhooks put in their message. Unauthenticated by
+design: it's handed out in chat channels where there's no per-user session,
+so the signed token *is* the credential. Not a subscription; it serves
+exactly one `VEVENT` (the REC event, never the DROP one) and sets
+`Content-Disposition: attachment` so the browser hands it to the calendar app.
+
+The token is `<episode_id>-<0|1>-<hmac>`, signed with `NUXT_SECRET_KEY`. The
+middle digit is the recording-link disclosure flag and is covered by the
+signature — tampering with it, or with the episode id, yields 404. Also 404s
+when the episode is gone, its podcast is soft-deleted, or the recording slot
+has since been cancelled. Rotating `NUXT_SECRET_KEY` invalidates every
+outstanding link.
+
+Distinct from `GET /schedule/[token].ics`, which is a per-user *subscription*
+feed covering a whole podcast or network. That feed is authenticated by its
+own revocable token and always includes the recording link.
 
 ### Network-scoped webhooks (admin-only)
 
