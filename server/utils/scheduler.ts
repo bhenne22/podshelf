@@ -1,5 +1,6 @@
 import getDb from '../db/index'
 import { firePublishEvent } from './publish-event'
+import { processPendingAnnouncements } from './announce'
 import { logAudit } from './audit'
 import {
   PUBLISH_DEBOUNCE_MINUTES,
@@ -180,6 +181,19 @@ export function processPendingPublishes(): number {
 let timerHandle: ReturnType<typeof setInterval> | null = null
 
 /**
+ * One pass of the scheduler's work. The two DB passes are synchronous;
+ * releasing parked announcements makes network calls, so it runs detached
+ * and its errors are logged rather than allowed to kill the interval.
+ */
+function tick(): void {
+  processScheduledFlips()
+  processPendingPublishes()
+  void processPendingAnnouncements().catch((err) => {
+    console.error('[scheduler] announcement release failed', err)
+  })
+}
+
+/**
  * Start the in-process scheduler. Idempotent — safe to call multiple times
  * (e.g. in dev where the server reloads). The interval is 60s by default,
  * which is the granularity users will see for "scheduled at HH:MM" flips.
@@ -189,15 +203,13 @@ export function startScheduler(intervalMs = 60_000) {
   // Fire once immediately so server restart doesn't leave overdue episodes
   // (or pending publishes) sitting until the first interval tick.
   try {
-    processScheduledFlips()
-    processPendingPublishes()
+    tick()
   } catch (err) {
     console.error('[scheduler] initial run failed', err)
   }
   timerHandle = setInterval(() => {
     try {
-      processScheduledFlips()
-      processPendingPublishes()
+      tick()
     } catch (err) {
       console.error('[scheduler] tick failed', err)
     }

@@ -5,9 +5,8 @@ import {
   dispatchRepositoryEvent,
   isDeploysPaused,
   loadGithubConfig,
-  maybeAutoTrigger,
 } from './github'
-import { loadWebhooksForEvent, sendPublishWebhook, type WebhookRow } from './webhook'
+import { queuePublishAnnouncement, type WebhookResult } from './announce'
 import { logAudit } from './audit'
 
 interface PublishablePodcast {
@@ -17,18 +16,6 @@ interface PublishablePodcast {
   website: string | null
 }
 
-interface PublishableEpisode {
-  id: number
-  title: string
-  slug: string
-  description: string | null
-  audio_url: string | null
-  image_url: string | null
-  episode_number: number | null
-  season_number: number | null
-  published_at: string | null
-}
-
 /**
  * Source label tells the audit log + GitHub event-type which path took us
  * here. 'episode-create' / 'episode-update' for direct user actions;
@@ -36,19 +23,17 @@ interface PublishableEpisode {
  */
 export type PublishSource = 'episode-create' | 'episode-update' | 'episode-schedule'
 
-interface WebhookResult {
-  ok: boolean
-  status?: number
-  message?: string
-  webhook_id: number
-  scope: 'podcast' | 'network'
-}
-
 /**
  * Single fan-out point for "an episode just became live": bump the feed
- * cache, fire the GitHub repository_dispatch (when configured), and POST
- * every webhook subscribed to `episode.publish` (podcast-scoped + parent
- * network-scoped).
+ * cache, fire the GitHub repository_dispatch (when configured), and hand the
+ * `episode.publish` webhooks to the announcement queue.
+ *
+ * The announcement is deliberately NOT sent inline. It links to a page on a
+ * downstream static site that only exists once the build we just triggered
+ * has deployed, so `queuePublishAnnouncement` holds it until the page
+ * answers 200 (see server/utils/announce.ts). When the page is already live
+ * — or the podcast has no website, so the link is a Podshelf feed anchor —
+ * it sends immediately and this stays a single round trip.
  *
  * Webhook errors are captured (not thrown) and returned in the result so
  * callers can surface them in the audit log without breaking the publish.
@@ -69,121 +54,69 @@ export async function firePublishEvent(
   `).get(podcastId) as PublishablePodcast | undefined
   if (!podcast) return {}
 
-  // Scheduled flips fire a GitHub dispatch immediately, bypassing both the
-  // `github_auto_trigger` gate and the 15-minute debounce. Rationale: the
-  // user already committed to the publish when they hit "Schedule"; the
-  // auto_trigger flag exists to coalesce flurries of human edits, not to
-  // gate one-shot scheduled go-lives. The `deploys_paused` kill switch is
-  // still honored — that's the explicit "do not deploy" signal.
-  if (source === 'episode-schedule') {
-    fireScheduledPublishDispatch(podcast, episodeId)
-  } else {
-    maybeAutoTrigger(podcastId, source)
-  }
+  // Every "became live" transition dispatches the rebuild immediately rather
+  // than going through maybeAutoTrigger's 15-minute debounce. The debounce
+  // exists to coalesce a flurry of human edits into one build; a go-live is
+  // a single committed event, and making the announcement wait out the
+  // debounce before the page could even start building added ~15 minutes of
+  // dead time to every publish. Ordinary edits to already-published episodes
+  // still take the debounced path.
+  //
+  // `episode-schedule` additionally bypasses the `github_auto_trigger` gate
+  // (the user committed to the publish when they hit Schedule). The manual
+  // paths still honor it — a podcast with auto-trigger off is built by hand.
+  firePublishDispatch(podcast, episodeId, source)
 
-  const episode = db.prepare(`
-    SELECT id, title, slug, description, audio_url, image_url,
-           episode_number, season_number, published_at
-    FROM episodes WHERE id = ?
-  `).get(episodeId) as PublishableEpisode | undefined
-  if (!episode) return {}
-
-  const webhooks = loadWebhooksForEvent(podcastId, 'episode.publish')
-  if (webhooks.length === 0) return {}
-
-  const siteUrl = (process.env.SITE_URL || (useRuntimeConfig().public.siteUrl as string) || '').replace(/\/+$/, '')
-  const feedUrl = `${siteUrl}/feeds/${podcast.slug}.xml`
-  const websiteBase = (podcast.website || '').replace(/\/+$/, '')
-  const episodeUrl = websiteBase
-    ? `${websiteBase}/episodes/${episode.slug}`
-    : `${siteUrl}/feeds/${podcast.slug}.xml#${episode.slug}`
-
-  const podcastPayload = { slug: podcast.slug, title: podcast.title, feed_url: feedUrl, website: podcast.website }
-  const episodePayload = {
-    title: episode.title,
-    description: episode.description,
-    episode_url: episodeUrl,
-    audio_url: episode.audio_url,
-    image_url: episode.image_url,
-    episode_number: episode.episode_number,
-    season_number: episode.season_number,
-    published_at: episode.published_at,
-  }
-
-  const results = await Promise.all(
-    webhooks.map(async (w: WebhookRow): Promise<WebhookResult> => {
-      const r = await sendPublishWebhook(w, podcastPayload, episodePayload)
-      return {
-        ok: r.ok,
-        status: r.status,
-        message: r.message,
-        webhook_id: w.id,
-        scope: w.podcast_id !== null ? 'podcast' : 'network',
-      }
-    }),
-  )
-
-  for (const r of results) {
-    const w = webhooks.find((x) => x.id === r.webhook_id)
-    if (!w) continue
-    logAudit({
-      podcastId,
-      userId: actorUserId,
-      apiKeyId: actorApiKeyId,
-      action: r.ok ? 'webhook.publish.ok' : 'webhook.publish.fail',
-      entityType: 'episode',
-      entityId: episodeId,
-      summary: r.ok
-        ? `Webhook fired (${w.format}, ${r.scope}#${w.id}${w.name ? ` "${w.name}"` : ''})`
-        : `Webhook failed (${w.format}, ${r.scope}#${w.id}${w.name ? ` "${w.name}"` : ''}): ${r.message ?? 'unknown'}`,
-      details: { format: w.format, scope: r.scope, webhook_id: w.id, status: r.status, message: r.message },
-    })
-  }
-
-  return { webhooks: results }
+  const results = await queuePublishAnnouncement(podcastId, episodeId, actorUserId, actorApiKeyId)
+  return results ? { webhooks: results } : {}
 }
 
 /**
- * Fire-and-forget a repository_dispatch for a scheduled episode going live.
- * Clears any pending dirty markers so the debounced auto-publish path won't
- * fire a redundant build minutes later. Audits both success and failure.
+ * Fire-and-forget a repository_dispatch for an episode going live. Clears
+ * any pending dirty markers so the debounced auto-publish path won't fire a
+ * redundant build minutes later. Audits both success and failure.
  */
-function fireScheduledPublishDispatch(podcast: PublishablePodcast, episodeId: number): void {
+function firePublishDispatch(podcast: PublishablePodcast, episodeId: number, source: PublishSource): void {
   if (isDeploysPaused(podcast.id)) return
   const config = loadGithubConfig(podcast.id)
   if (!config) return
+  // Scheduled go-lives bypass auto_trigger; manual publishes respect it.
+  if (source !== 'episode-schedule' && !config.auto_trigger) return
 
   clearPublishDirty(podcast.id)
 
+  const scheduled = source === 'episode-schedule'
   const payload = {
     slug: podcast.slug,
-    reason: 'podshelf:scheduled-publish',
+    reason: scheduled ? 'podshelf:scheduled-publish' : 'podshelf:publish',
     podcast_id: podcast.id,
     episode_id: episodeId,
     fired_at: new Date().toISOString(),
   }
+  const action = scheduled ? 'podcast.github.scheduled-publish' : 'podcast.github.publish'
+  const label = scheduled ? 'scheduled publish' : 'publish'
 
   void dispatchRepositoryEvent(config, payload)
     .then(() => {
       logAudit({
         podcastId: podcast.id,
         userId: null,
-        action: 'podcast.github.scheduled-publish',
+        action,
         entityType: 'episode',
         entityId: episodeId,
-        summary: 'Auto-fired GitHub rebuild for scheduled publish',
+        summary: `Auto-fired GitHub rebuild for ${label}`,
       })
     })
     .catch((err) => {
       const message = err instanceof Error ? err.message : String(err)
-      console.error(`[publish-event] scheduled-publish dispatch failed for podcast ${podcast.id}: ${message}`)
+      console.error(`[publish-event] ${label} dispatch failed for podcast ${podcast.id}: ${message}`)
       logAudit({
         podcastId: podcast.id,
         userId: null,
-        action: 'podcast.github.scheduled-publish.fail',
+        action: `${action}.fail`,
         entityType: 'episode',
         entityId: episodeId,
-        summary: `Auto-dispatch for scheduled publish failed: ${message}`,
+        summary: `Auto-dispatch for ${label} failed: ${message}`,
         details: { error: message },
       })
     })

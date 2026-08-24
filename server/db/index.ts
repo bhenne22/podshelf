@@ -379,6 +379,33 @@ CREATE INDEX IF NOT EXISTS idx_corrections_podcast
   ON corrections(podcast_id, status, id DESC);
 CREATE INDEX IF NOT EXISTS idx_corrections_iphash
   ON corrections(ip_hash, created_at);
+
+-- Publish announcements parked until the downstream site has actually
+-- deployed the episode page. Podshelf fires the GitHub build and the webhook
+-- from the same call, but the build takes minutes — so announcing at publish
+-- time posts a link to a page that 404s. One row per waiting episode; the
+-- scheduler probes probe_url each tick and deletes the row when it sends.
+--
+-- deadline_at is the give-up point: past it the announcement goes out
+-- anyway with a warning, so a broken build delays the post instead of
+-- swallowing it. The UNIQUE on episode_id + INSERT OR REPLACE means an
+-- unpublish → republish re-arms the wait rather than stacking rows.
+CREATE TABLE IF NOT EXISTS pending_announcements (
+  id               INTEGER PRIMARY KEY AUTOINCREMENT,
+  podcast_id       INTEGER NOT NULL REFERENCES podcasts(id) ON DELETE CASCADE,
+  episode_id       INTEGER NOT NULL UNIQUE REFERENCES episodes(id) ON DELETE CASCADE,
+  probe_url        TEXT NOT NULL,
+  attempts         INTEGER NOT NULL DEFAULT 0,
+  last_status      INTEGER,
+  last_error       TEXT,
+  actor_user_id    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  actor_api_key_id INTEGER REFERENCES api_keys(id) ON DELETE SET NULL,
+  created_at       TEXT NOT NULL DEFAULT (datetime('now')),
+  deadline_at      TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_pending_announcements_podcast
+  ON pending_announcements(podcast_id);
 `
 
 let _db: Database.Database | null = null

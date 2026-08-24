@@ -145,23 +145,40 @@ scoped to its own slug.
 `firePublishEvent()` in `server/utils/publish-event.ts` is the single fan-out point:
 
 1. **Feed cache bump.** Forces revalidation on cached feed responses.
-2. **GitHub dispatch.** Two paths, branched on `source`:
-   - `episode-create` / `episode-update` → **`maybeAutoTrigger(podcastId, source)`** marks
-     the podcast dirty. The in-process scheduler (`server/utils/github.ts`,
-     `PUBLISH_DEBOUNCE_MINUTES = 15`) debounces and then calls
-     `dispatchRepositoryEvent()`. The debounce coalesces a flurry of edits into one
-     build. Gated on the `github_auto_trigger` flag.
-   - `episode-schedule` (the scheduler flipping a scheduled episode to published) →
-     `dispatchRepositoryEvent()` fires **immediately**, bypassing both `auto_trigger`
-     and the debounce. A scheduled go-live is a single committed event, not part of an
-     edit flurry, and the user already opted in when they scheduled it. Pending dirty
-     markers are cleared so the debounced path won't fire a redundant build minutes later.
-   Both paths post to `https://api.github.com/repos/<owner>/<repo>/dispatches` with
-   `event_type` and `client_payload: { slug, reason, podcast_id, fired_at }` (the
-   scheduled path also includes `episode_id`). The per-podcast `deploys_paused` kill
-   switch on `/podcasts/<slug>/build` blocks **all** paths (auto, manual, test, and the
-   scheduled go-live).
-3. **`sendPublishWebhook()`** — optional Discord / Slack / generic JSON post.
+2. **GitHub dispatch.** Every go-live calls `firePublishDispatch()`, which posts to
+   `https://api.github.com/repos/<owner>/<repo>/dispatches` **immediately** — the
+   15-minute `PUBLISH_DEBOUNCE_MINUTES` window is not on this path. The debounce
+   exists to coalesce a flurry of human edits into one build; a go-live is a single
+   committed event. Pending dirty markers are cleared so the debounced path won't fire
+   a redundant build minutes later. `client_payload` is
+   `{ slug, reason, podcast_id, episode_id, fired_at }`, where `reason` is
+   `podshelf:publish` or `podshelf:scheduled-publish`.
+   - `episode-schedule` additionally bypasses the `github_auto_trigger` flag — the user
+     committed to the publish when they hit Schedule.
+   - `episode-create` / `episode-update` still respect `auto_trigger`; a podcast with it
+     off is built by hand.
+   - Ordinary edits to an *already-published* episode still take the debounced
+     `maybeAutoTrigger()` path in `server/utils/github.ts`.
+   The per-podcast `deploys_paused` kill switch on `/podcasts/<slug>/build` blocks
+   **all** paths (auto, manual, test, and the scheduled go-live).
+3. **Announcement, gated on the deploy** (`server/utils/announce.ts`). The
+   `episode.publish` webhook links to `<website>/episodes/<slug>` — a page that does not
+   exist until the build dispatched in step 2 has run and rsynced, several minutes later.
+   Posting it inline (as Podshelf did until this was fixed) put a 404 link in the Discord
+   channel. So `queuePublishAnnouncement()`:
+   - Probes the episode URL once inline. Already live — or a podcast with no `website`,
+     whose link is a Podshelf feed anchor needing no deploy — sends immediately and this
+     costs one extra HEAD.
+   - Otherwise parks a `pending_announcements` row. The scheduler re-probes each 60s tick
+     and calls `deliverPublishWebhooks()` on the first 2xx. Probes follow redirects: a
+     prerendered Nuxt route is written as `/episodes/<slug>/index.html` and Apache 301s
+     the extensionless path to the trailing-slash form.
+   - Releases anyway after `ANNOUNCE_MAX_WAIT_MINUTES` (30) with a
+     `webhook.publish.deferred.timeout` audit entry. A late link beats an announcement
+     silently swallowed by a broken build.
+   Payload rows are re-read at delivery time, so a title fixed during the wait is the one
+   that gets announced. Rows are deleted before delivery so an overlapping tick can't
+   double-post, and cascade away if the episode is deleted or reverted to draft.
 
 The configured repo is **whichever site owns the show's listener experience**:
 
