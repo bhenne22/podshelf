@@ -51,11 +51,28 @@ const status = ref<PublishStatus | null>(null)
 const triggering = ref(false)
 const errorMsg = ref('')
 
+// Declared up here rather than beside tickHandle because the top-level
+// `await load()` below runs before those declarations initialise — reaching
+// for pollHandle from inside load() would hit the TDZ on that first call.
+let pollHandle: ReturnType<typeof setInterval> | null = null
+function stopPolling() {
+  if (pollHandle) { clearInterval(pollHandle); pollHandle = null }
+}
+
 async function load() {
   try {
     status.value = await $fetch<PublishStatus>(`/api/podcasts/${props.podcastSlug}/publish-status`)
-  } catch {
+  } catch (err: unknown) {
     status.value = null
+    // An expired session used to leave this polling a 401 every 30s forever,
+    // behind a page that still looked logged in. Same rule as
+    // middleware/auth.ts: only an explicit 401 means "not authenticated";
+    // transient errors are ignored so a blip doesn't bounce a logged-in user.
+    const e = err as { statusCode?: number; response?: { status?: number } }
+    if ((e?.statusCode ?? e?.response?.status) === 401) {
+      stopPolling()
+      await navigateTo('/login')
+    }
   }
 }
 
@@ -78,7 +95,6 @@ await load()
 // Tick every second so the countdown stays live.
 const now = ref(Date.now())
 let tickHandle: ReturnType<typeof setInterval> | null = null
-let pollHandle: ReturnType<typeof setInterval> | null = null
 
 const hasPending = computed(() => !!status.value?.pending?.last_at)
 function startTick() {
@@ -97,7 +113,7 @@ onMounted(() => {
 })
 onBeforeUnmount(() => {
   stopTick()
-  if (pollHandle) clearInterval(pollHandle)
+  stopPolling()
 })
 
 // Refetch when the slug changes (e.g., user navigates between podcasts).
