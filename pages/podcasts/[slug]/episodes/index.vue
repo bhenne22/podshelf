@@ -231,7 +231,7 @@
 </template>
 
 <script setup lang="ts">
-import type { Episode } from '~/composables/useEpisodes'
+import type { EpisodeListItem } from '~/composables/useEpisodes'
 
 definePageMeta({ middleware: 'auth' })
 
@@ -292,7 +292,7 @@ const availableSeasons = computed(() => {
   return Array.from(set).sort((a, b) => a - b)
 })
 
-function dateForFilter(ep: Episode): Date | null {
+function dateForFilter(ep: EpisodeListItem): Date | null {
   const iso = ep.published_at || ep.created_at
   if (!iso) return null
   const d = new Date(iso)
@@ -331,7 +331,9 @@ const filteredEpisodes = computed(() => {
       if (to && d > to) return false
     }
     if (q) {
-      const haystack = [ep.title, ep.description].filter(Boolean).join(' ').toLowerCase()
+      // tags belongs here: the search box has always advertised "Title, tags,
+      // or description" but never actually looked at them.
+      const haystack = [ep.title, ep.tags, ep.description].filter(Boolean).join(' ').toLowerCase()
       if (!haystack.includes(q)) return false
     }
     return true
@@ -400,13 +402,13 @@ function clearFilters() {
   customTo.value = ''
 }
 
-const deleteTarget = ref<Episode | null>(null)
+const deleteTarget = ref<EpisodeListItem | null>(null)
 const deleting = ref(false)
 
 const { openMenuId, menuDirection, toggleMenu, closeMenu } = useRowMenu()
 const duplicatingId = ref<number | null>(null)
 
-async function duplicateEpisode(ep: Episode) {
+async function duplicateEpisode(ep: EpisodeListItem) {
   if (duplicatingId.value) return
   duplicatingId.value = ep.id
   try {
@@ -423,7 +425,7 @@ async function duplicateEpisode(ep: Episode) {
   }
 }
 
-function confirmDelete(ep: Episode) {
+function confirmDelete(ep: EpisodeListItem) {
   deleteTarget.value = ep
 }
 
