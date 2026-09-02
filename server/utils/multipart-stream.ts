@@ -92,6 +92,11 @@ export async function streamFilePart<T>(
     })
 
     req.on('aborted', () => {
+      // Rejecting alone only unblocks *this* promise — the onFile handler keeps
+      // running and can finish writing a short object to storage under the real
+      // filename. Destroying busboy propagates an error into the file stream so
+      // the handler's own failure path runs and cleans the partial up.
+      try { bb.destroy(new Error('Client aborted upload')) } catch { /* already torn down */ }
       reject(createError({ statusCode: 400, statusMessage: 'Client aborted upload' }))
     })
 

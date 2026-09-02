@@ -98,6 +98,12 @@ export default defineEventHandler(async (event) => {
     kind === 'chapters' ? MAX_SIZE_CHAPTERS :
     MAX_SIZE_AUDIO
 
+  // `aborted` is deprecated in newer Node but still set on an interrupted
+  // request; `destroyed` covers the rest. Either way the client is gone.
+  const isRequestAborted = () =>
+    event.node.req.destroyed === true
+    || (event.node.req as { aborted?: boolean }).aborted === true
+
   return await streamFilePart(event, {
     maxSize,
     onFile: async ({ filename: rawFilename, contentType, stream }) => {
@@ -155,6 +161,22 @@ export default defineEventHandler(async (event) => {
       // the counter so the storage upload stops too.
       stream.on('error', (err) => counter.destroy(err))
 
+      // Whatever bytes already reached storage sit there under the *real*
+      // filename, so a half-finished upload leaves a truncated file that still
+      // parses and plays — indistinguishable from a good one until someone
+      // notices the episode stops early. Every failure path has to bin it.
+      // An arrow const, not a hoisted `function` — a declaration is visible
+      // before the null guard above, so TS drops the narrowing on `storage`.
+      const discardPartial = async () => {
+        try {
+          if (storage.adapter === 's3' && storage.s3) {
+            await deleteFromS3(storage.s3, storageKind, filename)
+          } else if (storage.adapter === 'sftp' && storage.sftp) {
+            await deleteFromSftp(storage.sftp, storageKind, filename)
+          }
+        } catch { /* best-effort cleanup */ }
+      }
+
       let url: string
       try {
         if (storage.adapter === 's3' && storage.s3) {
@@ -165,6 +187,10 @@ export default defineEventHandler(async (event) => {
           throw createError({ statusCode: 500, statusMessage: 'Storage configuration mismatch' })
         }
       } catch (err: unknown) {
+        // Reached on a client disconnect mid-transfer as well as on a storage
+        // failure: streamFilePart destroys busboy on abort, which errors the
+        // file stream, which tears down the counter and rejects the upload.
+        await discardPartial()
         throw createError({
           statusCode: 500,
           statusMessage: err instanceof Error ? err.message : 'Upload failed',
@@ -175,15 +201,18 @@ export default defineEventHandler(async (event) => {
       // is exceeded; the storage upload still completes (with a partial file),
       // so we delete the partial artifact and surface a 413.
       if (stream.truncated) {
-        try {
-          if (storage.adapter === 's3' && storage.s3) {
-            await deleteFromS3(storage.s3, storageKind, filename)
-          } else if (storage.adapter === 'sftp' && storage.sftp) {
-            await deleteFromSftp(storage.sftp, storageKind, filename)
-          }
-        } catch { /* best-effort cleanup */ }
+        await discardPartial()
         const mb = Math.round(maxSize / (1024 * 1024))
         throw createError({ statusCode: 413, statusMessage: `File too large. Maximum size is ${mb} MB.` })
+      }
+
+      // A disconnect can also land here: busboy may end the file stream cleanly
+      // on a premature request end, in which case the storage write "succeeds"
+      // with short content and nothing above fires. Trust the request, not the
+      // stream — if the client is gone, the object is incomplete by definition.
+      if (isRequestAborted()) {
+        await discardPartial()
+        throw createError({ statusCode: 400, statusMessage: 'Client aborted upload' })
       }
 
       return { url, filename, size: bytesSeen, content_type: storedContentType, kind }
