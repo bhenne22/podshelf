@@ -98,11 +98,13 @@ export default defineEventHandler(async (event) => {
     kind === 'chapters' ? MAX_SIZE_CHAPTERS :
     MAX_SIZE_AUDIO
 
-  // `aborted` is deprecated in newer Node but still set on an interrupted
-  // request; `destroyed` covers the rest. Either way the client is gone.
-  const isRequestAborted = () =>
-    event.node.req.destroyed === true
-    || (event.node.req as { aborted?: boolean }).aborted === true
+  // `complete` is the only trustworthy signal here: Node sets it once the
+  // entire message body has been received, and leaves it false when the client
+  // disappears mid-transfer. Do NOT reach for `destroyed` — IncomingMessage
+  // auto-destroys itself as soon as its body has been fully consumed, so it
+  // reads true on every *successful* upload too, and this check then binned
+  // the finished file and returned "Client aborted upload" for a good one.
+  const isRequestAborted = () => event.node.req.complete !== true
 
   return await streamFilePart(event, {
     maxSize,
