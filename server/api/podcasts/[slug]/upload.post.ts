@@ -5,7 +5,7 @@ import { loadPodcastStorage } from '../../../utils/storage-config'
 import { isMigrationActive } from '../../../utils/storage-migration'
 import { uploadStreamToSftp, deleteFromSftp } from '../../../storage/sftp'
 import { uploadStreamToS3, deleteFromS3 } from '../../../storage/s3'
-import { streamFilePart } from '../../../utils/multipart-stream'
+import { streamFilePart, wasRequestAborted } from '../../../utils/multipart-stream'
 
 const AUDIO_TYPES = [
   'audio/mpeg', 'audio/mp3', 'audio/mp4', 'audio/m4a', 'audio/x-m4a',
@@ -98,13 +98,7 @@ export default defineEventHandler(async (event) => {
     kind === 'chapters' ? MAX_SIZE_CHAPTERS :
     MAX_SIZE_AUDIO
 
-  // `complete` is the only trustworthy signal here: Node sets it once the
-  // entire message body has been received, and leaves it false when the client
-  // disappears mid-transfer. Do NOT reach for `destroyed` — IncomingMessage
-  // auto-destroys itself as soon as its body has been fully consumed, so it
-  // reads true on every *successful* upload too, and this check then binned
-  // the finished file and returned "Client aborted upload" for a good one.
-  const isRequestAborted = () => event.node.req.complete !== true
+  const isRequestAborted = () => wasRequestAborted(event.node.req)
 
   return await streamFilePart(event, {
     maxSize,

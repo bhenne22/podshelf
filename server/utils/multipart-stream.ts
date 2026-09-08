@@ -1,5 +1,23 @@
 import busboy from 'busboy'
 import { createError, type H3Event } from 'h3'
+import type { IncomingMessage } from 'node:http'
+
+/**
+ * True when the client vanished before the whole request body arrived.
+ *
+ * Node sets `complete` only once the entire message has been received, and
+ * leaves it false when the connection drops mid-body, so it is the only
+ * reliable discriminator here.
+ *
+ * Do NOT substitute `req.destroyed`: IncomingMessage has autoDestroy, so it
+ * tears itself down the moment its body has been fully consumed and therefore
+ * reads true on every *successful* upload too. Keying on it made every
+ * finished upload look like an abort, deleting the file that had just landed
+ * in storage — see upload-abort-detection.test.ts.
+ */
+export function wasRequestAborted(req: IncomingMessage): boolean {
+  return req.complete !== true
+}
 
 export interface FileStreamPart {
   filename: string
