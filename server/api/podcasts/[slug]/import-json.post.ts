@@ -66,6 +66,9 @@ interface ArchivePullQuote {
   speaker?: string | null
   timecode?: string | null
   position?: number
+  // Optional — archives predating the review gate omit it, and those quotes
+  // land unapproved, which is the right default for unreviewed content.
+  approved?: number | boolean
   created_at?: string
   updated_at?: string
 }
@@ -224,8 +227,8 @@ export default defineEventHandler(async (event) => {
   `)
 
   const insertPullQuote = db.prepare(`
-    INSERT INTO episode_pull_quotes (episode_id, quote, speaker, timecode, position, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO episode_pull_quotes (episode_id, quote, speaker, timecode, position, approved, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `)
 
   const insertAlias = db.prepare(`
@@ -327,7 +330,7 @@ export default defineEventHandler(async (event) => {
       const now = new Date().toISOString()
       insertPullQuote.run(
         newEpId, quote, q.speaker ?? null, q.timecode ?? null, q.position ?? 0,
-        q.created_at || now, q.updated_at || now,
+        q.approved ? 1 : 0, q.created_at || now, q.updated_at || now,
       )
       importedPullQuotes++
     }

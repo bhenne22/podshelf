@@ -66,7 +66,7 @@ export default defineEventHandler((event) => {
   // internal/downstream material, not feed content, but they're authored
   // work — losing them on an instance move would be a real loss.
   const pullQuotes = db.prepare(`
-    SELECT episode_id, quote, speaker, timecode, position, created_at, updated_at
+    SELECT episode_id, quote, speaker, timecode, position, approved, created_at, updated_at
     FROM episode_pull_quotes
     WHERE episode_id IN (SELECT id FROM episodes WHERE podcast_id = ?)
     ORDER BY episode_id, position, id

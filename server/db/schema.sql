@@ -209,6 +209,11 @@ CREATE TABLE IF NOT EXISTS episode_pull_quotes (
   speaker     TEXT,
   timecode    TEXT,
   position    INTEGER NOT NULL DEFAULT 0,
+  -- Review gate. 0 until a human approves the quote in the episode editor.
+  -- The read paths default to approved-only, so an unreviewed quote never
+  -- reaches a downstream site: generated candidates are inert until someone
+  -- has actually looked at them.
+  approved    INTEGER NOT NULL DEFAULT 0,
   created_at  TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );

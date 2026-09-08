@@ -18,6 +18,7 @@
  *   --episode <id>     just this one episode (repeatable)
  *   --limit <n>        stop after n episodes (useful for a first look)
  *   --force            regenerate episodes that already have quotes
+ *   --force-approved   also regenerate ones with approved quotes (destroys them)
  *   --dry-run          print what would be imported, write nothing
  *   --brief <text>     override the per-show brief (required for a new show)
  *   --model <id>       default claude-opus-5
@@ -75,6 +76,7 @@ interface Options {
   episodes: number[]
   limit: number | null
   force: boolean
+  forceApproved: boolean
   dryRun: boolean
   brief: string | null
   model: string
@@ -87,6 +89,7 @@ function parseArgs(argv: string[]): Options {
     episodes: [],
     limit: null,
     force: false,
+    forceApproved: false,
     dryRun: false,
     brief: null,
     model: 'claude-opus-5',
@@ -104,6 +107,7 @@ function parseArgs(argv: string[]): Options {
       case '--episode': opts.episodes.push(Number(next())); break
       case '--limit': opts.limit = Number(next()); break
       case '--force': opts.force = true; break
+      case '--force-approved': opts.force = true; opts.forceApproved = true; break
       case '--dry-run': opts.dryRun = true; break
       case '--brief': opts.brief = next(); break
       case '--model': opts.model = next(); break
@@ -134,6 +138,7 @@ Usage: npx tsx scripts/generate-pull-quotes.ts --podcast <slug> [options]
   --episode <id>     only this episode (repeatable)
   --limit <n>        stop after n episodes
   --force            regenerate episodes that already have quotes
+  --force-approved   also regenerate episodes with approved quotes (destroys them)
   --dry-run          print candidates, write nothing
   --brief <text>     override the per-show brief
   --model <id>       default claude-opus-5
@@ -179,6 +184,7 @@ interface EpisodeRow {
 interface PullQuoteRow {
   id: number
   quote: string
+  approved: number
 }
 
 class Podshelf {
@@ -206,8 +212,14 @@ class Podshelf {
     return this.request<EpisodeRow[]>(`/episodes?fields=${fields}`)
   }
 
+  /**
+   * ?approved=any — this is a gap check, so it has to count quotes a human
+   * hasn't reviewed yet. The endpoint defaults to approved-only (the shape a
+   * site build wants); without the flag an episode full of pending
+   * candidates would look empty and get regenerated on every run.
+   */
   listPullQuotes(episodeId: number) {
-    return this.request<PullQuoteRow[]>(`/episodes/${episodeId}/pull-quotes`)
+    return this.request<PullQuoteRow[]>(`/episodes/${episodeId}/pull-quotes?approved=any`)
   }
 
   importPullQuotes(episodeId: number, quotes: OutgoingQuote[]) {
@@ -652,6 +664,20 @@ async function main() {
       })
       continue
     }
+    // Regeneration writes with mode:replace, which deletes the whole list —
+    // including quotes someone approved. Review is the expensive human step
+    // here, so --force alone won't throw it away.
+    const approved = existing.filter((q) => q.approved === 1).length
+    if (approved > 0 && opts.force && !opts.forceApproved) {
+      skipped.push({
+        episode: ep,
+        status: 'skipped',
+        detail: `${approved} approved quote${approved === 1 ? '' : 's'} would be destroyed by --force (--force-approved to overwrite anyway)`,
+        candidates: [],
+        rejected: [],
+      })
+      continue
+    }
     planned.push(ep)
   }
 
@@ -745,7 +771,10 @@ function printSummary(outcomes: EpisodeOutcome[], opts: Options) {
     `${counts.skipped} skipped · ${counts.failed} failed · ${quotes} quotes total`,
   )
   if (counts.imported > 0) {
-    console.log('Curate them in the episode editor — these are candidates, not a final list.')
+    console.log(
+      'Imported unapproved. Nothing is exposed to a site build until you tick\n' +
+      'Approve on each one in the episode editor.',
+    )
   }
 }
 

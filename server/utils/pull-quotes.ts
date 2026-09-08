@@ -10,6 +10,13 @@ import getDb from '../db/index'
  * DO form part of the episode payload downstream sync reads (via
  * `?include=pull_quotes`), so every write has to bump `episodes.updated_at`
  * for the incremental-sync invariant documented in server/db/schema.sql.
+ *
+ * REVIEW GATE: a quote is inert until a human approves it. `listPullQuotes`
+ * therefore defaults to approved-only and callers must opt *out* to see the
+ * review queue. That direction is deliberate — a call site that forgets the
+ * flag shows too few quotes, which is visible and harmless, where the
+ * opposite default would leak unreviewed machine-generated text onto a
+ * public website.
  */
 
 export const MAX_QUOTE_LENGTH = 2000
@@ -20,7 +27,7 @@ export const MAX_BULK_QUOTES = 200
 
 /** The projection every pull-quote endpoint returns. */
 export const PULL_QUOTE_COLUMNS =
-  'id, episode_id, quote, speaker, timecode, position, created_at, updated_at'
+  'id, episode_id, quote, speaker, timecode, position, approved, created_at, updated_at'
 
 export interface PullQuote {
   id: number
@@ -29,6 +36,8 @@ export interface PullQuote {
   speaker: string | null
   timecode: string | null
   position: number
+  /** 0 or 1. SQLite has no boolean; the API projects the raw integer. */
+  approved: number
   created_at: string
   updated_at: string
 }
@@ -125,10 +134,44 @@ export function requireEpisode(episodeId: number, podcastId: number): { id: numb
   return row
 }
 
-export function listPullQuotes(episodeId: number): PullQuote[] {
+/**
+ * An episode's quotes in display order.
+ *
+ * Approved-only by default — see the REVIEW GATE note at the top of this file
+ * before changing that. Pass `{ includeUnapproved: true }` for the editor's
+ * review queue and for write endpoints echoing back what they just wrote.
+ */
+export function listPullQuotes(
+  episodeId: number,
+  opts: { includeUnapproved?: boolean } = {},
+): PullQuote[] {
+  const where = opts.includeUnapproved ? '' : ' AND approved = 1'
   return getDb()
-    .prepare(`SELECT ${PULL_QUOTE_COLUMNS} FROM episode_pull_quotes WHERE episode_id = ? ORDER BY position, id`)
+    .prepare(
+      `SELECT ${PULL_QUOTE_COLUMNS} FROM episode_pull_quotes
+       WHERE episode_id = ?${where} ORDER BY position, id`,
+    )
     .all(episodeId) as PullQuote[]
+}
+
+/**
+ * Parses the `?approved=` filter shared by the read endpoints.
+ * `true` (the default) is approved-only; `any` is the full review queue.
+ */
+export function parseApprovedFilter(value: unknown): { includeUnapproved: boolean } {
+  if (value == null || value === '' || value === 'true') return { includeUnapproved: false }
+  if (value === 'any') return { includeUnapproved: true }
+  throw createError({
+    statusCode: 400,
+    statusMessage: `approved must be "true" (default, approved only) or "any" (include unreviewed)`,
+  })
+}
+
+/** Normalizes the `approved` flag on a write. Accepts booleans and 0/1. */
+export function normalizeApproved(value: unknown): number {
+  if (value === true || value === 1 || value === '1' || value === 'true') return 1
+  if (value === false || value === 0 || value === '0' || value === 'false') return 0
+  throw createError({ statusCode: 400, statusMessage: 'approved must be a boolean' })
 }
 
 /** Next free position at the end of an episode's list. */

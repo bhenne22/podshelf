@@ -203,6 +203,11 @@ CREATE TABLE IF NOT EXISTS episode_pull_quotes (
   speaker     TEXT,
   timecode    TEXT,
   position    INTEGER NOT NULL DEFAULT 0,
+  -- Review gate. 0 until a human approves the quote in the episode editor.
+  -- The read paths default to approved-only, so an unreviewed quote never
+  -- reaches a downstream site: generated candidates are inert until someone
+  -- has actually looked at them.
+  approved    INTEGER NOT NULL DEFAULT 0,
   created_at  TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -629,6 +634,14 @@ function applyMigrations(db: Database.Database) {
   }
   if (!episodeCols.includes('private_notes')) {
     db.exec('ALTER TABLE episodes ADD COLUMN private_notes TEXT')
+  }
+
+  // Pull quotes created before the review gate existed default to unapproved,
+  // which is the safe direction: they stop being exposed until someone has
+  // actually reviewed them, rather than silently going live.
+  const pullQuoteCols = cols('episode_pull_quotes')
+  if (pullQuoteCols.length > 0 && !pullQuoteCols.includes('approved')) {
+    db.exec('ALTER TABLE episode_pull_quotes ADD COLUMN approved INTEGER NOT NULL DEFAULT 0')
   }
   // Created here (not in SCHEMA_SQL) because on an old database the column
   // doesn't exist when SCHEMA_SQL runs, and the CREATE INDEX would error.

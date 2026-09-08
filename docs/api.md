@@ -703,7 +703,7 @@ transcript-processing job.
 
 | Endpoint                                                                | Purpose                                                                       |
 |-------------------------------------------------------------------------|-------------------------------------------------------------------------------|
-| `GET /api/podcasts/[slug]/episodes/[id]/pull-quotes`                    | List, ordered by `position` then `id`.                                        |
+| `GET /api/podcasts/[slug]/episodes/[id]/pull-quotes`                    | List, ordered by `position` then `id`. **Approved only** unless `?approved=any`. |
 | `POST /api/podcasts/[slug]/episodes/[id]/pull-quotes`                   | Append one. Body: `{ quote, speaker?, timecode?, position? }`. Returns 201.    |
 | `PATCH /api/podcasts/[slug]/episodes/[id]/pull-quotes/[quoteId]`        | Partial update of `quote`, `speaker`, `timecode`, `position`.                 |
 | `DELETE /api/podcasts/[slug]/episodes/[id]/pull-quotes/[quoteId]`       | Remove one.                                                                   |
@@ -717,6 +717,7 @@ Fields:
 | `speaker`  | Optional free text, max 200 chars. Deliberately *not* a link to the people roster, so a quote from an off-roster guest still gets attribution and a roster edit can't rewrite it. |
 | `timecode` | Optional display string. Validated as `MM:SS` or `HH:MM:SS` (fractional seconds allowed) so a renderer can print it verbatim. |
 | `position` | Sort order within the episode. Defaults to the end of the list on create.                         |
+| `approved` | `0` or `1`. The review gate — see below. Settable only via `PATCH`; never by import.              |
 
 `mode: "replace"` deletes the episode's existing quotes before inserting the
 batch — that's what a transcript job should send on a re-run so it doesn't
@@ -738,7 +739,34 @@ curl -X POST -H "X-Api-Key: $KEY" -H "Content-Type: application/json" \
 
 Response: `{ "mode": "replace", "added": 2, "removed": 5, "pull_quotes": [...] }`.
 
-Pull quotes are also inlined into the single-episode endpoint —
+#### The review gate
+
+**Only approved quotes leave Podshelf.** A quote is created with `approved = 0`
+and stays inert until a human ticks Approve in the episode editor. Both read
+paths enforce this:
+
+| Path | Behaviour |
+|------|-----------|
+| `GET .../pull-quotes` | Approved only. `?approved=any` returns the full review queue — that's the editor's view, and the only way to see pending candidates. |
+| `GET .../episodes/[id]?include=pull_quotes` | Approved only, always. No opt-out — this is the downstream-sync path. |
+
+The default is approved-only rather than the other way round on purpose: a
+caller that forgets the parameter shows *too few* quotes, which is visible and
+harmless, where the opposite default would publish unreviewed
+machine-generated text to a public website with nothing erroring.
+
+`PATCH .../pull-quotes/[quoteId]` with `{"approved": true}` is the only way to
+approve one; the bulk importer cannot, and an `approved` field in a bulk body
+is ignored. Approving and unapproving get their own audit actions
+(`episode.pull-quote.approve` / `.unapprove`) recording who did it and the
+quote text, so the log answers "who published this line".
+
+**For a site build:** ask for the episode with `?include=pull_quotes` and take
+the array as-is. It's already filtered to approved and already in the operator's
+chosen order, so "the top 2" is `pull_quotes.slice(0, 2)` — no client-side
+filtering, and no risk of rendering something nobody reviewed.
+
+Pull quotes are inlined into the single-episode endpoint —
 `GET /api/podcasts/[slug]/episodes/[id]?include=pull_quotes` — alongside the
 existing `chapters`, `transcript` and `people` includes, so a downstream sync
 gets them in the same round trip. Every pull-quote write bumps the episode's

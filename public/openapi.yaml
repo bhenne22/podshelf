@@ -419,6 +419,20 @@ paths:
         Ordered by `position`, then `id`. Pull quotes are **not** in the RSS
         feed — they exist for downstream surfaces (social cards,
         episode-page callouts) and for static-site builds to render.
+
+        **Approved only by default.** A quote is inert until a human approves
+        it, so this returns the publishable list — take the first N for a
+        "top quotes" block. Pass `?approved=any` for the full review queue
+        (the episode editor's view).
+      parameters:
+        - in: query
+          name: approved
+          required: false
+          schema: { type: string, enum: [true, any], default: 'true' }
+          description: >-
+            `true` (default) returns only approved quotes; `any` includes
+            unreviewed ones. Any other value is a 400 — a typo must not be
+            read as "show me everything".
       responses:
         '200':
           description: Ordered pull quotes.
@@ -456,6 +470,10 @@ paths:
       description: |
         Partial. `quote` can be edited but never emptied — delete the row
         instead. Sending `null` or `""` for `speaker` / `timecode` clears it.
+
+        Setting `approved` is what publishes a quote to site builds. It gets
+        its own audit action (`episode.pull-quote.approve` / `.unapprove`)
+        recording who did it and the quote text.
       requestBody:
         required: true
         content:
@@ -482,8 +500,10 @@ paths:
       tags: [Episodes]
       summary: Import a batch of pull quotes
       description: |
-        The entry point for a transcript-processing pipeline. `mode:
-        "replace"` clears the episode's existing quotes first, so re-running
+        The entry point for a transcript-processing pipeline. Imported quotes
+        are **always unapproved** — an `approved` field in the body is
+        ignored — so a generation run can never publish anything by itself.
+        `mode: "replace"` clears the episode's existing quotes first, so re-running
         the job doesn't stack duplicates; `mode: "append"` (the default) adds
         to what's there. The whole batch is validated before anything is
         written and applied in one transaction — a bad row fails the request
@@ -2080,6 +2100,14 @@ components:
           type: integer
           minimum: 0
           description: 'Sort order within the episode. Defaults to the end of the list on create.'
+        approved:
+          type: boolean
+          default: false
+          description: >-
+            The review gate. Quotes are created unapproved and only approved
+            ones are returned to a site build. Settable only through PATCH —
+            the bulk importer ignores it, because approval is a human act.
+            Projected as 0/1 in responses (SQLite has no boolean).
 
     Person:
       type: object

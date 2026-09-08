@@ -561,12 +561,29 @@
               bulk from a transcript via
               <code>POST /api/podcasts/{{ podcastSlug }}/episodes/{{ id }}/pull-quotes/bulk</code>.
             </p>
+            <p class="hint section-hint">
+              <strong>Only approved quotes leave Podshelf.</strong> A site build
+              asking for this episode's quotes gets the approved ones in this
+              order, so approving is what publishes a line and the top of the
+              list is what a "first 3 quotes" block would use. Generated
+              candidates start unapproved.
+            </p>
+
+            <p v-if="pullQuotes.length" class="quote-tally">
+              {{ approvedQuoteCount }} of {{ pullQuotes.length }} approved
+              <span v-if="approvedQuoteCount === 0"> — nothing is exposed yet.</span>
+            </p>
 
             <div v-if="pullQuoteError" class="probe-error">{{ pullQuoteError }}</div>
 
             <div v-if="pullQuotes.length === 0" class="empty-people">No pull quotes yet.</div>
             <ul v-else class="quote-list">
-              <li v-for="(q, qi) in pullQuotes" :key="q.id" class="quote-row">
+              <li
+                v-for="(q, qi) in pullQuotes"
+                :key="q.id"
+                class="quote-row"
+                :class="{ approved: q.approved === 1 }"
+              >
                 <div class="quote-order">
                   <button
                     type="button" class="btn-move" title="Move up"
@@ -588,6 +605,15 @@
                   <div class="quote-meta-row">
                     <input v-model="q.speaker" type="text" placeholder="Speaker (optional)" class="attach-input" />
                     <input v-model="q.timecode" type="text" placeholder="00:14:32" class="quote-timecode" />
+                    <label class="quote-approve" :title="q.approved === 1 ? 'Visible to site builds' : 'Not exposed until approved'">
+                      <input
+                        type="checkbox"
+                        :checked="q.approved === 1"
+                        :disabled="pullQuoteBusy"
+                        @change="toggleApproved(q)"
+                      />
+                      <span>{{ q.approved === 1 ? 'Approved' : 'Approve' }}</span>
+                    </label>
                     <button
                       type="button" class="btn-secondary"
                       :disabled="!isQuoteDirty(q) || pullQuoteBusy"
@@ -1032,9 +1058,38 @@ function rememberQuoteState(list: PullQuote[]) {
 }
 
 async function loadPullQuotes() {
-  const list = await $fetch<PullQuote[]>(quotesBase)
+  // ?approved=any — the editor is the review queue, so it has to see the
+  // unapproved candidates. Without it this endpoint returns only what's
+  // already been approved, which is the shape a site build gets.
+  const list = await $fetch<PullQuote[]>(quotesBase, { params: { approved: 'any' } })
   pullQuotes.value = list
   rememberQuoteState(list)
+}
+
+const approvedQuoteCount = computed(
+  () => pullQuotes.value.filter((q) => q.approved === 1).length,
+)
+
+/**
+ * Approval saves on click rather than waiting for the row's Save button —
+ * it's a one-bit triage decision, and making someone press Save after
+ * ticking a box is how a review session ends with unsaved approvals.
+ */
+async function toggleApproved(q: PullQuote) {
+  const next = q.approved === 1 ? 0 : 1
+  pullQuoteBusy.value = true
+  pullQuoteError.value = ''
+  try {
+    await $fetch(`${quotesBase}/${q.id}`, {
+      method: 'PATCH',
+      body: { approved: next === 1 },
+    })
+    q.approved = next
+  } catch (err: unknown) {
+    pullQuoteError.value = quoteErrorText(err)
+  } finally {
+    pullQuoteBusy.value = false
+  }
 }
 
 function quoteErrorText(err: unknown): string {
@@ -2166,6 +2221,29 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
   border-radius: 6px;
   padding: 0.75rem;
 }
+.quote-tally {
+  font-size: 0.8125rem;
+  color: #718096;
+  margin: 0 0 0.75rem;
+}
+/* Approved rows are the ones that actually leave Podshelf, so they get the
+   only colour in the list — scanning for "what did I publish" beats scanning
+   for what I haven't. */
+.quote-row.approved {
+  border-color: #9ae6b4;
+  background: #f6fff8;
+}
+.quote-approve {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.8125rem;
+  color: #4a5568;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.quote-row.approved .quote-approve { color: #276749; font-weight: 600; }
+.quote-approve input { cursor: pointer; }
 
 .attach-row {
   display: flex;

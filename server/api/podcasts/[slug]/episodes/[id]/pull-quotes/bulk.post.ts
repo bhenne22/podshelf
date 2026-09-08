@@ -20,7 +20,9 @@ const VALID_MODES = ['append', 'replace']
  * Body: { quotes: [{ quote, speaker?, timecode? }, ...], mode?: 'append' | 'replace' }
  *
  * The entry point for the transcript-processing pipeline: generate quotes
- * from a finished transcript, POST them here in one call. `mode: 'replace'`
+ * from a finished transcript, POST them here in one call. Imported quotes are
+ * always unapproved — approval is a human act and this endpoint cannot grant
+ * it, so an `approved` field in the body is ignored. `mode: 'replace'`
  * clears the episode's existing quotes first, so re-running the job against
  * a re-cut transcript doesn't stack duplicates. Default is 'append'.
  *
@@ -97,6 +99,8 @@ export default defineEventHandler(async (event) => {
     mode,
     added: normalized.length,
     removed,
-    pull_quotes: listPullQuotes(id),
+    // Freshly imported quotes are unapproved by definition, so echo the
+    // full list rather than the (empty) approved view.
+    pull_quotes: listPullQuotes(id, { includeUnapproved: true }),
   }
 })

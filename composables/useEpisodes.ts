@@ -51,6 +51,11 @@ export interface PullQuote {
   speaker: string | null
   timecode: string | null
   position: number
+  /**
+   * 0 or 1 — SQLite has no boolean. The review gate: only approved quotes
+   * are returned to a site build, so this is what makes a quote public.
+   */
+  approved: number
   created_at: string
   updated_at: string
 }

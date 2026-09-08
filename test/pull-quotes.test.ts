@@ -5,6 +5,8 @@ import { resolve } from 'node:path'
 import {
   normalizePullQuote,
   normalizeTimecode,
+  normalizeApproved,
+  parseApprovedFilter,
   MAX_QUOTE_LENGTH,
   MAX_SPEAKER_LENGTH,
 } from '../server/utils/pull-quotes'
@@ -96,5 +98,81 @@ test('the RSS feed never reads private_notes or pull quotes', () => {
   assert.ok(
     !feedSrc.includes('pull_quote') && !feedSrc.includes('episode_pull_quotes'),
     'pull quotes must not appear in the feed renderer',
+  )
+})
+
+// ---- Review gate ----
+// Only approved quotes leave Podshelf. The failure mode being guarded here is
+// a silent one: a read path that forgets the filter publishes unreviewed
+// machine-generated text to a public website, and nothing errors.
+
+test('parseApprovedFilter defaults to approved-only', () => {
+  for (const absent of [undefined, null, '']) {
+    assert.equal(parseApprovedFilter(absent).includeUnapproved, false,
+      'a caller that passes nothing must get the gated view')
+  }
+  assert.equal(parseApprovedFilter('true').includeUnapproved, false)
+  assert.equal(parseApprovedFilter('any').includeUnapproved, true)
+})
+
+test('parseApprovedFilter rejects anything it does not understand', () => {
+  // Notably "false" and "0": a typo must not be read as "show me everything".
+  for (const bad of ['false', '0', 'all', 'yes', '1']) {
+    assert.throws(() => parseApprovedFilter(bad), /approved must be/, `expected ${bad} to be rejected`)
+  }
+})
+
+test('normalizeApproved accepts booleans and 0/1, rejects the rest', () => {
+  for (const truthy of [true, 1, '1', 'true']) assert.equal(normalizeApproved(truthy), 1)
+  for (const falsy of [false, 0, '0', 'false']) assert.equal(normalizeApproved(falsy), 0)
+  for (const bad of ['yes', 'approved', 2, null, undefined, {}]) {
+    assert.throws(() => normalizeApproved(bad), /approved must be a boolean/)
+  }
+})
+
+// ---- Gate wiring, pinned at the source ----
+
+const utilSrc = readFileSync(
+  resolve(__dirname, '..', 'server', 'utils', 'pull-quotes.ts'),
+  'utf-8',
+)
+const includeSrc = readFileSync(
+  resolve(__dirname, '..', 'server', 'api', 'podcasts', '[slug]', 'episodes', '[id].get.ts'),
+  'utf-8',
+)
+
+test('listPullQuotes filters to approved unless told otherwise', () => {
+  assert.match(
+    utilSrc,
+    /const where = opts\.includeUnapproved \? '' : ' AND approved = 1'/,
+    'the default branch of listPullQuotes must apply the approved filter',
+  )
+})
+
+test('the downstream sync include cannot ask for unapproved quotes', () => {
+  // ?include=pull_quotes is the one path that feeds a public site build, so
+  // it calls listPullQuotes with no opt-out available.
+  const block = includeSrc.match(/if \(include\.has\('pull_quotes'\)\) \{[\s\S]+?\n  \}/)
+  assert.ok(block, 'pull_quotes include block should be extractable')
+  assert.match(block![0], /listPullQuotes\(episode\.id\)/)
+  assert.ok(
+    !/includeUnapproved/.test(block![0]),
+    'the sync path must never pass includeUnapproved',
+  )
+})
+
+test('the bulk importer cannot grant approval', () => {
+  const bulkSrc = readFileSync(
+    resolve(__dirname, '..', 'server', 'api', 'podcasts', '[slug]', 'episodes', '[id]',
+      'pull-quotes', 'bulk.post.ts'),
+    'utf-8',
+  )
+  // Approval is a human act. The INSERT must not carry an approved column —
+  // it takes the schema default of 0.
+  const insert = bulkSrc.match(/INSERT INTO episode_pull_quotes[^`]+/)
+  assert.ok(insert, 'bulk INSERT should be extractable')
+  assert.ok(
+    !/approved/.test(insert![0]),
+    'bulk import must not set approved — imported quotes start unreviewed',
   )
 })

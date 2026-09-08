@@ -113,8 +113,10 @@ export default defineEventHandler(async (event) => {
   }
 
   if (include.has('pull_quotes')) {
-    // Mirrors the projection of GET /episodes/[id]/pull-quotes. Never in the
-    // RSS feed — these exist for downstream surfaces that render callouts.
+    // Approved only, with no way to ask for more. This is the downstream-sync
+    // path — the one place unreviewed machine-generated text could reach a
+    // public website — so the review gate is not negotiable here. The editor
+    // reads the review queue from GET .../pull-quotes?approved=any instead.
     result.pull_quotes = listPullQuotes(episode.id)
   }
 
