@@ -351,7 +351,21 @@ export function verify(index: TranscriptIndex, quote: string): Verified {
   }
 
   const at = index.text.indexOf(needle)
-  if (at < 0) return { ok: false, reason: 'not found in transcript (invented or heavily reworded)' }
+  if (at < 0) {
+    // Say *where* it diverged. A quote that matches 20 words then stops is the
+    // model running two nearby passages together; one that matches 3 is an
+    // invention. Those are different problems and a bare "not found" hides
+    // which one you have.
+    const words = needle.split(' ')
+    let matched = 0
+    for (let k = words.length; k > 0; k--) {
+      if (index.text.includes(words.slice(0, k).join(' '))) { matched = k; break }
+    }
+    const detail = matched === 0
+      ? 'no part of it is in the transcript'
+      : `matched ${matched}/${words.length} words, then diverged at "…${words.slice(Math.max(0, matched - 4), matched + 4).join(' ')}…"`
+    return { ok: false, reason: `not in transcript — ${detail}` }
+  }
   if (index.text.indexOf(needle, at + 1) >= 0) {
     // Ambiguous placement — a repeated catchphrase. Keep the quote, but don't
     // claim a timecode we can't pin down.
@@ -420,18 +434,27 @@ run across cue boundaries. Cue lines are numbered and marked with a timecode and
 the speaker.
 
 Rules:
-- Copy the words exactly as they appear in the transcript. You may fix
-  capitalization and add punctuation so the line reads cleanly. Do not
-  paraphrase, compress, reorder, or invent words — every quote is checked
-  against the transcript and a reworded one is thrown away.
-- One speaker per quote. Never stitch a line together across a speaker change.
+- A quote must be ONE CONTINUOUS RUN of words from the transcript — every word
+  from where it starts to where it ends, in order, with nothing removed.
+- You may fix capitalization and add punctuation so the line reads cleanly.
+  That is the only editing allowed.
+- Do NOT delete words from the middle to tighten a quote. Cutting a sentence out
+  of the middle fails the check even though every word you kept appears in the
+  transcript. If the good part is buried in a rambling passage, start the quote
+  later or end it earlier — never cut the middle out.
+- Do not paraphrase, compress, reorder, or add words. Every quote is checked
+  against the transcript and an edited one is thrown away.
+- One speaker per quote. Never stitch a line together across a speaker change,
+  even where the transcript reads continuously.
 - Aim for roughly 8 to 40 words. A quote that needs three sentences of setup is
   the wrong quote.
 - No two quotes from the same moment; spread them across the episode.
 - Ignore intros, outros, sponsor reads, and housekeeping.
-- Return only quotes that genuinely earn their place. Returning fewer than
-  asked is better than padding the list with weak ones — but the floor of 2 is
-  a real floor, so find at least 2 unless the transcript is unusable.
+- Rank them strongest first. Only the top few that pass the verbatim check are
+  kept, so a ranked list of solid candidates is more useful than a short list.
+- Still, only include quotes that genuinely earn their place. A padded list of
+  weak ones helps nobody — but the floor is a real floor, so find at least the
+  minimum unless the transcript is unusable.
 `.trim()
 
 function buildTranscriptBlock(cues: Cue[]): string {
@@ -456,6 +479,10 @@ async function generateForEpisode(
   target: number,
 ): Promise<{ candidates: Candidate[]; rejected: string[] }> {
   const index = buildIndex(cues)
+  // Ask for more than we need. Rejections land anywhere in the ranking, so
+  // without margin a couple of edited quotes drop the episode below its quota
+  // and the only fix is another full-transcript round trip.
+  const ask = target + Math.max(2, Math.ceil(target * 0.6))
 
   const response = await client.messages.parse({
     model,
@@ -472,7 +499,9 @@ async function generateForEpisode(
           '',
           `# Episode: ${episode.title || episode.slug}`,
           '',
-          `Return your ${target} best pull quotes, strongest first.`,
+          `Return your ${ask} best pull quotes, strongest first. The top ${target} that`,
+          `pass the verbatim check are the ones that get used, so the extras are`,
+          `insurance against a rejection — not permission to pad.`,
           '',
           '# Transcript',
           '',
@@ -496,7 +525,7 @@ async function generateForEpisode(
   for (const raw of parsed.quotes) {
     const check = verify(index, raw.quote)
     if (!check.ok) {
-      rejected.push(`${check.reason}: "${raw.quote.slice(0, 80)}…"`)
+      rejected.push(`${check.reason}\n      quote: "${raw.quote}"`)
       continue
     }
     const key = normalize(check.quote)

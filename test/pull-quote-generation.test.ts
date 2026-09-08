@@ -103,7 +103,19 @@ test('added punctuation and capitalization are forgiven', () => {
 test('an invented or reworded quote is rejected', () => {
   const r = verify(index, 'I am somewhat saddened by our sluggish recall of ophthalmologist')
   assert.ok(!r.ok)
-  assert.match(r.reason, /not found in transcript/)
+  assert.match(r.reason, /not in transcript/)
+})
+
+test('a rejection says where the quote diverged, not just that it did', () => {
+  // The difference between "the model ran two passages together" and "the
+  // model made this up" is the whole diagnosis, and a bare not-found hides it.
+  const nearMiss = verify(index, "i'm a little sad it took us that long to come up with a dermatologist")
+  assert.ok(!nearMiss.ok)
+  assert.match(nearMiss.reason, /matched \d+\/\d+ words, then diverged at/)
+
+  const invented = verify(index, 'completely unrelated sentence about tax law')
+  assert.ok(!invented.ok)
+  assert.match(invented.reason, /no part of it is in the transcript/)
 })
 
 test('a quote stitched across a speaker change is rejected', () => {
