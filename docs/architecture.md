@@ -280,6 +280,28 @@ See `backfill.md` in that repo for the operational runbook, including why the jo
 has to be launched through Task Scheduler (WSL2 tears the VM down when the last
 client disconnects, which kills a detached `screen`).
 
+### Pull quotes
+
+Pull quotes are generated from finished transcripts by
+`scripts/generate-pull-quotes.ts` in this repo, not by the transcription box.
+The split is deliberate: quote generation needs a transcript URL and an
+Anthropic key, and nothing else — no GPU, no database, no audio. Putting it on
+`bobstower` would tie it to the one machine in the network that sits behind
+residential NAT and isn't always up, for no benefit. Running it from this repo
+means it can go anywhere with outbound network: by hand, a Linode timer, or CI.
+
+It borrows the backfill's shape rather than its location — ask Podshelf which
+episodes have a transcript but no pull quotes, fill the gaps, never overwrite.
+That makes it safe to re-run and self-healing for the same reason the
+transcription poll is: it catches whatever is missing, whatever the cause,
+including episodes transcribed long before pull quotes existed.
+
+The chain end to end is: audio published -> transcription box fills
+`transcript_path` -> pull-quote job fills the quotes -> a human curates them in
+the episode editor -> the static site renders whatever survived. Each step only
+looks at what the one before it left behind, so a stall anywhere is a delay
+rather than a break.
+
 ## Networks (in-Podshelf grouping)
 
 A **network** is a named grouping of podcasts (e.g., "Team Puma Knife")

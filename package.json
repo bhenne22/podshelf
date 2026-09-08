@@ -10,6 +10,7 @@
     "preview": "nuxt preview",
     "typecheck": "nuxi typecheck",
     "create-admin": "tsx scripts/create-admin.ts",
+    "pull-quotes": "tsx scripts/generate-pull-quotes.ts",
     "test": "node --import tsx --test test/*.test.ts",
     "postinstall": "nuxt prepare"
   },
@@ -32,11 +33,13 @@
     "vue-router": "^4.3.0"
   },
   "devDependencies": {
+    "@anthropic-ai/sdk": "^0.124.0",
     "@types/better-sqlite3": "^7.6.8",
     "@types/busboy": "^1.5.4",
     "@types/ssh2-sftp-client": "^9.0.3",
     "tsx": "^4.19.0",
     "typescript": "^5.4.0",
-    "vue-tsc": "^3.2.7"
+    "vue-tsc": "^3.2.7",
+    "zod": "^4.5.4"
   }
 }

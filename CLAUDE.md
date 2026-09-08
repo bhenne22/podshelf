@@ -159,6 +159,36 @@ Or with an existing audio URL (skip upload):
 
 Requires `PODSHELF_API_KEY` env var. Episodes are created as drafts by default.
 
+### Pull-Quote Generation
+
+`scripts/generate-pull-quotes.ts` (`npm run pull-quotes -- --podcast <slug>`)
+fills in episode pull quotes from transcripts. It's a gap-filling poll shaped
+like the transcription backfill: list episodes, keep the ones with a
+`transcript_path` and no pull quotes, fetch and parse the transcript, ask Claude
+for candidates, verify them, import through `.../pull-quotes/bulk` with
+`mode: replace`. Safe to re-run and safe on a timer; `--force` regenerates
+episodes that already have quotes, `--dry-run` writes nothing.
+
+Two things worth knowing before changing it:
+
+- **`SHOW_BRIEFS` is keyed by podcast slug and has no generic default.** What
+  counts as a good pull quote is show-specific (YWIW wants memorable funny
+  moments), and a wrong brief quietly fills a catalogue with off-target quotes.
+  An unknown slug is a hard error unless the caller passes `--brief`.
+- **Model output is verified before it's written.** The transcripts are ASR
+  output, so a quote is matched against a normalized copy of the transcript:
+  punctuation and capitalization the model added are forgiven, invented or
+  reworded text is dropped, and a span that crosses a speaker change is dropped
+  (it reads as one person's line but isn't). Speaker and timecode are *derived*
+  from where the match lands rather than taken from the model. Quota is
+  `max(2, round(3 × hours))`, with duration falling back to the last cue's
+  timestamp because most of the back catalogue has no
+  `audio_duration_seconds`. `test/pull-quote-generation.test.ts` pins the
+  quota and every verifier rejection.
+
+Needs `PODSHELF_API_KEY` and an Anthropic credential; no GPU and no database
+access, so it runs anywhere.
+
 ### OpenClaw Automation (Legacy)
 
 `openclaw/podshelf-watch.sh` is a bash script that watches a directory for new episode folders, uploads audio files, optionally generates show notes via `claude -p`, creates draft episodes via the Podshelf API, and sends Discord notifications. Folders are renamed to `.processed` after ingestion.
