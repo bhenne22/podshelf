@@ -11,9 +11,14 @@
             <h1>{{ network.title }}</h1>
             <p v-if="network.description" class="network-desc">{{ network.description }}</p>
           </div>
-          <NuxtLink v-if="me?.is_admin" :to="`/admin/networks/${network.id}`" class="btn-secondary">
-            Manage roster
-          </NuxtLink>
+          <div class="header-actions">
+            <NuxtLink :to="`/networks/${slug}/episodes`" class="btn-secondary">
+              All episodes
+            </NuxtLink>
+            <NuxtLink v-if="me?.is_admin" :to="`/admin/networks/${network.id}`" class="btn-secondary">
+              Manage roster
+            </NuxtLink>
+          </div>
         </div>
 
         <section class="roster-section">
@@ -294,6 +299,12 @@ useHead({ title: () => (network.value ? `${network.value.title} · Networks` : '
   justify-content: space-between;
   margin-bottom: 1.5rem;
   gap: 1rem;
+}
+
+.header-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
 }
 
 .back-link {

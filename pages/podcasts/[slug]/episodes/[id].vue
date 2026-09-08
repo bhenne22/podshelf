@@ -4,7 +4,13 @@
     <div class="container">
       <div class="page-header">
         <div class="page-header-top">
-          <h1>Edit Episode</h1>
+          <h1>
+            Edit Episode
+            <span
+              class="ep-id-chip"
+              title="Podshelf episode ID — global across podcasts; what the API, logs and webhooks refer to"
+            >#{{ id }}</span>
+          </h1>
           <NuxtLink :to="`/podcasts/${podcastSlug}/episodes`" class="btn-back">← Episodes</NuxtLink>
         </div>
 
@@ -1373,6 +1379,20 @@ useHead({ title: () => `Edit: ${form.title || 'Untitled episode'} — Podshelf A
 }
 
 .page-header { margin-bottom: 1.5rem; }
+/* The episode id was previously only readable from the URL, which made an id
+   quoted in a log or webhook payload awkward to match up with an episode. */
+.ep-id-chip {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #64748b;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 5px;
+  padding: 0.1rem 0.4rem;
+  vertical-align: middle;
+  margin-left: 0.4rem;
+}
 .page-header-top {
   display: flex;
   align-items: center;

@@ -71,6 +71,40 @@ export interface NetworkUpcomingEpisode {
   recording_duration_minutes?: number | null
 }
 
+/** A row from GET /api/networks/[slug]/episodes — the whole back catalogue. */
+export interface NetworkEpisode {
+  episode_id: number
+  episode_title: string
+  episode_slug: string
+  status: 'draft' | 'scheduled' | 'published'
+  published_at: string | null
+  season_number: number | null
+  episode_number: number | null
+  episode_type: string
+  recording_starts_at: string | null
+  podcast_id: number
+  podcast_slug: string
+  podcast_title: string
+  podcast_image_url: string | null
+  podcast_timezone: string
+}
+
+export interface NetworkEpisodesParams {
+  /** Title substring, or an exact episode id when all digits. */
+  q?: string
+  podcast?: string
+  status?: 'draft' | 'scheduled' | 'published'
+  limit?: number
+  offset?: number
+}
+
+export interface NetworkEpisodesResult {
+  episodes: NetworkEpisode[]
+  total: number
+  limit: number
+  offset: number
+}
+
 export interface UpcomingEpisodesParams {
   from?: string
   to?: string
@@ -106,6 +140,16 @@ export function useNetworks() {
     return res.episodes
   }
 
+  async function listEpisodes(
+    slug: string,
+    params: NetworkEpisodesParams = {},
+  ): Promise<NetworkEpisodesResult> {
+    return await $fetch<NetworkEpisodesResult>(
+      `/api/networks/${slug}/episodes`,
+      { params: params as Record<string, string | number> },
+    )
+  }
+
   async function listPropertyDefinitions(slug: string): Promise<NetworkPropertyDefinition[]> {
     return await $fetch<NetworkPropertyDefinition[]>(
       `/api/networks/${slug}/property-definitions`,
@@ -123,6 +167,7 @@ export function useNetworks() {
     listNetworks,
     getNetwork,
     getUpcomingEpisodes,
+    listEpisodes,
     listPropertyDefinitions,
     listProperties,
   }

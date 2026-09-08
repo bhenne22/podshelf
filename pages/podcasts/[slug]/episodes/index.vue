@@ -98,6 +98,7 @@
       <div v-else-if="!loading && !error" class="table-wrap"><table class="episodes-table">
         <thead>
           <tr>
+            <th scope="col" title="Podshelf episode ID — global across podcasts; what the API, logs and webhooks refer to">ID</th>
             <th scope="col" title="Overall episode # — chronological index across all published episodes">Overall</th>
             <th v-if="seasonsEnabled" scope="col" title="Season number">Season</th>
             <th v-if="episodeNumbersEnabled" scope="col" title="Episode number within the season">Ep</th>
@@ -110,6 +111,9 @@
         </thead>
         <tbody>
           <tr v-for="ep in pagedEpisodes" :key="ep.id">
+            <td class="col-id" data-label="ID">
+              <span class="id-chip">{{ ep.id }}</span>
+            </td>
             <td class="col-num" data-label="Overall">
               <span v-if="overallNumber.get(ep.id)" class="ep-num overall">{{ overallNumber.get(ep.id) }}</span>
               <span v-else class="ep-num draft">—</span>
@@ -662,6 +666,21 @@ h1 {
 }
 
 .col-num { width: 56px; }
+
+/* The Podshelf episode id. Global across podcasts, so it's the handle the API,
+   logs and webhooks use — it was previously only visible in the page URL. */
+.col-id { width: 1%; white-space: nowrap; }
+.id-chip {
+  display: inline-block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8125rem;
+  color: #64748b;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 5px;
+  padding: 0.1rem 0.4rem;
+  font-variant-numeric: tabular-nums;
+}
 .col-status { width: 110px; }
 .col-date { width: 140px; font-size: 0.85rem; color: #718096; }
 /* Sits beside the recording date rather than claiming its own column —
