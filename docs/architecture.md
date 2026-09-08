@@ -1,10 +1,13 @@
 # Network architecture
 
-This document describes how Podshelf fits into the four-repo network that publishes
-the Team Puma Knife podcast family. The canonical version of this doc lives at
-[`teampumaknife.com/docs/architecture.md`](../../teampumaknife.com/docs/architecture.md);
-this copy is here so anyone landing in the Podshelf repo can get the full picture
-without leaving the directory.
+This document describes how Podshelf fits into the network that publishes the Team
+Puma Knife podcast family.
+
+**This copy is the maintained one.** A copy also exists at
+[`teampumaknife.com/docs/architecture.md`](../../teampumaknife.com/docs/architecture.md)
+and used to be canonical, but it has drifted — as of 2026-09-08 it is three months
+behind and missing the Networks and transcription sections. Update this file; sync
+that one when convenient.
 
 ## At a glance
 
@@ -22,6 +25,10 @@ without leaving the directory.
 - **Publishes propagate via GitHub `repository_dispatch` events.** Podshelf fires one
   on episode publish; dedicated child sites forward a second event to TPK after their
   own deploy so the hub picks up the new metadata.
+- **Transcripts and chapters are produced off-network**, on a GPU box at home that
+  polls Podshelf hourly for episodes missing them. It is the only component
+  Podshelf cannot reach — it sits behind residential NAT — so it pulls rather than
+  being pushed to.
 
 ## The repos
 
@@ -85,6 +92,12 @@ flowchart TB
         WF_TPK[teampumaknife<br/>deploy.yml]
     end
 
+    subgraph Home["Home network — behind residential NAT"]
+        GPU["bobstower<br/>WSL2 + RTX 4070 Super<br/>podshelf-transcribe-pipeline<br/>WhisperX + pyannote"]
+    end
+
+    ANTH[["Anthropic API<br/>chapters + speaker naming"]]
+
     subgraph DH["DreamHost shared hosting"]
         YS[yousaid100miles.com<br/>static site + mirrored feed]
         YW[yourewatchingitwrong.com<br/>static site + mirrored feed]
@@ -112,6 +125,12 @@ flowchart TB
     %% Audio storage (Podshelf writes via SFTP storage adapter)
     PS -- "SFTP upload<br/>(storage adapter)" --> AUDIO
 
+    %% Transcription — pulls, because Podshelf cannot reach it through NAT
+    GPU -. "hourly poll:<br/>which episodes lack a transcript?" .-> PS
+    GPU -- "download MP3" --> AUDIO
+    GPU -- "upload SRT + chapters JSON,<br/>PATCH transcript_path / chapters_url" --> PS
+    GPU <-- "chapter titles,<br/>speaker names" --> ANTH
+
     %% Listener traffic — note Podshelf is NOT in this path
     Listener -- "RSS" --> YS
     Listener -- "RSS" --> YW
@@ -120,7 +139,14 @@ flowchart TB
 ```
 
 Solid arrows are continuous data flows (HTTP fetches, file uploads, listener
-traffic). Dashed arrows are event-driven `repository_dispatch` hops.
+traffic). Dashed arrows are triggers rather than payloads — the
+`repository_dispatch` hops, and the transcription box's hourly poll.
+
+Note the shape of the transcription loop: the GPU box reads audio from DreamHost
+(the public URL, same as any listener) and writes the results back through
+Podshelf's API, which stores them via the same SFTP adapter that handles audio. It
+never touches the static sites directly — a new transcript reaches listeners on the
+next site build like any other content change.
 
 ## Data flow at build time
 
@@ -206,6 +232,54 @@ The Linode's ingress / egress allowance would be exhausted quickly if listener
 traffic passed through it; the storage-adapter split is what keeps the monthly
 hosting cost predictable.
 
+## Transcription and chapters
+
+Transcripts and Podcasting 2.0 chapters are produced by
+[`podshelf-transcribe-pipeline`](https://github.com/bhenne22/podshelf-transcribe-pipeline),
+which runs on a home Windows box (`bobstower`) inside WSL2 Ubuntu on an RTX 4070
+Super. It is the only part of the network that isn't hosted infrastructure, and the
+only one Podshelf cannot initiate contact with.
+
+**Why it polls.** The box sits behind residential NAT, so a webhook has nowhere to
+land. A Windows Task Scheduler job runs `backfill.sh` hourly; the script asks
+Podshelf which published episodes are missing a `transcript_path` and fills the
+gaps. Polling also self-heals in a way a webhook wouldn't — it catches anything
+missing whatever the cause, including episodes edited long after publish. An idle
+run is four API calls.
+
+**The loop, per episode:**
+
+1. `GET /api/podcasts/<slug>/episodes` — find episodes with no `transcript_path`.
+2. Download the MP3 from its public DreamHost URL (the same URL listeners use).
+3. WhisperX: transcribe (faster-whisper on CUDA), align, and diarize with pyannote.
+4. Name the speakers from the episode's Podshelf **people attachments**, via a
+   Claude call that maps `[SPEAKER_00]` to real names.
+5. Generate chapters from the transcript with a second Claude call.
+6. Upload the SRT and chapters JSON through `POST /api/podcasts/<slug>/upload`,
+   then `PATCH` the episode with `transcript_path` and `chapters_url`.
+
+Podshelf's storage adapter writes both files to DreamHost alongside the audio, so
+the transcript is served from the same place as everything else. The static sites
+pick it up on their next build; nothing else in the chain changes.
+
+**Design rules worth preserving:**
+
+- **It is a backfill, not a rewrite.** The PATCH body is built only from fields the
+  server lacks, so an existing transcript or chapters URL is never overwritten and
+  `description` is never touched. `--overwrite` exists for deliberate repairs and is
+  not used by the scheduled run.
+- **Podshelf's people roster drives speaker naming.** Attach people to an episode
+  and naming follows; there is nothing per-show configured on the box. A roster
+  shorter than the number of real voices is the usual cause of bad naming.
+- **Output is validated before it is published.** A diarization that collapsed into
+  a few long monologues, a chapter list that isn't ascending, or timestamps past
+  the end of the episode all block the publish rather than shipping. Uncertain
+  speaker names are left as `[SPEAKER_xx]` — anonymous beats wrong.
+
+See `backfill.md` in that repo for the operational runbook, including why the job
+has to be launched through Task Scheduler (WSL2 tears the VM down when the last
+client disconnects, which kills a detached `screen`).
+
 ## Networks (in-Podshelf grouping)
 
 A **network** is a named grouping of podcasts (e.g., "Team Puma Knife")
@@ -273,3 +347,5 @@ its roster + per-show metadata from Podshelf and (eventually) delete its
   workflow.
 - `~/Code/yousaid100miles.com/CLAUDE.md`, `~/Code/yourewatchingitwrong.com/CLAUDE.md`
   — per-show site internals.
+- `~/Code/podshelf-transcribe-pipeline/backfill.md` — transcription runbook: the
+  backfill commands, the diarization failure modes, and the speaker-naming flags.
