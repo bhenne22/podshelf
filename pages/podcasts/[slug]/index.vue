@@ -83,6 +83,14 @@
             <NuxtLink :to="`/podcasts/${podcastSlug}/build`" class="quick">Build &amp; deploy</NuxtLink>
             <NuxtLink :to="`/podcasts/${podcastSlug}/members`" class="quick">Members</NuxtLink>
             <a :href="`/feeds/${podcastSlug}.xml`" target="_blank" rel="noopener" class="quick">RSS feed ↗</a>
+            <!-- Plain link, not a fetch: the endpoint sends Content-Disposition
+                 and the browser saves it, so there's no blob juggling and the
+                 session cookie rides along automatically. -->
+            <a
+              :href="`/api/podcasts/${podcastSlug}/transcripts.zip`"
+              class="quick"
+              title="Every transcript and chapter file for this show, as a single zip"
+            >Download transcripts ↓</a>
           </div>
         </section>
       </template>
