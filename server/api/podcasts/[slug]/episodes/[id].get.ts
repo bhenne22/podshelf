@@ -1,20 +1,21 @@
 import { defineEventHandler, getRouterParam, getQuery, createError } from 'h3'
 import { requirePodcastAccess } from '../../../../utils/auth'
+import { listPullQuotes } from '../../../../utils/pull-quotes'
 import getDb from '../../../../db/index'
 
 /**
  * GET /api/podcasts/[slug]/episodes/[id]
  *
- * Optional ?include=chapters,transcript,people — inlines related data into
+ * Optional ?include=chapters,transcript,people,pull_quotes — inlines related data into
  * the response so downstream-site incremental sync can collapse
  * "fetch episode + fetch chapters JSON + fetch transcript file + fetch
  * people" into a single round trip. Errors fetching a HTTP-sidecar
  * (chapters, transcript) are non-fatal: the key is omitted and the
- * response carries a `_warnings: [...]` array. The people inline is a
- * local DB join and can't fail mid-response.
+ * response carries a `_warnings: [...]` array. The people and pull_quotes
+ * inlines are local DB joins and can't fail mid-response.
  */
 
-const INCLUDE_VALUES = new Set(['chapters', 'transcript', 'people'])
+const INCLUDE_VALUES = new Set(['chapters', 'transcript', 'people', 'pull_quotes'])
 
 interface EpisodeRow {
   id: number
@@ -94,6 +95,7 @@ export default defineEventHandler(async (event) => {
     chapters?: unknown
     transcript?: { type: string | null; content: string }
     people?: unknown
+    pull_quotes?: unknown
     _warnings?: string[]
   } = { ...episode }
 
@@ -108,6 +110,12 @@ export default defineEventHandler(async (event) => {
       WHERE ep.episode_id = ?
       ORDER BY ep.position, ep.id
     `).all(episode.id)
+  }
+
+  if (include.has('pull_quotes')) {
+    // Mirrors the projection of GET /episodes/[id]/pull-quotes. Never in the
+    // RSS feed — these exist for downstream surfaces that render callouts.
+    result.pull_quotes = listPullQuotes(episode.id)
   }
 
   if (include.has('chapters') && episode.chapters_url) {

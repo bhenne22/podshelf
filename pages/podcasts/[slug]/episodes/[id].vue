@@ -534,6 +534,92 @@
           </div>
 
           <div class="form-section">
+            <h2>Private Notes</h2>
+            <p class="hint section-hint">
+              Internal scratch space — running order, ad reads, things to
+              follow up on. <strong>Never</strong> published: not in the RSS
+              feed, not in the show notes, not on the site.
+            </p>
+            <div class="form-group">
+              <label for="private_notes">Notes</label>
+              <textarea
+                id="private_notes"
+                v-model="form.private_notes"
+                rows="8"
+                placeholder="Notes for you and your co-hosts…"
+              ></textarea>
+              <p class="hint">Saved with the episode when you hit Save Changes.</p>
+            </div>
+          </div>
+
+          <div class="form-section">
+            <h2>Pull Quotes</h2>
+            <p class="hint section-hint">
+              Short quotable lines from the episode, in the order you want them
+              used. Not in the RSS feed — these are for downstream surfaces
+              (social cards, episode-page callouts) and can be generated in
+              bulk from a transcript via
+              <code>POST /api/podcasts/{{ podcastSlug }}/episodes/{{ id }}/pull-quotes/bulk</code>.
+            </p>
+
+            <div v-if="pullQuoteError" class="probe-error">{{ pullQuoteError }}</div>
+
+            <div v-if="pullQuotes.length === 0" class="empty-people">No pull quotes yet.</div>
+            <ul v-else class="quote-list">
+              <li v-for="(q, qi) in pullQuotes" :key="q.id" class="quote-row">
+                <div class="quote-order">
+                  <button
+                    type="button" class="btn-move" title="Move up"
+                    :disabled="qi === 0 || pullQuoteBusy" @click="movePullQuote(qi, -1)"
+                  >↑</button>
+                  <span class="quote-index">{{ qi + 1 }}</span>
+                  <button
+                    type="button" class="btn-move" title="Move down"
+                    :disabled="qi === pullQuotes.length - 1 || pullQuoteBusy" @click="movePullQuote(qi, 1)"
+                  >↓</button>
+                </div>
+                <div class="quote-fields">
+                  <textarea
+                    v-model="q.quote"
+                    rows="2"
+                    class="quote-text"
+                    :aria-label="`Pull quote ${qi + 1}`"
+                  ></textarea>
+                  <div class="quote-meta-row">
+                    <input v-model="q.speaker" type="text" placeholder="Speaker (optional)" class="attach-input" />
+                    <input v-model="q.timecode" type="text" placeholder="00:14:32" class="quote-timecode" />
+                    <button
+                      type="button" class="btn-secondary"
+                      :disabled="!isQuoteDirty(q) || pullQuoteBusy"
+                      @click="savePullQuote(q)"
+                    >{{ isQuoteDirty(q) ? 'Save' : 'Saved' }}</button>
+                    <button type="button" class="btn-link danger" :disabled="pullQuoteBusy" @click="deletePullQuote(q.id)">Remove</button>
+                  </div>
+                </div>
+              </li>
+            </ul>
+
+            <div class="quote-add">
+              <textarea
+                v-model="newQuote.quote"
+                rows="2"
+                class="quote-text"
+                placeholder="Add a pull quote…"
+                aria-label="New pull quote"
+              ></textarea>
+              <div class="quote-meta-row">
+                <input v-model="newQuote.speaker" type="text" placeholder="Speaker (optional)" class="attach-input" />
+                <input v-model="newQuote.timecode" type="text" placeholder="00:14:32" class="quote-timecode" />
+                <button
+                  type="button" class="btn-secondary"
+                  :disabled="!newQuote.quote.trim() || pullQuoteBusy"
+                  @click="addPullQuote"
+                >Add Quote</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-section">
             <h2>Per-episode RSS overrides</h2>
             <p class="hint section-hint">All optional. Override the channel-level defaults for this single episode.</p>
 
@@ -609,7 +695,7 @@
 </template>
 
 <script setup lang="ts">
-import type { Episode, RecordingLocationType } from '~/composables/useEpisodes'
+import type { Episode, PullQuote, RecordingLocationType } from '~/composables/useEpisodes'
 import { utcIsoToLocalInput, localInputToUtcIso, tzAbbreviation } from '~/utils/datetime-local'
 
 definePageMeta({
@@ -679,6 +765,7 @@ interface EpisodeForm {
   image_filename: string
   published_at: string
   status: string
+  private_notes: string
   transcript_path: string
   transcript_type: string
   chapters_url: string
@@ -713,6 +800,7 @@ const form = reactive<EpisodeForm>({
   image_filename: '',
   published_at: '',
   status: 'draft',
+  private_notes: '',
   transcript_path: '',
   transcript_type: '',
   chapters_url: '',
@@ -915,6 +1003,125 @@ async function detachPerson(attachId: number) {
   }
 }
 
+// ---- Pull quotes ----
+// Saved immediately against their own endpoints rather than riding along
+// with the episode form: they're a separate table, and the transcript
+// pipeline writes them through the same API.
+const pullQuotes = ref<PullQuote[]>([])
+const pullQuoteError = ref('')
+const pullQuoteBusy = ref(false)
+const newQuote = reactive({ quote: '', speaker: '', timecode: '' })
+// id → serialized saved state, so a row's Save button only lights up when
+// the row actually differs from what's stored.
+const savedQuoteState = ref<Record<number, string>>({})
+
+const quotesBase = `/api/podcasts/${podcastSlug}/episodes/${id}/pull-quotes`
+
+function quoteStateKey(q: Pick<PullQuote, 'quote' | 'speaker' | 'timecode'>) {
+  return JSON.stringify([q.quote, q.speaker ?? '', q.timecode ?? ''])
+}
+
+function isQuoteDirty(q: PullQuote) {
+  return savedQuoteState.value[q.id] !== quoteStateKey(q)
+}
+
+function rememberQuoteState(list: PullQuote[]) {
+  const next: Record<number, string> = {}
+  for (const q of list) next[q.id] = quoteStateKey(q)
+  savedQuoteState.value = next
+}
+
+async function loadPullQuotes() {
+  const list = await $fetch<PullQuote[]>(quotesBase)
+  pullQuotes.value = list
+  rememberQuoteState(list)
+}
+
+function quoteErrorText(err: unknown): string {
+  return (err as { data?: { statusMessage?: string } })?.data?.statusMessage
+    || (err instanceof Error ? err.message : 'Pull quote request failed')
+}
+
+async function addPullQuote() {
+  if (!newQuote.quote.trim()) return
+  pullQuoteBusy.value = true
+  pullQuoteError.value = ''
+  try {
+    await $fetch(quotesBase, {
+      method: 'POST',
+      body: {
+        quote: newQuote.quote,
+        speaker: newQuote.speaker.trim() || null,
+        timecode: newQuote.timecode.trim() || null,
+      },
+    })
+    newQuote.quote = ''
+    newQuote.speaker = ''
+    newQuote.timecode = ''
+    await loadPullQuotes()
+  } catch (err: unknown) {
+    pullQuoteError.value = quoteErrorText(err)
+  } finally {
+    pullQuoteBusy.value = false
+  }
+}
+
+async function savePullQuote(q: PullQuote) {
+  pullQuoteBusy.value = true
+  pullQuoteError.value = ''
+  try {
+    await $fetch(`${quotesBase}/${q.id}`, {
+      method: 'PATCH',
+      body: {
+        quote: q.quote,
+        speaker: q.speaker?.trim() || null,
+        timecode: q.timecode?.trim() || null,
+      },
+    })
+    await loadPullQuotes()
+  } catch (err: unknown) {
+    pullQuoteError.value = quoteErrorText(err)
+  } finally {
+    pullQuoteBusy.value = false
+  }
+}
+
+async function deletePullQuote(quoteId: number) {
+  pullQuoteBusy.value = true
+  pullQuoteError.value = ''
+  try {
+    await $fetch(`${quotesBase}/${quoteId}`, { method: 'DELETE' })
+    await loadPullQuotes()
+  } catch (err: unknown) {
+    pullQuoteError.value = quoteErrorText(err)
+  } finally {
+    pullQuoteBusy.value = false
+  }
+}
+
+/**
+ * Swap a quote with its neighbour. Sends both new positions so the stored
+ * order matches what the list shows, then reloads to pick up the canonical
+ * ordering from the server.
+ */
+async function movePullQuote(index: number, direction: -1 | 1) {
+  const target = index + direction
+  const a = pullQuotes.value[index]
+  const b = pullQuotes.value[target]
+  if (!a || !b) return
+  pullQuoteBusy.value = true
+  pullQuoteError.value = ''
+  try {
+    await $fetch(`${quotesBase}/${a.id}`, { method: 'PATCH', body: { position: b.position } })
+    await $fetch(`${quotesBase}/${b.id}`, { method: 'PATCH', body: { position: a.position } })
+    await loadPullQuotes()
+  } catch (err: unknown) {
+    pullQuoteError.value = quoteErrorText(err)
+  } finally {
+    pullQuoteBusy.value = false
+  }
+}
+
 async function saveChapters() {
   chaptersSaving.value = true
   chaptersMsg.value = ''
@@ -983,6 +1190,7 @@ onMounted(async () => {
       image_filename: ep.image_filename || '',
       published_at: utcIsoToLocalInput(ep.published_at, podcastTz.value),
       status: ep.status,
+      private_notes: ep.private_notes || '',
       transcript_path: ep.transcript_path || '',
       transcript_type: ep.transcript_type || '',
       chapters_url: ep.chapters_url || '',
@@ -1006,7 +1214,7 @@ onMounted(async () => {
     originalPublishedAt.value = ep.published_at || null
     originalRecordingStartsAt.value = ep.recording_starts_at || null
 
-    await Promise.all([loadRoster(), loadEpisodePeople()])
+    await Promise.all([loadRoster(), loadEpisodePeople(), loadPullQuotes()])
     // Auto-probe existing sidecars so the editor surfaces broken or
     // malformed files without the user having to click Check.
     if (form.transcript_path) probeTranscript()
@@ -1910,6 +2118,53 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
   color: #4a5568;
   padding: 0.1rem 0.4rem;
   border-radius: 4px;
+}
+
+/* Pull quotes — an ordered list of short editable rows. */
+.quote-list { list-style: none; margin: 0 0 1rem; padding: 0; }
+.quote-row {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  padding: 0.75rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  margin-bottom: 0.5rem;
+  background: #fff;
+}
+.quote-order {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  padding-top: 0.25rem;
+}
+.quote-index { font-size: 0.75rem; color: #718096; }
+.btn-move {
+  background: none;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  color: #4a5568;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0.15rem 0.35rem;
+}
+.btn-move:hover:not(:disabled) { background: #edf2f7; }
+.btn-move:disabled { opacity: 0.35; cursor: default; }
+.quote-fields { flex: 1; min-width: 0; }
+.quote-text { width: 100%; resize: vertical; }
+.quote-meta-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+}
+.quote-timecode { width: 8rem; flex: 0 0 auto; }
+.quote-add {
+  border: 1px dashed #cbd5e0;
+  border-radius: 6px;
+  padding: 0.75rem;
 }
 
 .attach-row {

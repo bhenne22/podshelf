@@ -298,7 +298,20 @@
               </select>
             </div>
           </div>
-          <p class="hint">Chapters and people can be configured after the episode is created.</p>
+          <p class="hint">Chapters, people and pull quotes can be configured after the episode is created.</p>
+        </div>
+
+        <div class="form-section">
+          <h2>Private Notes</h2>
+          <p class="hint">
+            Internal scratch space — running order, ad reads, follow-ups.
+            <strong>Never</strong> published: not in the RSS feed, not on the site.
+          </p>
+          <div class="form-group">
+            <label for="private_notes">Notes</label>
+            <textarea id="private_notes" v-model="form.private_notes" rows="6"
+              placeholder="Notes for you and your co-hosts…"></textarea>
+          </div>
         </div>
 
         <div class="form-section">
@@ -462,6 +475,7 @@ const form = reactive({
   image_filename: '',
   published_at: '',
   status: 'draft',
+  private_notes: '',
   transcript_path: '',
   transcript_type: '',
   episode_type: 'full',

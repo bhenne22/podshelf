@@ -276,10 +276,11 @@ other) — the whole point is permanence for subscriber continuity.
 ### `GET /api/podcasts/[slug]/export.json`
 
 Downloads a full Podshelf archive for this podcast: settings, all
-episodes (drafts + scheduled + published), people roster, episode_people
-attachments, and slug aliases. Excludes secrets (storage / GitHub /
-webhook URLs), members, api_keys, audit_log, downloads. Importable into
-another Podshelf instance via the import-json endpoint below.
+episodes (drafts + scheduled + published, including their private notes),
+people roster, episode_people attachments, pull quotes, and slug aliases.
+Excludes secrets (storage / GitHub / webhook URLs), members, api_keys,
+audit_log, downloads. Importable into another Podshelf instance via the
+import-json endpoint below.
 
 ### `POST /api/podcasts/[slug]/import-json`
 
@@ -287,7 +288,9 @@ Body: a Podshelf archive JSON (the output of `export.json`). Restores
 into an empty target podcast — same constraint as the RSS importer.
 Existing settings on the target are preserved unless they're empty / at
 schema defaults; episodes/people/aliases are inserted fresh with new
-ids while preserving the relations between them.
+ids while preserving the relations between them. Pull quotes are restored
+onto their episodes; archives exported before pull quotes existed simply
+omit the key.
 
 ### Storage migration
 
@@ -650,6 +653,7 @@ Additional Podcasting 2.0 fields accepted on create / update:
 | `episode_display`    | Display string for `<podcast:episode display="…">` (e.g. `"S2E22"`).                       |
 | `license_identifier` | SPDX or custom license name (e.g. `CC-BY-4.0`). Per-episode license override.              |
 | `license_url`        | URL to the license terms.                                                                  |
+| `private_notes`      | Free-form internal notes (running order, ad reads, follow-ups). **Never** rendered into the RSS feed or any public surface. Returned by the episode list + single-episode endpoints so tooling can read and write it. |
 | `recording_location_type` | How the episode is recorded: `in_person`, `remote`, or `mixed`. Omit or send `null` for "not specified". Admin metadata — not in the RSS feed. |
 | `recording_link`     | http(s) URL of the remote recording room (Zoom, Riverside, …). Only stored when `recording_location_type` is `remote` or `mixed` — the server writes `null` otherwise, including when a patch flips the type to `in_person` without mentioning the link. |
 
@@ -688,6 +692,57 @@ time and **not** updated when the underlying person's defaults change — so
 retiring or renaming a host doesn't rewrite past episodes' attribution.
 Setting `auto_attach=true` on a person opts them into automatic attachment
 on every newly-created episode.
+
+### Pull quotes
+
+Short quotable lines attached to an episode, in a caller-controlled order.
+**Not in the RSS feed** — they exist for downstream surfaces (social cards,
+episode-page callouts) and are exposed through the API so a static-site build
+can render them. Populated by hand in the episode editor, or in bulk by a
+transcript-processing job.
+
+| Endpoint                                                                | Purpose                                                                       |
+|-------------------------------------------------------------------------|-------------------------------------------------------------------------------|
+| `GET /api/podcasts/[slug]/episodes/[id]/pull-quotes`                    | List, ordered by `position` then `id`.                                        |
+| `POST /api/podcasts/[slug]/episodes/[id]/pull-quotes`                   | Append one. Body: `{ quote, speaker?, timecode?, position? }`. Returns 201.    |
+| `PATCH /api/podcasts/[slug]/episodes/[id]/pull-quotes/[quoteId]`        | Partial update of `quote`, `speaker`, `timecode`, `position`.                 |
+| `DELETE /api/podcasts/[slug]/episodes/[id]/pull-quotes/[quoteId]`       | Remove one.                                                                   |
+| `POST /api/podcasts/[slug]/episodes/[id]/pull-quotes/bulk`              | Import a batch. Body: `{ quotes: [...], mode?: "append" \| "replace" }`.       |
+
+Fields:
+
+| Field      | Notes                                                                                            |
+|------------|--------------------------------------------------------------------------------------------------|
+| `quote`    | Required, max 2000 chars. Trimmed. Cannot be emptied by a PATCH — delete the row instead.         |
+| `speaker`  | Optional free text, max 200 chars. Deliberately *not* a link to the people roster, so a quote from an off-roster guest still gets attribution and a roster edit can't rewrite it. |
+| `timecode` | Optional display string. Validated as `MM:SS` or `HH:MM:SS` (fractional seconds allowed) so a renderer can print it verbatim. |
+| `position` | Sort order within the episode. Defaults to the end of the list on create.                         |
+
+`mode: "replace"` deletes the episode's existing quotes before inserting the
+batch — that's what a transcript job should send on a re-run so it doesn't
+stack duplicates. `mode: "append"` (the default) adds to what's there. The
+whole batch is validated before anything is written and applied in one
+transaction, so a bad row fails the request instead of leaving the episode
+half-imported. Max 200 quotes per call. An empty `quotes` array in replace
+mode is the documented way to clear an episode's quotes.
+
+```bash
+# What a transcript pipeline sends after generating quotes
+curl -X POST -H "X-Api-Key: $KEY" -H "Content-Type: application/json" \
+  -d '{"mode":"replace","quotes":[
+        {"quote":"We did not, in fact, run 100 miles.","speaker":"Bob","timecode":"00:14:32"},
+        {"quote":"The aid station had no water.","speaker":"Sue","timecode":"00:41:07"}
+      ]}' \
+  "$SITE/api/podcasts/yousaid100miles/episodes/127/pull-quotes/bulk"
+```
+
+Response: `{ "mode": "replace", "added": 2, "removed": 5, "pull_quotes": [...] }`.
+
+Pull quotes are also inlined into the single-episode endpoint —
+`GET /api/podcasts/[slug]/episodes/[id]?include=pull_quotes` — alongside the
+existing `chapters`, `transcript` and `people` includes, so a downstream sync
+gets them in the same round trip. Every pull-quote write bumps the episode's
+`updated_at`, which is the staleness signal that sync reads.
 
 ### `PATCH /api/podcasts/[slug]/episodes/[id]`
 

@@ -408,6 +408,115 @@ paths:
                   season_number: { type: integer, nullable: true }
                   episode_number: { type: integer }
 
+  /api/podcasts/{slug}/episodes/{id}/pull-quotes:
+    parameters:
+      - { $ref: '#/components/parameters/Slug' }
+      - { $ref: '#/components/parameters/EpisodeId' }
+    get:
+      tags: [Episodes]
+      summary: List this episode's pull quotes
+      description: |
+        Ordered by `position`, then `id`. Pull quotes are **not** in the RSS
+        feed — they exist for downstream surfaces (social cards,
+        episode-page callouts) and for static-site builds to render.
+      responses:
+        '200':
+          description: Ordered pull quotes.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/PullQuote' }
+    post:
+      tags: [Episodes]
+      summary: Append a pull quote
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PullQuoteWritable' }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PullQuote' }
+
+  /api/podcasts/{slug}/episodes/{id}/pull-quotes/{quoteId}:
+    parameters:
+      - { $ref: '#/components/parameters/Slug' }
+      - { $ref: '#/components/parameters/EpisodeId' }
+      - in: path
+        name: quoteId
+        required: true
+        schema: { type: integer }
+    patch:
+      tags: [Episodes]
+      summary: Update a pull quote
+      description: |
+        Partial. `quote` can be edited but never emptied — delete the row
+        instead. Sending `null` or `""` for `speaker` / `timecode` clears it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PullQuoteWritable' }
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PullQuote' }
+    delete:
+      tags: [Episodes]
+      summary: Remove a pull quote
+      responses:
+        '200':
+          description: Removed.
+
+  /api/podcasts/{slug}/episodes/{id}/pull-quotes/bulk:
+    parameters:
+      - { $ref: '#/components/parameters/Slug' }
+      - { $ref: '#/components/parameters/EpisodeId' }
+    post:
+      tags: [Episodes]
+      summary: Import a batch of pull quotes
+      description: |
+        The entry point for a transcript-processing pipeline. `mode:
+        "replace"` clears the episode's existing quotes first, so re-running
+        the job doesn't stack duplicates; `mode: "append"` (the default) adds
+        to what's there. The whole batch is validated before anything is
+        written and applied in one transaction — a bad row fails the request
+        rather than leaving the episode half-imported. Max 200 per call. An
+        empty `quotes` array with `mode: "replace"` clears the episode.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [quotes]
+              properties:
+                mode: { type: string, enum: [append, replace], default: append }
+                quotes:
+                  type: array
+                  maxItems: 200
+                  items: { $ref: '#/components/schemas/PullQuoteWritable' }
+      responses:
+        '200':
+          description: Import result plus the episode's full quote list.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mode: { type: string, enum: [append, replace] }
+                  added: { type: integer }
+                  removed: { type: integer, description: 'Rows deleted by replace mode; 0 for append.' }
+                  pull_quotes:
+                    type: array
+                    items: { $ref: '#/components/schemas/PullQuote' }
+
   /api/podcasts/{slug}/episodes/{id}/people:
     parameters:
       - { $ref: '#/components/parameters/Slug' }
@@ -1900,6 +2009,12 @@ components:
         published_at: { type: string, format: date-time, nullable: true }
         status: { type: string, enum: [draft, scheduled, published] }
         tags: { type: string, nullable: true, description: 'Comma-separated.' }
+        private_notes:
+          type: string
+          nullable: true
+          description: >-
+            Free-form internal notes (running order, ad reads, follow-ups).
+            Never rendered into the RSS feed or any public surface.
         transcript_path: { type: string, format: uri, nullable: true }
         transcript_type:
           type: string
@@ -1927,6 +2042,44 @@ components:
             http(s) URL of the remote recording room. Only stored when
             recording_location_type is remote or mixed; the server writes null
             otherwise.
+
+    PullQuote:
+      allOf:
+        - { $ref: '#/components/schemas/PullQuoteWritable' }
+        - type: object
+          properties:
+            id: { type: integer }
+            episode_id: { type: integer }
+            created_at: { type: string, format: date-time }
+            updated_at: { type: string, format: date-time }
+
+    PullQuoteWritable:
+      type: object
+      required: [quote]
+      properties:
+        quote:
+          type: string
+          maxLength: 2000
+          description: 'The quotable line. Trimmed; must be non-empty.'
+        speaker:
+          type: string
+          maxLength: 200
+          nullable: true
+          description: >-
+            Free text, deliberately not a link to the people roster: a quote
+            from an off-roster guest still gets attribution, and a roster edit
+            can't rewrite it.
+        timecode:
+          type: string
+          nullable: true
+          description: >-
+            Display string, validated as MM:SS or HH:MM:SS (fractional seconds
+            allowed) so a renderer can print it verbatim.
+          example: '00:14:32'
+        position:
+          type: integer
+          minimum: 0
+          description: 'Sort order within the episode. Defaults to the end of the list on create.'
 
     Person:
       type: object

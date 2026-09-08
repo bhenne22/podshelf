@@ -8,7 +8,8 @@ const SCHEMA_VERSION = 1
  * GET /api/podcasts/[slug]/export.json
  *
  * Full Podshelf archive of this podcast — settings, episodes (all
- * statuses), people roster, episode_people attachments, slug aliases.
+ * statuses, including private notes), people roster, episode_people
+ * attachments, pull quotes, slug aliases.
  * Excludes: secrets (storage/github/webhook-url), members, api_keys,
  * audit_log, downloads. Importable into another Podshelf instance via
  * `POST /api/podcasts/[slug]/import-json` on an empty target podcast.
@@ -47,7 +48,7 @@ export default defineEventHandler((event) => {
       id, title, slug, episode_number, season_number,
       description, audio_url, audio_filename, audio_size_bytes,
       audio_duration_seconds, image_url, image_filename,
-      published_at, status, tags,
+      published_at, status, tags, private_notes,
       transcript_path, transcript_type, chapters_url,
       guid, episode_type,
       itunes_title, itunes_author, itunes_explicit,
@@ -59,6 +60,16 @@ export default defineEventHandler((event) => {
     FROM episodes
     WHERE podcast_id = ?
     ORDER BY id
+  `).all(podcastId)
+
+  // Pull quotes travel with the archive so a restore keeps them. They're
+  // internal/downstream material, not feed content, but they're authored
+  // work — losing them on an instance move would be a real loss.
+  const pullQuotes = db.prepare(`
+    SELECT episode_id, quote, speaker, timecode, position, created_at, updated_at
+    FROM episode_pull_quotes
+    WHERE episode_id IN (SELECT id FROM episodes WHERE podcast_id = ?)
+    ORDER BY episode_id, position, id
   `).all(podcastId)
 
   const people = db.prepare(`
@@ -88,6 +99,7 @@ export default defineEventHandler((event) => {
     episodes,
     people,
     episode_people: episodePeople,
+    episode_pull_quotes: pullQuotes,
     slug_aliases: slugAliases,
     webhooks,
   }

@@ -125,6 +125,10 @@ CREATE TABLE IF NOT EXISTS episodes (
   published_at            TEXT,
   status                  TEXT DEFAULT 'draft',
   tags                    TEXT,
+  -- Free-form internal scratch space (running order, ad reads, "ask X about
+  -- Y"). Never enters the RSS feed and is not part of the rendered episode
+  -- payload downstream sites read.
+  private_notes           TEXT,
   transcript_path         TEXT,
   transcript_type         TEXT,
   chapters_url            TEXT,
@@ -180,6 +184,31 @@ CREATE TABLE IF NOT EXISTS episode_people (
 
 CREATE INDEX IF NOT EXISTS idx_episode_people_episode_id ON episode_people(episode_id);
 CREATE INDEX IF NOT EXISTS idx_episode_people_person_id ON episode_people(person_id);
+
+-- Per-episode pull quotes. Deliberately NOT in the RSS feed and never
+-- rendered into a <item> — this is downstream material (social cards,
+-- episode-page callouts), fed either by hand in the episode editor or in
+-- bulk by the transcript-processing pipeline
+-- (POST .../episodes/[id]/pull-quotes/bulk).
+--
+-- speaker is free text rather than an FK to people: a quote can be from
+-- a guest who never made it onto the roster, and the attribution should
+-- survive a roster edit the same way episode_people freezes role/group.
+-- timecode is the display string ("00:14:32"); it is validated on write
+-- but stored as text so a downstream renderer can print it verbatim.
+CREATE TABLE IF NOT EXISTS episode_pull_quotes (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  episode_id  INTEGER NOT NULL REFERENCES episodes(id) ON DELETE CASCADE,
+  quote       TEXT NOT NULL,
+  speaker     TEXT,
+  timecode    TEXT,
+  position    INTEGER NOT NULL DEFAULT 0,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_episode_pull_quotes_episode
+  ON episode_pull_quotes(episode_id, position);
 
 CREATE TABLE IF NOT EXISTS slug_aliases (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -597,6 +626,9 @@ function applyMigrations(db: Database.Database) {
   }
   if (!episodeCols.includes('recording_link')) {
     db.exec('ALTER TABLE episodes ADD COLUMN recording_link TEXT')
+  }
+  if (!episodeCols.includes('private_notes')) {
+    db.exec('ALTER TABLE episodes ADD COLUMN private_notes TEXT')
   }
   // Created here (not in SCHEMA_SQL) because on an old database the column
   // doesn't exist when SCHEMA_SQL runs, and the CREATE INDEX would error.

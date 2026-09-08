@@ -34,7 +34,8 @@ interface ArchiveEpisode {
   episode_display: string | null
   license_identifier: string | null
   license_url: string | null
-  // All optional — pre-recording-schedule archives won't have these fields.
+  // All optional — older archives won't have these fields.
+  private_notes?: string | null
   recording_starts_at?: string | null
   recording_duration_minutes?: number | null
   recording_location_type?: string | null
@@ -59,6 +60,16 @@ interface ArchiveEpisodePerson {
   position: number
 }
 
+interface ArchivePullQuote {
+  episode_id: number
+  quote: string
+  speaker?: string | null
+  timecode?: string | null
+  position?: number
+  created_at?: string
+  updated_at?: string
+}
+
 interface ArchiveSlugAlias {
   old_slug: string
   created_at: string
@@ -70,6 +81,8 @@ interface PodcastArchive {
   episodes: ArchiveEpisode[]
   people: ArchivePerson[]
   episode_people: ArchiveEpisodePerson[]
+  // Optional — archives exported before pull quotes existed omit it.
+  episode_pull_quotes?: ArchivePullQuote[]
   slug_aliases: ArchiveSlugAlias[]
 }
 
@@ -169,6 +182,7 @@ export default defineEventHandler(async (event) => {
   let importedEpisodes = 0
   let importedPeople = 0
   let importedAttachments = 0
+  let importedPullQuotes = 0
   let importedAliases = 0
 
   const insertEpisode = db.prepare(`
@@ -176,7 +190,7 @@ export default defineEventHandler(async (event) => {
       podcast_id, title, slug, episode_number, season_number,
       description, audio_url, audio_filename, audio_size_bytes,
       audio_duration_seconds, image_url, image_filename,
-      published_at, status, tags,
+      published_at, status, tags, private_notes,
       transcript_path, transcript_type, chapters_url,
       guid, episode_type,
       itunes_title, itunes_author, itunes_explicit,
@@ -188,7 +202,7 @@ export default defineEventHandler(async (event) => {
       @podcast_id, @title, @slug, @episode_number, @season_number,
       @description, @audio_url, @audio_filename, @audio_size_bytes,
       @audio_duration_seconds, @image_url, @image_filename,
-      @published_at, @status, @tags,
+      @published_at, @status, @tags, @private_notes,
       @transcript_path, @transcript_type, @chapters_url,
       @guid, @episode_type,
       @itunes_title, @itunes_author, @itunes_explicit,
@@ -207,6 +221,11 @@ export default defineEventHandler(async (event) => {
   const insertAttach = db.prepare(`
     INSERT INTO episode_people (episode_id, person_id, role, "group", position)
     VALUES (?, ?, ?, ?, ?)
+  `)
+
+  const insertPullQuote = db.prepare(`
+    INSERT INTO episode_pull_quotes (episode_id, quote, speaker, timecode, position, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `)
 
   const insertAlias = db.prepare(`
@@ -260,6 +279,7 @@ export default defineEventHandler(async (event) => {
         published_at: ep.published_at,
         status: validStatus,
         tags: ep.tags,
+        private_notes: ep.private_notes ?? null,
         transcript_path: ep.transcript_path,
         transcript_type: ep.transcript_type,
         chapters_url: ep.chapters_url,
@@ -297,6 +317,21 @@ export default defineEventHandler(async (event) => {
       importedAttachments++
     }
 
+    for (const q of body.episode_pull_quotes || []) {
+      const newEpId = episodeIdMap.get(q.episode_id)
+      // A quote whose episode didn't import has nowhere to hang; skip it
+      // rather than failing the whole restore.
+      if (!newEpId) continue
+      const quote = typeof q.quote === 'string' ? q.quote.trim() : ''
+      if (!quote) continue
+      const now = new Date().toISOString()
+      insertPullQuote.run(
+        newEpId, quote, q.speaker ?? null, q.timecode ?? null, q.position ?? 0,
+        q.created_at || now, q.updated_at || now,
+      )
+      importedPullQuotes++
+    }
+
     for (const a of body.slug_aliases || []) {
       // INSERT OR IGNORE — collisions with another podcast's reserved alias
       // are silently dropped rather than failing the whole import.
@@ -321,6 +356,7 @@ export default defineEventHandler(async (event) => {
       episodes: importedEpisodes,
       people: importedPeople,
       attachments: importedAttachments,
+      pull_quotes: importedPullQuotes,
       slug_aliases: importedAliases,
       settings_backfilled: settingsBackfilled,
     },
@@ -332,6 +368,7 @@ export default defineEventHandler(async (event) => {
       episodes: importedEpisodes,
       people: importedPeople,
       episode_people: importedAttachments,
+      episode_pull_quotes: importedPullQuotes,
       slug_aliases: importedAliases,
     },
     settings_backfilled: settingsBackfilled,
