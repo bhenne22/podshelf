@@ -51,6 +51,17 @@ const status = ref<PublishStatus | null>(null)
 const triggering = ref(false)
 const errorMsg = ref('')
 
+// The top-level `await load()` below runs during SSR, and plain $fetch does not
+// carry the browser's cookies on the server — so publish-status came back 401,
+// the 401 branch fired, and every server-rendered /podcasts/* page bounced a
+// logged-in user to /login. (In-app navigation hid it: there $fetch runs in the
+// browser, which attaches cookies itself.) Same fix as middleware/auth.ts.
+//
+// Captured once here rather than inside load(): load() is also called from a
+// setInterval, and useRequestHeaders is a composable that must run in setup
+// context. On the client it returns {} and the browser handles cookies.
+const ssrHeaders = useRequestHeaders(['cookie'])
+
 // Declared up here rather than beside tickHandle because the top-level
 // `await load()` below runs before those declarations initialise — reaching
 // for pollHandle from inside load() would hit the TDZ on that first call.
@@ -61,7 +72,10 @@ function stopPolling() {
 
 async function load() {
   try {
-    status.value = await $fetch<PublishStatus>(`/api/podcasts/${props.podcastSlug}/publish-status`)
+    status.value = await $fetch<PublishStatus>(
+      `/api/podcasts/${props.podcastSlug}/publish-status`,
+      { headers: ssrHeaders },
+    )
   } catch (err: unknown) {
     status.value = null
     // An expired session used to leave this polling a 401 every 30s forever,

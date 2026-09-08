@@ -93,6 +93,12 @@ interface PodcastForPreview {
 const route = useRoute()
 const podcastSlug = route.params.slug as string
 
+// This block is top-level setup code, so it also runs during SSR, where plain
+// $fetch sends no cookies and the endpoint 401s. Captured in setup context;
+// {} on the client, where the browser attaches cookies itself.
+const ssrHeaders = useRequestHeaders(['cookie'])
+
+
 const podcast = ref<PodcastForPreview | null>(null)
 const episodes = ref<Episode[]>([])
 const loadError = ref('')
@@ -101,8 +107,8 @@ const viewMode = usePreviewViewMode()
 
 try {
   const [pod, eps] = await Promise.all([
-    $fetch<PodcastForPreview>(`/api/podcasts/${podcastSlug}`),
-    $fetch<Episode[]>(`/api/podcasts/${podcastSlug}/episodes`),
+    $fetch<PodcastForPreview>(`/api/podcasts/${podcastSlug}`, { headers: ssrHeaders }),
+    $fetch<Episode[]>(`/api/podcasts/${podcastSlug}/episodes`, { headers: ssrHeaders }),
   ])
   podcast.value = pod
   episodes.value = eps

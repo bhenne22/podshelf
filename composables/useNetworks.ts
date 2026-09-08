@@ -114,10 +114,15 @@ export interface UpcomingEpisodesParams {
 }
 
 export function useNetworks() {
+  // Forwarded so these are safe to call from setup, where plain $fetch sends no
+  // cookies on the server and the endpoint 401s. Captured here in setup context
+  // because the returned functions are also called from event handlers; on the
+  // client this is {} and the browser attaches cookies itself.
+  const ssrHeaders = useRequestHeaders(['cookie'])
   async function listNetworks(opts: { podcastSlug?: string } = {}): Promise<NetworkListItem[]> {
     const params: Record<string, string> = {}
     if (opts.podcastSlug) params.podcastSlug = opts.podcastSlug
-    return await $fetch<NetworkListItem[]>('/api/networks', { params })
+    return await $fetch<NetworkListItem[]>('/api/networks', { params, headers: ssrHeaders })
   }
 
   async function getNetwork(
@@ -126,7 +131,7 @@ export function useNetworks() {
   ): Promise<NetworkDetail> {
     const params: Record<string, string> = {}
     if (opts.includeProperties) params.include = 'properties'
-    return await $fetch<NetworkDetail>(`/api/networks/${slug}`, { params })
+    return await $fetch<NetworkDetail>(`/api/networks/${slug}`, { params, headers: ssrHeaders })
   }
 
   async function getUpcomingEpisodes(
@@ -135,7 +140,7 @@ export function useNetworks() {
   ): Promise<NetworkUpcomingEpisode[]> {
     const res = await $fetch<{ episodes: NetworkUpcomingEpisode[] }>(
       `/api/networks/${slug}/upcoming-episodes`,
-      { params: params as Record<string, string> },
+      { params: params as Record<string, string>, headers: ssrHeaders },
     )
     return res.episodes
   }
@@ -146,19 +151,21 @@ export function useNetworks() {
   ): Promise<NetworkEpisodesResult> {
     return await $fetch<NetworkEpisodesResult>(
       `/api/networks/${slug}/episodes`,
-      { params: params as Record<string, string | number> },
+      { params: params as Record<string, string | number>, headers: ssrHeaders },
     )
   }
 
   async function listPropertyDefinitions(slug: string): Promise<NetworkPropertyDefinition[]> {
     return await $fetch<NetworkPropertyDefinition[]>(
       `/api/networks/${slug}/property-definitions`,
+      { headers: ssrHeaders },
     )
   }
 
   async function listProperties(slug: string): Promise<NetworkPropertyEntry[]> {
     const res = await $fetch<{ properties: NetworkPropertyEntry[] }>(
       `/api/networks/${slug}/properties`,
+      { headers: ssrHeaders },
     )
     return res.properties
   }

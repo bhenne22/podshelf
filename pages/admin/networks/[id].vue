@@ -340,6 +340,14 @@ const PROPERTY_TYPES: NetworkPropertyType[] = ['string', 'boolean', 'number', 'u
 const route = useRoute()
 const id = computed(() => Number(route.params.id))
 
+// Only the SSR-time fetch needs this: the load below is awaited at the top
+// level of <script setup>, so it also runs on the server, where plain $fetch
+// sends no cookies and the endpoint 401s — costing the SSR render its data.
+// Captured in setup context because the loader is also called from event
+// handlers; {} on the client, where the browser attaches cookies itself.
+const ssrHeaders = useRequestHeaders(['cookie'])
+
+
 interface RosterPodcast {
   id: number
   slug: string
@@ -385,6 +393,7 @@ async function loadDefinitions() {
   try {
     definitions.value = await $fetch<NetworkPropertyDefinition[]>(
       `/api/admin/networks/${id.value}/property-definitions`,
+      { headers: ssrHeaders },
     )
   } catch {
     definitions.value = []

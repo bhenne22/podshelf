@@ -138,6 +138,14 @@ interface Person {
 const route = useRoute()
 const podcastSlug = route.params.slug as string
 
+// Only the SSR-time fetch needs this: the load below is awaited at the top
+// level of <script setup>, so it also runs on the server, where plain $fetch
+// sends no cookies and the endpoint 401s — leaving the raw fetch error on the
+// page until the client rehydrated. Captured in setup context because the
+// loader is also called from event handlers; {} on the client.
+const ssrHeaders = useRequestHeaders(['cookie'])
+
+
 const people = ref<Person[]>([])
 const loading = ref(true)
 const saving = ref(false)
@@ -208,7 +216,7 @@ const form = reactive({
 async function loadPeople() {
   loading.value = true
   try {
-    people.value = await $fetch<Person[]>(`/api/podcasts/${podcastSlug}/people`)
+    people.value = await $fetch<Person[]>(`/api/podcasts/${podcastSlug}/people`, { headers: ssrHeaders })
   } catch (err: unknown) {
     errorMsg.value = err instanceof Error ? err.message : 'Failed to load people'
   } finally {

@@ -70,13 +70,22 @@ export function useEpisodes(podcastSlug: string) {
 
   const base = `/api/podcasts/${podcastSlug}/episodes`
 
+  // Callers do `await refresh()` at the top level of <script setup>, so the
+  // first call runs during SSR — where plain $fetch carries no cookies and the
+  // endpoint 401s. That left the raw fetch error rendered on the page
+  // ('[GET] "/api/podcasts/…": 401 Unauthorized') until the client rehydrated
+  // and re-fetched. Captured here, in setup context, because refresh() is also
+  // called from event handlers later; on the client this is {} and the browser
+  // attaches cookies itself.
+  const ssrHeaders = useRequestHeaders(['cookie'])
+
   async function refresh(status?: string) {
     loading.value = true
     error.value = null
     try {
       const params: Record<string, string> = { fields: EPISODE_LIST_FIELDS.join(',') }
       if (status) params.status = status
-      const data = await $fetch<EpisodeListItem[]>(base, { params })
+      const data = await $fetch<EpisodeListItem[]>(base, { params, headers: ssrHeaders })
       episodes.value = data
     } catch (err: unknown) {
       error.value = err instanceof Error ? err.message : 'Failed to load episodes'

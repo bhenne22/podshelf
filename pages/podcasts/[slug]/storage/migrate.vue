@@ -173,6 +173,14 @@ definePageMeta({ middleware: 'auth' })
 const route = useRoute()
 const podcastSlug = route.params.slug as string
 
+// Only the SSR-time fetch needs this: the load below is awaited at the top
+// level of <script setup>, so it also runs on the server, where plain $fetch
+// sends no cookies and the endpoint 401s — costing the SSR render its data.
+// Captured in setup context because the loader is also called from event
+// handlers; {} on the client, where the browser attaches cookies itself.
+const ssrHeaders = useRequestHeaders(['cookie'])
+
+
 interface MigrationRow {
   id: number
   podcast_id: number
@@ -280,7 +288,7 @@ function buildConfig() {
 
 async function refreshMigration() {
   try {
-    migration.value = await $fetch<MigrationRow | null>(`/api/podcasts/${podcastSlug}/storage/migrate`)
+    migration.value = await $fetch<MigrationRow | null>(`/api/podcasts/${podcastSlug}/storage/migrate`, { headers: ssrHeaders })
   } catch (err: unknown) {
     errorMsg.value = err instanceof Error ? err.message : 'Failed to load migration status'
   }

@@ -108,6 +108,14 @@ interface AuditResponse {
 const route = useRoute()
 const podcastSlug = route.params.slug as string
 
+// Only the SSR-time fetch needs this: the load below is awaited at the top
+// level of <script setup>, so it also runs on the server, where plain $fetch
+// sends no cookies and the endpoint 401s — leaving the raw fetch error on the
+// page until the client rehydrated. Captured in setup context because the
+// loader is also called from event handlers; {} on the client.
+const ssrHeaders = useRequestHeaders(['cookie'])
+
+
 const entries = ref<AuditEntry[]>([])
 const loading = ref(false)
 const errorMsg = ref('')
@@ -119,7 +127,7 @@ async function load(before: number | null = null) {
   loading.value = true
   try {
     const url = `/api/podcasts/${podcastSlug}/audit${before ? `?before=${before}` : ''}`
-    const data = await $fetch<AuditResponse>(url)
+    const data = await $fetch<AuditResponse>(url, { headers: ssrHeaders })
     if (before === null) {
       entries.value = data.entries
     } else {
