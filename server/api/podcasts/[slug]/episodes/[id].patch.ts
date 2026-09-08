@@ -10,6 +10,13 @@ import { resolvePublishTiming } from '../../../../utils/scheduler'
 import { slugify, isPlaceholderSlug } from '../../../../utils/text'
 import getDb from '../../../../db/index'
 
+/**
+ * Columns that exist only inside Podshelf — nothing downstream renders them,
+ * and they never enter the feed. An edit touching only these can't change any
+ * published surface, so it must not fire a rebuild.
+ */
+const NON_RENDERED_FIELDS = new Set(['private_notes'])
+
 const UPDATABLE = [
   'title', 'slug', 'episode_number', 'season_number',
   'description', 'audio_url', 'audio_filename', 'audio_size_bytes',
@@ -173,9 +180,16 @@ export default defineEventHandler(async (event) => {
   // skip the webhook so we don't spam the channel on every typo fix.
   const becamePublished = beforeStatus !== 'published' && updated.status === 'published'
   const wasOrIsPublished = beforeStatus === 'published' || updated.status === 'published'
+  // An edit that only touched Podshelf-internal columns changes nothing a
+  // listener or a site build can see, so it shouldn't spend a rebuild. Note
+  // this deliberately does NOT skip the updated_at bump above: that column is
+  // also the human "last modified" timestamp the UI shows, and a private-notes
+  // edit really is a modification. The cost is one cheap re-fetch by the
+  // downstream sync, against a timestamp that would otherwise be a lie.
+  const renderedFieldChanged = diff.changed.some((f) => !NON_RENDERED_FIELDS.has(f))
   if (becamePublished) {
     await firePublishEvent(podcastId, Number(id), 'episode-update', user.id, event.context.apiKeyId ?? null)
-  } else if (wasOrIsPublished) {
+  } else if (wasOrIsPublished && renderedFieldChanged) {
     bumpFeedLastModified(podcastId)
     maybeAutoTrigger(podcastId, 'episode-update')
   }

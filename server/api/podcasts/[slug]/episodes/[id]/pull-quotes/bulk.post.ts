@@ -1,13 +1,13 @@
 import { defineEventHandler, readBody, getRouterParam, createError } from 'h3'
 import { requirePodcastAccess } from '../../../../../../utils/auth'
-import { maybeAutoTrigger } from '../../../../../../utils/github'
 import { logAudit } from '../../../../../../utils/audit'
 import {
   requireEpisode,
   normalizePullQuote,
   nextPullQuotePosition,
   listPullQuotes,
-  touchEpisodeForQuotes,
+  approvedQuotesFingerprint,
+  syncEpisodeAfterQuoteWrite,
   MAX_BULK_QUOTES,
 } from '../../../../../../utils/pull-quotes'
 import getDb from '../../../../../../db/index'
@@ -59,6 +59,8 @@ export default defineEventHandler(async (event) => {
 
   const normalized = incoming.map((raw, i) => normalizePullQuote(raw, `quotes[${i}]`))
 
+  const beforeFingerprint = approvedQuotesFingerprint(id)
+
   const db = getDb()
   const insert = db.prepare(`
     INSERT INTO episode_pull_quotes (episode_id, quote, speaker, timecode, position)
@@ -78,10 +80,14 @@ export default defineEventHandler(async (event) => {
     return deleted
   })()
 
-  touchEpisodeForQuotes(id)
-  if (episode.status === 'published') {
-    maybeAutoTrigger(podcastId, 'episode-pull-quotes-update')
-  }
+  // Only re-sync and rebuild if this actually changed what a site would see.
+  // A write touching unapproved rows is invisible downstream.
+  syncEpisodeAfterQuoteWrite({
+    episodeId: id,
+    podcastId,
+    episodeStatus: episode.status,
+    before: beforeFingerprint,
+  })
 
   logAudit(event, {
     podcastId,

@@ -1,12 +1,12 @@
 import { defineEventHandler, readBody, getRouterParam } from 'h3'
 import { requirePodcastAccess } from '../../../../../utils/auth'
-import { maybeAutoTrigger } from '../../../../../utils/github'
 import { logAudit } from '../../../../../utils/audit'
 import {
   requireEpisode,
   normalizePullQuote,
   nextPullQuotePosition,
-  touchEpisodeForQuotes,
+  approvedQuotesFingerprint,
+  syncEpisodeAfterQuoteWrite,
   PULL_QUOTE_COLUMNS,
 } from '../../../../../utils/pull-quotes'
 import getDb from '../../../../../db/index'
@@ -26,6 +26,7 @@ export default defineEventHandler(async (event) => {
   const { user, podcastId } = requirePodcastAccess(event, slug)
 
   const episode = requireEpisode(id, podcastId)
+  const beforeFingerprint = approvedQuotesFingerprint(id)
 
   const body = await readBody(event)
   const normalized = normalizePullQuote(body)
@@ -40,12 +41,14 @@ export default defineEventHandler(async (event) => {
     VALUES (?, ?, ?, ?, ?)
   `).run(id, normalized.quote, normalized.speaker, normalized.timecode, position)
 
-  touchEpisodeForQuotes(id)
-  if (episode.status === 'published') {
-    // Quotes aren't in the feed, so no bumpFeedLastModified — but a
-    // downstream site that renders them wants a rebuild.
-    maybeAutoTrigger(podcastId, 'episode-pull-quotes-update')
-  }
+  // Only re-sync and rebuild if this actually changed what a site would see.
+  // A write touching unapproved rows is invisible downstream.
+  syncEpisodeAfterQuoteWrite({
+    episodeId: id,
+    podcastId,
+    episodeStatus: episode.status,
+    before: beforeFingerprint,
+  })
 
   logAudit(event, {
     podcastId,

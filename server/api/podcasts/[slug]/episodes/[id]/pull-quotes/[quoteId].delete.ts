@@ -1,8 +1,11 @@
 import { defineEventHandler, getRouterParam, createError } from 'h3'
 import { requirePodcastAccess } from '../../../../../../utils/auth'
-import { maybeAutoTrigger } from '../../../../../../utils/github'
 import { logAudit } from '../../../../../../utils/audit'
-import { requireEpisode, touchEpisodeForQuotes } from '../../../../../../utils/pull-quotes'
+import {
+  requireEpisode,
+  approvedQuotesFingerprint,
+  syncEpisodeAfterQuoteWrite,
+} from '../../../../../../utils/pull-quotes'
 import getDb from '../../../../../../db/index'
 
 /**
@@ -19,6 +22,8 @@ export default defineEventHandler((event) => {
     throw createError({ statusCode: 400, statusMessage: 'quoteId required' })
   }
 
+  const beforeFingerprint = approvedQuotesFingerprint(id)
+
   const db = getDb()
   const result = db.prepare('DELETE FROM episode_pull_quotes WHERE id = ? AND episode_id = ?')
     .run(quoteId, id)
@@ -26,10 +31,14 @@ export default defineEventHandler((event) => {
     throw createError({ statusCode: 404, statusMessage: 'Pull quote not found' })
   }
 
-  touchEpisodeForQuotes(id)
-  if (episode.status === 'published') {
-    maybeAutoTrigger(podcastId, 'episode-pull-quotes-update')
-  }
+  // Only re-sync and rebuild if this actually changed what a site would see.
+  // A write touching unapproved rows is invisible downstream.
+  syncEpisodeAfterQuoteWrite({
+    episodeId: id,
+    podcastId,
+    episodeStatus: episode.status,
+    before: beforeFingerprint,
+  })
 
   logAudit(event, {
     podcastId,

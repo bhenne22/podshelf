@@ -1,13 +1,13 @@
 import { defineEventHandler, readBody, getRouterParam, createError } from 'h3'
 import { requirePodcastAccess } from '../../../../../../utils/auth'
-import { maybeAutoTrigger } from '../../../../../../utils/github'
 import { logAudit } from '../../../../../../utils/audit'
 import {
   requireEpisode,
   normalizePullQuote,
   normalizeTimecode,
   normalizeApproved,
-  touchEpisodeForQuotes,
+  approvedQuotesFingerprint,
+  syncEpisodeAfterQuoteWrite,
   PULL_QUOTE_COLUMNS,
   MAX_SPEAKER_LENGTH,
   type PullQuote,
@@ -43,6 +43,7 @@ export default defineEventHandler(async (event) => {
   if (!existing) {
     throw createError({ statusCode: 404, statusMessage: 'Pull quote not found' })
   }
+  const beforeFingerprint = approvedQuotesFingerprint(id)
 
   const body = await readBody(event)
   const updates: string[] = []
@@ -98,10 +99,14 @@ export default defineEventHandler(async (event) => {
   const updated = db.prepare(`SELECT ${PULL_QUOTE_COLUMNS} FROM episode_pull_quotes WHERE id = ?`)
     .get(quoteId) as PullQuote
 
-  touchEpisodeForQuotes(id)
-  if (episode.status === 'published') {
-    maybeAutoTrigger(podcastId, 'episode-pull-quotes-update')
-  }
+  // Only re-sync and rebuild if this actually changed what a site would see.
+  // A write touching unapproved rows is invisible downstream.
+  syncEpisodeAfterQuoteWrite({
+    episodeId: id,
+    podcastId,
+    episodeStatus: episode.status,
+    before: beforeFingerprint,
+  })
 
   // An approval flip is the moment a quote becomes publishable, so it gets
   // its own action and quotes the text — the audit log should be able to

@@ -1,4 +1,5 @@
 import { createError } from 'h3'
+import { maybeAutoTrigger } from './github'
 import getDb from '../db/index'
 
 /**
@@ -183,12 +184,60 @@ export function nextPullQuotePosition(episodeId: number): number {
 }
 
 /**
- * Bump `episodes.updated_at` after a pull-quote write. Quotes ride in the
- * episode projection downstream sync reads, so skipping this would let a
- * site's incremental sync decide the episode was unchanged and never pick
- * the new quotes up. The feed is untouched, so there's deliberately no
- * bumpFeedLastModified() here.
+ * Bump `episodes.updated_at`. Quotes ride in the episode projection downstream
+ * sync reads, so skipping this would let a site's incremental sync decide the
+ * episode was unchanged and never pick the new quotes up. The feed is
+ * untouched, so there's deliberately no bumpFeedLastModified() here.
+ *
+ * Prefer `syncEpisodeAfterQuoteWrite` — it only calls this when the change is
+ * actually visible downstream.
  */
 export function touchEpisodeForQuotes(episodeId: number) {
   getDb().prepare(`UPDATE episodes SET updated_at = datetime('now') WHERE id = ?`).run(episodeId)
+}
+
+/**
+ * A fingerprint of exactly what a site build would see for this episode.
+ *
+ * Deliberately built from `listPullQuotes` in its default (approved-only)
+ * mode, so it *is* the downstream payload rather than a guess at it — array
+ * order carries position, and unapproved rows are absent by construction.
+ */
+export function approvedQuotesFingerprint(episodeId: number): string {
+  return JSON.stringify(
+    listPullQuotes(episodeId).map((q) => [q.id, q.quote, q.speaker, q.timecode]),
+  )
+}
+
+/**
+ * Post-write side effects for a pull-quote change, applied only if the change
+ * is visible to a site build.
+ *
+ * Take a fingerprint before the write, pass it here after. Most quote writes
+ * touch unapproved rows — importing candidates, editing a pending one,
+ * deleting a bad one — and none of those alter what any site would render, so
+ * bumping `updated_at` (which makes the downstream sync re-fetch an episode
+ * that hasn't changed) and firing a rebuild are pure waste.
+ *
+ * Comparing payloads rather than reasoning per-field is what makes this
+ * exact: reordering an unapproved quote past an approved one changes stored
+ * positions but not the approved list, and the fingerprint says so. Any write
+ * path added later gets the same treatment for free.
+ *
+ * Returns whether the downstream payload actually moved.
+ */
+export function syncEpisodeAfterQuoteWrite(args: {
+  episodeId: number
+  podcastId: number
+  episodeStatus: string
+  before: string
+}): boolean {
+  const after = approvedQuotesFingerprint(args.episodeId)
+  if (after === args.before) return false
+
+  touchEpisodeForQuotes(args.episodeId)
+  if (args.episodeStatus === 'published') {
+    maybeAutoTrigger(args.podcastId, 'episode-pull-quotes-update')
+  }
+  return true
 }
