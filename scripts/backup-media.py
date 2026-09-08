@@ -93,6 +93,18 @@ def main() -> int:
         sys.exit("FATAL: set PODSHELF_API_KEY (needs read access to every podcast)")
 
     started = time.time()
+
+    # A run killed mid-download leaves a .part behind. The next run overwrites
+    # it for any file still in the listing, but one that has since been deleted
+    # server-side would leave its .part sitting there forever.
+    if not args.dry_run and args.dest.exists():
+        stale = [p for p in args.dest.rglob("*.part")
+                 if time.time() - p.stat().st_mtime > 24 * 3600]
+        for p in stale:
+            p.unlink()
+        if stale:
+            print(f"  cleared {len(stale)} stale .part file(s) from an interrupted run")
+
     pods = api_get(args.api, "/api/podcasts", key)
     if not isinstance(pods, list):
         sys.exit(f"FATAL: /api/podcasts returned {pods!r}")
@@ -109,6 +121,16 @@ def main() -> int:
                       "api": args.api, "podcasts": {}}
 
     for slug in slugs:
+        # A podcast with no storage set up (scratch-test) 400s on every listing.
+        # Ask once and skip it, rather than logging two failures a night forever.
+        try:
+            storage = api_get(args.api, f"/api/podcasts/{slug}/storage", key)
+            if isinstance(storage, dict) and not storage.get("configured"):
+                print(f"{slug:24} no storage configured — skipped")
+                continue
+        except Exception:
+            pass  # If the probe itself fails, fall through and let the listing decide.
+
         per = {"new": 0, "bytes": 0, "have": 0, "failed": 0, "files": 0}
         for kind in KINDS:
             try:
