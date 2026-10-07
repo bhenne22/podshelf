@@ -225,6 +225,9 @@ server {
     # Audio uploads can be up to 500 MB; allow some multipart headroom
     client_max_body_size 600M;
 
+    # Stream upload bodies through instead of spooling them to disk first
+    proxy_request_buffering off;
+
     # Slow SFTP/S3 uploads can take a while
     proxy_read_timeout    300s;
     proxy_send_timeout    300s;
@@ -249,6 +252,13 @@ nginx -t && systemctl reload nginx
 
 `client_max_body_size` matters — Podshelf accepts up to 500 MB audio uploads
 plus multipart envelope overhead, so 600M is a safe ceiling.
+
+`proxy_request_buffering off` keeps the upload progress bar honest. With
+nginx's default, the whole body is saved to a temp file before Podshelf sees
+any of it, so the browser shows 100% as soon as nginx has the file, and the
+real transfer to storage happens afterwards with no progress shown.
+Unbuffered, Podshelf streams to storage as bytes arrive, and backpressure
+holds the browser to the true end-to-end pace.
 
 `proxy_set_header X-Forwarded-For` is what the download tracker hashes for
 the IAB-style 24h dedup. With Cloudflare in front, X-Forwarded-For will

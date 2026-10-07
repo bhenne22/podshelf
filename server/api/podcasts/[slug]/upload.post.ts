@@ -1,9 +1,9 @@
-import { defineEventHandler, getRouterParam, getQuery, createError } from 'h3'
+import { defineEventHandler, getRouterParam, getQuery, createError, isError } from 'h3'
 import { Transform } from 'stream'
 import { requirePodcastAccess } from '../../../utils/auth'
 import { loadPodcastStorage } from '../../../utils/storage-config'
 import { isMigrationActive } from '../../../utils/storage-migration'
-import { uploadStreamToSftp, deleteFromSftp } from '../../../storage/sftp'
+import { uploadStreamToSftp } from '../../../storage/sftp'
 import { uploadStreamToS3, deleteFromS3 } from '../../../storage/s3'
 import { streamFilePart, wasRequestAborted } from '../../../utils/multipart-stream'
 
@@ -157,31 +157,56 @@ export default defineEventHandler(async (event) => {
       // the counter so the storage upload stops too.
       stream.on('error', (err) => counter.destroy(err))
 
-      // Whatever bytes already reached storage sit there under the *real*
-      // filename, so a half-finished upload leaves a truncated file that still
-      // parses and plays — indistinguishable from a good one until someone
-      // notices the episode stops early. Every failure path has to bin it.
-      // An arrow const, not a hoisted `function` — a declaration is visible
-      // before the null guard above, so TS drops the narrowing on `storage`.
-      const discardPartial = async () => {
-        try {
-          if (storage.adapter === 's3' && storage.s3) {
-            await deleteFromS3(storage.s3, storageKind, filename)
-          } else if (storage.adapter === 'sftp' && storage.sftp) {
-            await deleteFromSftp(storage.sftp, storageKind, filename)
-          }
-        } catch { /* best-effort cleanup */ }
+      // Busboy sets `truncated` on the source stream when the fileSize limit
+      // is exceeded, and may end the file stream cleanly on a premature
+      // request end — either way the storage write "succeeds" with short
+      // content. Trust the request, not the stream: if the client is gone,
+      // the object is incomplete by definition.
+      const rejectIncomplete = () => {
+        if (stream.truncated) {
+          const mb = Math.round(maxSize / (1024 * 1024))
+          throw createError({ statusCode: 413, statusMessage: `File too large. Maximum size is ${mb} MB.` })
+        }
+        if (isRequestAborted()) {
+          throw createError({ statusCode: 400, statusMessage: 'Client aborted upload' })
+        }
       }
 
       let url: string
-      try {
-        if (storage.adapter === 's3' && storage.s3) {
-          url = await uploadStreamToS3(counter, filename, storedContentType, storage.s3, storageKind)
-        } else if (storage.adapter === 'sftp' && storage.sftp) {
-          url = await uploadStreamToSftp(counter, filename, storage.sftp, storageKind)
-        } else {
-          throw createError({ statusCode: 500, statusMessage: 'Storage configuration mismatch' })
+      if (storage.adapter === 'sftp' && storage.sftp) {
+        // SFTP writes to a `.partial` name and only renames into place after
+        // rejectIncomplete passes, cleaning the partial up on any failure —
+        // so there's nothing to discard here, and deleting `filename` would
+        // destroy the good copy a failed re-upload left in place.
+        try {
+          url = await uploadStreamToSftp(counter, filename, storage.sftp, storageKind, {
+            beforeCommit: rejectIncomplete,
+          })
+        } catch (err: unknown) {
+          if (isError(err)) throw err
+          throw createError({
+            statusCode: 500,
+            statusMessage: err instanceof Error ? err.message : 'Upload failed',
+          })
         }
+        return { url, filename, size: bytesSeen, content_type: storedContentType, kind }
+      }
+
+      if (!(storage.adapter === 's3' && storage.s3)) {
+        throw createError({ statusCode: 500, statusMessage: 'Storage configuration mismatch' })
+      }
+      const s3 = storage.s3
+
+      // S3 multipart uploads are invisible until completed, but a completed
+      // short one sits under the *real* key — a truncated file that still
+      // parses and plays, indistinguishable from a good one until someone
+      // notices the episode stops early. Every failure path has to bin it.
+      const discardPartial = async () => {
+        try { await deleteFromS3(s3, storageKind, filename) } catch { /* best-effort cleanup */ }
+      }
+
+      try {
+        url = await uploadStreamToS3(counter, filename, storedContentType, s3, storageKind)
       } catch (err: unknown) {
         // Reached on a client disconnect mid-transfer as well as on a storage
         // failure: streamFilePart destroys busboy on abort, which errors the
@@ -193,22 +218,11 @@ export default defineEventHandler(async (event) => {
         })
       }
 
-      // Busboy sets `truncated` on the source stream when the fileSize limit
-      // is exceeded; the storage upload still completes (with a partial file),
-      // so we delete the partial artifact and surface a 413.
-      if (stream.truncated) {
+      try {
+        rejectIncomplete()
+      } catch (err) {
         await discardPartial()
-        const mb = Math.round(maxSize / (1024 * 1024))
-        throw createError({ statusCode: 413, statusMessage: `File too large. Maximum size is ${mb} MB.` })
-      }
-
-      // A disconnect can also land here: busboy may end the file stream cleanly
-      // on a premature request end, in which case the storage write "succeeds"
-      // with short content and nothing above fires. Trust the request, not the
-      // stream — if the client is gone, the object is incomplete by definition.
-      if (isRequestAborted()) {
-        await discardPartial()
-        throw createError({ statusCode: 400, statusMessage: 'Client aborted upload' })
+        throw err
       }
 
       return { url, filename, size: bytesSeen, content_type: storedContentType, kind }

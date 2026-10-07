@@ -2,6 +2,7 @@ import SftpClient from 'ssh2-sftp-client'
 import { Readable } from 'stream'
 import type { SftpConfig, StorageKind } from '../utils/storage-config'
 import { resolveSftpTarget } from '../utils/storage-config'
+import { writeStreamPipelined } from './sftp-stream-writer'
 
 /**
  * Normalizes a pasted private key for ssh2:
@@ -93,14 +94,22 @@ export async function uploadToSftp(
 
 /**
  * Stream-upload variant. Used by the multipart upload endpoint so large MP3s
- * never get buffered in memory — ssh2-sftp-client's `put` accepts a Readable
- * directly. Same return contract as uploadToSftp.
+ * never get buffered in memory. Same return contract as uploadToSftp.
+ *
+ * Bytes land under `<filename>.partial` and are renamed into place only once
+ * the whole file is written, so the file browser never shows a half-uploaded
+ * episode under its real name, and a failed re-upload leaves the previous
+ * copy untouched. `beforeCommit` runs between the two and may throw to abort —
+ * the caller's chance to reject a truncated or abandoned upload before it
+ * replaces anything. Its error is rethrown as-is; the partial is always
+ * removed on failure.
  */
 export async function uploadStreamToSftp(
   stream: Readable,
   filename: string,
   config: SftpConfig,
   kind: StorageKind = 'audio',
+  options: { beforeCommit?: () => void } = {},
 ): Promise<string> {
   const { host, port = 22, username, privateKey, passphrase, password } = config
   const { remoteDir, publicUrlBase } = resolveSftpTarget(config, kind)
@@ -115,7 +124,7 @@ export async function uploadStreamToSftp(
   const sftp = new SftpClient()
 
   try {
-    await sftp.connect({
+    const wrapper = await sftp.connect({
       host,
       port,
       username,
@@ -131,17 +140,50 @@ export async function uploadStreamToSftp(
     }
 
     const remotePath = `${remoteDir}/${filename}`
+    const partialPath = `${remotePath}.partial`
 
     try {
-      await sftp.put(stream, remotePath)
+      try {
+        // Arrow wrappers, not `wrapper` itself: SFTPWrapper.open's overloads
+        // don't structurally match the narrow interface.
+        await writeStreamPipelined({
+          open: (path, flags, cb) => wrapper.open(path, flags, cb),
+          write: (handle, buf, off, len, pos, cb) => wrapper.write(handle, buf, off, len, pos, cb),
+          close: (handle, cb) => wrapper.close(handle, cb),
+        }, stream, partialPath)
+      } catch (err) {
+        throw new Error(`Failed to upload "${filename}" to SFTP: ${err instanceof Error ? err.message : err}`)
+      }
+      options.beforeCommit?.()
+      try {
+        await replaceRemoteFile(sftp, partialPath, remotePath)
+      } catch (err) {
+        throw new Error(`Uploaded "${filename}" but could not move it into place: ${err instanceof Error ? err.message : err}`)
+      }
     } catch (err) {
-      throw new Error(`Failed to upload "${filename}" to SFTP: ${err instanceof Error ? err.message : err}`)
+      try { await sftp.delete(partialPath, true) } catch { /* best-effort cleanup */ }
+      throw err
     }
 
     return `${publicUrlBase.replace(/\/$/, '')}/${filename}`
   } finally {
     await sftp.end()
   }
+}
+
+/**
+ * Rename that overwrites, matching what the old in-place `put` did on a
+ * re-upload. Plain SFTP rename refuses an existing target, so prefer
+ * OpenSSH's posix-rename (atomic — the old file stays servable until the
+ * swap); fall back to delete-then-rename on servers without it.
+ */
+async function replaceRemoteFile(sftp: SftpClient, from: string, to: string): Promise<void> {
+  try {
+    await sftp.posixRename(from, to)
+    return
+  } catch { /* extension unsupported — fall through */ }
+  if (await sftp.exists(to)) await sftp.delete(to)
+  await sftp.rename(from, to)
 }
 
 /**
