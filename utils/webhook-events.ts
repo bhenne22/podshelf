@@ -15,6 +15,7 @@
 
 export const WEBHOOK_EVENTS = [
   'episode.publish',
+  'episode.publish.stalled',
   'episode.recording.scheduled',
   'episode.recording.moved',
   'episode.recording.cancelled',

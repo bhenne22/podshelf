@@ -47,6 +47,42 @@ test('an announcement past its deadline reads as expired', () => {
   assert.equal(row.expired, 1, 'a past deadline must release the announcement anyway')
 })
 
+// The stall alert keys off created_at, not deadline_at: the deadline is now
+// a day out, and the operator needs to hear about a dead deploy long before.
+const stalledSql = `
+  SELECT datetime(created_at, '+30 minutes') <= datetime('now') AS stalled,
+         stall_alerted_at
+  FROM pending_announcements`
+
+test('a fresh announcement has not stalled and has not alerted', () => {
+  const db = makeDb()
+  insert(db, 24 * 60)
+  const row = db.prepare(stalledSql).get() as { stalled: number; stall_alerted_at: string | null }
+  assert.equal(row.stalled, 0)
+  assert.equal(row.stall_alerted_at, null)
+})
+
+test('an announcement parked for over 30 minutes reads as stalled but not expired', () => {
+  const db = makeDb()
+  insert(db, 24 * 60)
+  db.prepare("UPDATE pending_announcements SET created_at = datetime('now', '-31 minutes')").run()
+  const row = db.prepare(stalledSql).get() as { stalled: number }
+  assert.equal(row.stalled, 1, 'the stall alert should fire at 30 minutes')
+  const exp = db.prepare(
+    "SELECT datetime(deadline_at) <= datetime('now') AS expired FROM pending_announcements",
+  ).get() as { expired: number }
+  assert.equal(exp.expired, 0, 'a stalled announcement must stay held, not post the dead link')
+})
+
+test('re-publishing re-arms the stall alert', () => {
+  const db = makeDb()
+  insert(db, 24 * 60)
+  db.prepare("UPDATE pending_announcements SET stall_alerted_at = datetime('now')").run()
+  insert(db, 24 * 60)
+  const row = db.prepare('SELECT stall_alerted_at FROM pending_announcements').get() as { stall_alerted_at: string | null }
+  assert.equal(row.stall_alerted_at, null, 'INSERT OR REPLACE must clear the old alert marker')
+})
+
 test('re-publishing replaces the parked row instead of stacking a second one', () => {
   const db = makeDb()
   insert(db, 30)

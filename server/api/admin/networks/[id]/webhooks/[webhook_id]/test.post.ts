@@ -6,9 +6,11 @@ import {
   isWebhookEvent,
   sendPublishWebhook,
   sendRecordingWebhook,
+  sendStallWebhook,
   type WebhookEvent,
 } from '../../../../../../utils/webhook'
 import getDb from '../../../../../../db/index'
+import { ANNOUNCE_MAX_WAIT_MINUTES, ANNOUNCE_STALL_ALERT_MINUTES } from '../../../../../../utils/announce'
 
 /**
  * POST /api/admin/networks/[id]/webhooks/[webhook_id]/test
@@ -72,6 +74,17 @@ export default defineEventHandler(async (event) => {
       episode_number: null,
       season_number: null,
       published_at: new Date().toISOString(),
+    })
+  } else if (requested === 'episode.publish.stalled') {
+    result = await sendStallWebhook(full, podcastPayload, {
+      episode_title: 'Test episode from Podshelf (network webhook)',
+      episode_url: standIn?.website
+        ? `${standIn.website.replace(/\/+$/, '')}/episodes/test`
+        : `${siteUrl}/feeds/${podcastSlug}.xml#test`,
+      waited_minutes: ANNOUNCE_STALL_ALERT_MINUTES,
+      max_wait_minutes: ANNOUNCE_MAX_WAIT_MINUTES,
+      last_status: 404,
+      last_error: null,
     })
   } else {
     const kind = requested === 'episode.recording.scheduled'

@@ -21,6 +21,7 @@ import {
 test('WEBHOOK_EVENTS is exactly the known set', () => {
   assert.deepEqual([...WEBHOOK_EVENTS], [
     'episode.publish',
+    'episode.publish.stalled',
     'episode.recording.scheduled',
     'episode.recording.moved',
     'episode.recording.cancelled',

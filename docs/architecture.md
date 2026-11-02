@@ -199,7 +199,12 @@ scoped to its own slug.
      and calls `deliverPublishWebhooks()` on the first 2xx. Probes follow redirects: a
      prerendered Nuxt route is written as `/episodes/<slug>/index.html` and Apache 301s
      the extensionless path to the trailing-slash form.
-   - Releases anyway after `ANNOUNCE_MAX_WAIT_MINUTES` (30) with a
+   - Still not live after `ANNOUNCE_STALL_ALERT_MINUTES` (30): the build almost certainly
+     failed. Sends a one-shot `episode.publish.stalled` alert to subscribed webhooks (the
+     operator channel, not listeners), records `stall_alerted_at` plus a
+     `webhook.publish.stalled` audit entry, and **keeps holding** — so fixing the deploy
+     releases the announcement on its own instead of a dead link having gone public.
+   - Releases anyway after `ANNOUNCE_MAX_WAIT_MINUTES` (24h) with a
      `webhook.publish.deferred.timeout` audit entry. A late link beats an announcement
      silently swallowed by a broken build.
    Payload rows are re-read at delivery time, so a title fixed during the wait is the one

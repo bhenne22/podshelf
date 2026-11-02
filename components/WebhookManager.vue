@@ -151,6 +151,7 @@ import {
 // exact failure (silent missing checkbox) this consolidation exists to prevent.
 const EVENT_LABELS: Record<WebhookEvent, string> = {
   'episode.publish': 'A new episode goes live',
+  'episode.publish.stalled': "A new episode's site page still isn't live after 30 minutes (announcement held)",
   'episode.recording.scheduled': 'A recording is added to the calendar',
   'episode.recording.moved': 'A scheduled recording moves',
   'episode.recording.cancelled': 'A scheduled recording is removed',

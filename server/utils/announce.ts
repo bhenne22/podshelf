@@ -1,6 +1,6 @@
 import getDb from '../db/index'
 import { assertPublicHttpUrl } from './ssrf'
-import { loadWebhooksForEvent, sendPublishWebhook, type WebhookRow } from './webhook'
+import { loadWebhooksForEvent, sendPublishWebhook, sendStallWebhook, type WebhookRow } from './webhook'
 import { logAudit } from './audit'
 
 /**
@@ -11,16 +11,27 @@ import { logAudit } from './audit'
  *
  * Instead of sending immediately, `queuePublishAnnouncement()` parks the
  * announcement and the scheduler probes the episode URL each tick. The
- * webhook goes out on the first 2xx. If the page never appears within
- * ANNOUNCE_MAX_WAIT_MINUTES the announcement is released anyway with an
- * audit warning — a late link beats an announcement that silently vanished
- * because a build broke.
+ * webhook goes out on the first 2xx.
+ *
+ * If the page still isn't up after ANNOUNCE_STALL_ALERT_MINUTES, the build
+ * almost certainly failed. The public announcement stays held and a one-shot
+ * `episode.publish.stalled` alert goes to whoever subscribes to it (the
+ * operator channel), so a broken deploy is noticed without posting a 404 link
+ * to listeners. The scheduler keeps probing, so once the deploy is fixed the
+ * announcement releases on its own. Only past ANNOUNCE_MAX_WAIT_MINUTES is it
+ * released regardless, with an audit warning — a late link still beats an
+ * announcement that silently vanished because a build broke.
+ *
+ * This used to release after 30 minutes, which on 2026-11-01 posted a
+ * dead link to a public channel for an hour while the only signal of the
+ * failed deploy sat in the audit log.
  *
  * The gate only applies when the episode URL points at the podcast's own
  * website. Podcasts with no `website` set get a feed-anchor URL that is
  * live the moment the feed re-renders, so those send immediately.
  */
-export const ANNOUNCE_MAX_WAIT_MINUTES = 30
+export const ANNOUNCE_STALL_ALERT_MINUTES = 30
+export const ANNOUNCE_MAX_WAIT_MINUTES = 24 * 60
 
 /** Cap on a single liveness probe. Static hosts answer in well under this. */
 const PROBE_TIMEOUT_MS = 10_000
@@ -58,7 +69,10 @@ interface PendingRow {
   episode_id: number
   probe_url: string
   attempts: number
+  last_status: number | null
+  last_error: string | null
   deadline_at: string
+  stall_alerted_at: string | null
   actor_user_id: number | null
   actor_api_key_id: number | null
 }
@@ -202,6 +216,69 @@ export async function deliverPublishWebhooks(
 }
 
 /**
+ * POST every webhook subscribed to `episode.publish.stalled` for this
+ * podcast and audit the alert. Never throws — a failed alert must not stop
+ * the release loop from processing the other parked rows.
+ */
+async function deliverStallWebhooks(
+  row: PendingRow,
+  lastStatus: number | null,
+  lastError: string | null,
+): Promise<void> {
+  const podcast = loadPodcast(row.podcast_id)
+  const episode = loadEpisode(row.episode_id)
+  if (!podcast || !episode) return
+
+  const webhooks = loadWebhooksForEvent(row.podcast_id, 'episode.publish.stalled')
+
+  logAudit({
+    podcastId: row.podcast_id,
+    userId: row.actor_user_id,
+    apiKeyId: row.actor_api_key_id,
+    action: 'webhook.publish.stalled',
+    entityType: 'episode',
+    entityId: row.episode_id,
+    summary: webhooks.length > 0
+      ? `${row.probe_url} still isn't live after ${ANNOUNCE_STALL_ALERT_MINUTES}m — announcement held, stall alert sent to ${webhooks.length} webhook(s)`
+      : `${row.probe_url} still isn't live after ${ANNOUNCE_STALL_ALERT_MINUTES}m — announcement held (no webhook subscribes to episode.publish.stalled)`,
+    details: { probe_url: row.probe_url, status: lastStatus, error: lastError, webhooks: webhooks.length },
+  })
+  if (webhooks.length === 0) return
+
+  const siteUrl = (process.env.SITE_URL || (useRuntimeConfig().public.siteUrl as string) || '').replace(/\/+$/, '')
+  const podcastPayload = {
+    slug: podcast.slug,
+    title: podcast.title,
+    feed_url: `${siteUrl}/feeds/${podcast.slug}.xml`,
+    website: podcast.website,
+  }
+  const stall = {
+    episode_title: episode.title,
+    episode_url: row.probe_url,
+    waited_minutes: ANNOUNCE_STALL_ALERT_MINUTES,
+    max_wait_minutes: ANNOUNCE_MAX_WAIT_MINUTES,
+    last_status: lastStatus,
+    last_error: lastError,
+  }
+
+  for (const w of webhooks) {
+    const r = await sendStallWebhook(w, podcastPayload, stall)
+    if (!r.ok) {
+      logAudit({
+        podcastId: row.podcast_id,
+        userId: row.actor_user_id,
+        apiKeyId: row.actor_api_key_id,
+        action: 'webhook.publish.stalled.fail',
+        entityType: 'episode',
+        entityId: row.episode_id,
+        summary: `Stall alert failed (${w.format}, #${w.id}${w.name ? ` "${w.name}"` : ''}): ${r.message ?? 'unknown'}`,
+        details: { format: w.format, webhook_id: w.id, status: r.status, message: r.message },
+      })
+    }
+  }
+}
+
+/**
  * Park a publish announcement until the episode page is reachable.
  *
  * Probes once inline before parking, so a podcast whose page is already
@@ -267,9 +344,10 @@ export async function queuePublishAnnouncement(
 
 /**
  * Scheduler tick: re-probe every parked announcement and release the ones
- * whose page has appeared. Rows past their deadline are released anyway with
- * a warning in the audit log — the operator gets the announcement plus a
- * clear signal that the build didn't land.
+ * whose page has appeared. A row still waiting after
+ * ANNOUNCE_STALL_ALERT_MINUTES sends its one-shot stall alert and keeps
+ * waiting. Rows past their deadline are released anyway with a warning in
+ * the audit log.
  *
  * Rows are deleted before delivery so a slow webhook can't be double-sent by
  * an overlapping tick. Returns the number of announcements released.
@@ -292,8 +370,8 @@ let releaseInFlight = false
 async function releasePendingAnnouncements(): Promise<number> {
   const db = getDb()
   const rows = db.prepare(`
-    SELECT id, podcast_id, episode_id, probe_url, attempts, deadline_at,
-           actor_user_id, actor_api_key_id
+    SELECT id, podcast_id, episode_id, probe_url, attempts, last_status, last_error,
+           deadline_at, stall_alerted_at, actor_user_id, actor_api_key_id
     FROM pending_announcements
     ORDER BY id
   `).all() as PendingRow[]
@@ -308,6 +386,13 @@ async function releasePendingAnnouncements(): Promise<number> {
   `)
   const isExpired = db.prepare(
     "SELECT datetime(deadline_at) <= datetime('now') AS expired FROM pending_announcements WHERE id = ?",
+  )
+  const isStalled = db.prepare(`
+    SELECT datetime(created_at, '+${ANNOUNCE_STALL_ALERT_MINUTES} minutes') <= datetime('now') AS stalled
+    FROM pending_announcements WHERE id = ?
+  `)
+  const markAlerted = db.prepare(
+    "UPDATE pending_announcements SET stall_alerted_at = datetime('now') WHERE id = ?",
   )
 
   let released = 0
@@ -326,6 +411,13 @@ async function releasePendingAnnouncements(): Promise<number> {
 
     if (!probe.live && !expired) {
       bump.run(probe.status ?? null, probe.error ?? null, row.id)
+      const stalled = ((isStalled.get(row.id) as { stalled: number } | undefined)?.stalled ?? 0) === 1
+      if (stalled && !row.stall_alerted_at) {
+        // Mark before sending, same reason as the delete below: a slow
+        // webhook must not let an overlapping tick alert twice.
+        markAlerted.run(row.id)
+        await deliverStallWebhooks(row, probe.status ?? null, probe.error ?? null)
+      }
       continue
     }
 
@@ -340,7 +432,7 @@ async function releasePendingAnnouncements(): Promise<number> {
         action: 'webhook.publish.deferred.timeout',
         entityType: 'episode',
         entityId: row.episode_id,
-        summary: `Announcing after ${ANNOUNCE_MAX_WAIT_MINUTES}m — ${row.probe_url} still isn't live, so the link may 404`,
+        summary: `Announcing after ${ANNOUNCE_MAX_WAIT_MINUTES / 60}h — ${row.probe_url} still isn't live, so the link may 404`,
         details: {
           probe_url: row.probe_url,
           status: probe.status,

@@ -757,6 +757,97 @@ export function buildCorrectionBody(
   }
 }
 
+export interface WebhookStallPayload {
+  episode_title: string
+  episode_url: string
+  waited_minutes: number
+  // When the held announcement gives up and posts anyway.
+  max_wait_minutes: number
+  // Last probe result — an HTTP status (usually 404) or a fetch error.
+  last_status: number | null
+  last_error: string | null
+}
+
+/**
+ * An operator alert, not a listener post: the episode is published but its
+ * page on the podcast's site hasn't appeared, which almost always means the
+ * site build/deploy failed. The public `episode.publish` announcement is
+ * still being held while this goes out.
+ *
+ * Exported for shape-pinning tests; callers should use sendStallWebhook.
+ */
+export function buildStallBody(
+  config: WebhookConfig,
+  podcast: WebhookPodcastPayload,
+  s: WebhookStallPayload,
+): { body: string; contentType: string } {
+  const probe = s.last_status !== null ? `HTTP ${s.last_status}` : (s.last_error || 'no response')
+  const headline = `${podcast.title}: "${s.episode_title}" is published but its site page still isn't live after ${s.waited_minutes}m`
+  const detail = `Last check: ${probe}. The site build probably failed. The public announcement is held and goes out automatically once the page loads (or after ${Math.round(s.max_wait_minutes / 60)}h regardless).`
+
+  if (config.format === 'discord') {
+    return {
+      body: JSON.stringify({
+        content: `⚠️ ${chatSafe(headline, 300)}`,
+        embeds: [{
+          title: s.episode_url.slice(0, 250),
+          url: s.episode_url,
+          description: detail,
+          author: { name: podcast.title, url: podcast.website || podcast.feed_url },
+        }],
+      }),
+      contentType: 'application/json',
+    }
+  }
+
+  if (config.format === 'slack') {
+    const text = `*${headline}*\n<${s.episode_url}|${s.episode_url}>\n${detail}`
+    return {
+      body: JSON.stringify({
+        text: headline,
+        blocks: [{ type: 'section', text: { type: 'mrkdwn', text } }],
+      }),
+      contentType: 'application/json',
+    }
+  }
+
+  // generic
+  return {
+    body: JSON.stringify({
+      event: 'episode.publish.stalled',
+      podcast,
+      stall: s,
+      fired_at: new Date().toISOString(),
+    }),
+    contentType: 'application/json',
+  }
+}
+
+/** Same shape + non-throwing contract as sendPublishWebhook. */
+export async function sendStallWebhook(
+  config: WebhookConfig,
+  podcast: WebhookPodcastPayload,
+  stall: WebhookStallPayload,
+): Promise<{ ok: boolean; status?: number; message?: string }> {
+  try {
+    await assertPublicHttpUrl(config.url)
+    const { body, contentType } = buildStallBody(config, podcast, stall)
+    const res = await fetch(config.url, {
+      method: 'POST',
+      headers: { 'Content-Type': contentType },
+      body,
+      signal: AbortSignal.timeout(WEBHOOK_TIMEOUT_MS),
+    })
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      return { ok: false, status: res.status, message: text.slice(0, 200) || res.statusText }
+    }
+    return { ok: true, status: res.status }
+  } catch (err: unknown) {
+    return { ok: false, message: err instanceof Error ? err.message : 'webhook failed' }
+  }
+}
+
 /** Same shape + non-throwing contract as sendPublishWebhook. */
 export async function sendCorrectionWebhook(
   config: WebhookConfig,

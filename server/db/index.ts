@@ -422,7 +422,9 @@ CREATE INDEX IF NOT EXISTS idx_corrections_iphash
 --
 -- deadline_at is the give-up point: past it the announcement goes out
 -- anyway with a warning, so a broken build delays the post instead of
--- swallowing it. The UNIQUE on episode_id + INSERT OR REPLACE means an
+-- swallowing it. Well before that, stall_alerted_at records the one-shot
+-- operator alert (episode.publish.stalled) sent when the page still isn't
+-- up after ANNOUNCE_STALL_ALERT_MINUTES. The UNIQUE on episode_id + INSERT OR REPLACE means an
 -- unpublish → republish re-arms the wait rather than stacking rows.
 CREATE TABLE IF NOT EXISTS pending_announcements (
   id               INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -435,7 +437,8 @@ CREATE TABLE IF NOT EXISTS pending_announcements (
   actor_user_id    INTEGER REFERENCES users(id) ON DELETE SET NULL,
   actor_api_key_id INTEGER REFERENCES api_keys(id) ON DELETE SET NULL,
   created_at       TEXT NOT NULL DEFAULT (datetime('now')),
-  deadline_at      TEXT NOT NULL
+  deadline_at      TEXT NOT NULL,
+  stall_alerted_at TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_pending_announcements_podcast
@@ -659,6 +662,13 @@ function applyMigrations(db: Database.Database) {
   const webhookCols = cols('webhooks')
   if (webhookCols.length > 0 && !webhookCols.includes('include_recording_link')) {
     db.exec('ALTER TABLE webhooks ADD COLUMN include_recording_link INTEGER NOT NULL DEFAULT 0')
+  }
+
+  // One-shot operator alert marker for a held announcement whose page never
+  // appeared. Null on existing rows means "not alerted yet", which is right.
+  const pendingAnnouncementCols = cols('pending_announcements')
+  if (pendingAnnouncementCols.length > 0 && !pendingAnnouncementCols.includes('stall_alerted_at')) {
+    db.exec('ALTER TABLE pending_announcements ADD COLUMN stall_alerted_at TEXT')
   }
 
   // Migrate the single per-podcast webhook config (3 columns on `podcasts`)
